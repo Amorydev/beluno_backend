@@ -18,15 +18,22 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy.exc import DBAPIError
 
 from beluno.auth import AuthenticatedActor
-from beluno.contracts.errors import VersionConflictError, feature_disabled, precondition_required
+from beluno.contracts.errors import (
+    BelunoError,
+    VersionConflictError,
+    feature_disabled,
+    precondition_required,
+)
 from beluno.modules.context import Runtime, open_context
 from beluno.modules.iam.rate_limits import enforce_rate_limit
+from beluno.observability.metrics import attributes, instruments
 from beluno.sync import idempotency
 from beluno.sync.commands import (
     Command,
@@ -66,15 +73,39 @@ class CommandRunner:
             raise precondition_required()
         if command.rate_limit is not None and not await self._is_replay(actor, command, call):
             await enforce_rate_limit(self.runtime, command.rate_limit, str(actor.user_id))
+        started = time.perf_counter()
         attempt = 1
-        while True:
-            try:
-                return await self._attempt(actor, command, call, payload)
-            except Exception as error:
-                if not is_retryable(error) or attempt >= MAX_ATTEMPTS:
-                    raise
-            await asyncio.sleep(random.uniform(0, RETRY_BACKOFF_SECONDS * attempt))
-            attempt += 1
+        meters = instruments()
+        try:
+            while True:
+                try:
+                    result = await self._attempt(actor, command, call, payload)
+                    break
+                except Exception as error:
+                    if not is_retryable(error) or attempt >= MAX_ATTEMPTS:
+                        raise
+                meters.command_retries.add(1, attributes(command=command.name))
+                await asyncio.sleep(random.uniform(0, RETRY_BACKOFF_SECONDS * attempt))
+                attempt += 1
+        except BelunoError as error:
+            meters.commands.add(
+                1,
+                attributes(command=command.name, source=call.source, outcome=error.code.lower()),
+            )
+            raise
+        finally:
+            meters.command_duration.record(
+                (time.perf_counter() - started) * 1_000, attributes(command=command.name)
+            )
+        meters.commands.add(
+            1,
+            attributes(
+                command=command.name,
+                source=call.source,
+                outcome="replayed" if result.replayed else "applied",
+            ),
+        )
+        return result
 
     async def _is_replay(
         self, actor: AuthenticatedActor, command: Command[Any, Any], call: CommandCall

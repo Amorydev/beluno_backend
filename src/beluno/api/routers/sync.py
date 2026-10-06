@@ -31,6 +31,7 @@ from beluno.contracts.sync import (
 )
 from beluno.modules.context import Runtime, open_context
 from beluno.modules.iam import rate_limits
+from beluno.observability.metrics import attributes, instruments
 from beluno.sync.commands import (
     PROTOCOL_VERSION_MAX,
     PROTOCOL_VERSION_MIN,
@@ -171,6 +172,11 @@ async def pull(body: PullRequest, runtime: RuntimeDep, actor: ActorDep) -> PullR
                     page_size=page_size,
                 )
             )
+    meters = instruments()
+    for page in pages:
+        scope_type = page.scope.scope_type.value
+        meters.pull_pages.add(1, attributes(scope_type=scope_type, status=page.status))
+        meters.pull_items.add(len(page.items), attributes(scope_type=scope_type))
     return PullResponse(
         scopes=[
             PullScopeResponse(
@@ -220,4 +226,8 @@ async def push(
     await rate_limits.enforce_rate_limit(
         runtime, rate_limits.SYNC_PUSH_PER_USER, str(actor.user_id)
     )
-    return PushResponse(results=await push_batch(runner, actor, body))
+    results = await push_batch(runner, actor, body)
+    meters = instruments()
+    for result in results:
+        meters.push_results.add(1, attributes(outcome=result.outcome))
+    return PushResponse(results=results)

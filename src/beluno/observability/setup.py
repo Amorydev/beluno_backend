@@ -7,19 +7,23 @@ from typing import Any, cast
 
 import sentry_sdk
 from fastapi import FastAPI
-from opentelemetry import trace
+from opentelemetry import metrics, trace
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from sentry_sdk.types import Event, Hint
 
 from beluno.config import Settings
+from beluno.observability import metrics as reliability_metrics
 from beluno.observability.redaction import redact
 
 
-def configure_observability(app: FastAPI, settings: Settings) -> None:
+def configure_observability(app: FastAPI | None, settings: Settings) -> None:
     """Enable exporters only when explicitly configured; request bodies stay disabled."""
 
     if settings.sentry_dsn:
@@ -35,7 +39,7 @@ def configure_observability(app: FastAPI, settings: Settings) -> None:
     if settings.otel_exporter_otlp_endpoint:
         resource = Resource.create(
             {
-                SERVICE_NAME: "beluno-api",
+                SERVICE_NAME: "beluno-api" if app is not None else "beluno-worker",
                 SERVICE_VERSION: settings.release,
                 "deployment.environment.name": settings.environment.value,
             }
@@ -47,10 +51,17 @@ def configure_observability(app: FastAPI, settings: Settings) -> None:
             )
         )
         trace.set_tracer_provider(provider)
-        FastAPIInstrumentor.instrument_app(
-            app,
-            excluded_urls="health/live,health/ready",
+        reader = PeriodicExportingMetricReader(
+            OTLPMetricExporter(endpoint=settings.otel_exporter_otlp_endpoint)
         )
+        meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
+        metrics.set_meter_provider(meter_provider)
+        reliability_metrics.use_meter_provider(meter_provider)
+        if app is not None:
+            FastAPIInstrumentor.instrument_app(
+                app,
+                excluded_urls="health/live,health/ready",
+            )
 
 
 def redact_sentry_event(event: Event, _: Hint) -> Event | None:

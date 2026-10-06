@@ -20,6 +20,7 @@ from uuid import UUID
 from sqlalchemy import text
 
 from beluno.db.ids import new_id
+from beluno.observability.metrics import instruments
 from beluno.observability.redaction import redact
 
 if TYPE_CHECKING:
@@ -104,6 +105,34 @@ async def record_mutation(
     )
 
 
+async def record_audit(
+    ctx: CommandContext,
+    *,
+    action: str,
+    entity_type: str,
+    entity_id: UUID,
+    metadata: Mapping[str, Any] | None = None,
+) -> None:
+    """Record an audit event with no sync change (operator and maintenance actions)."""
+
+    _require_tracked_savepoint(ctx)
+    ctx.pending_audit.append(
+        {
+            "id": new_id(),
+            "occurred_at": ctx.now,
+            "actor_user_id": _acting_user(ctx, None),
+            "actor_session_id": ctx.actor.session_id if ctx.actor else None,
+            "request_id": ctx.request_id,
+            "action": action,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
+            "group_id": None,
+            "plan_id": None,
+            "metadata": json.dumps(redact(dict(metadata or {})), default=str, sort_keys=True),
+        }
+    )
+
+
 async def record_change(
     ctx: CommandContext,
     *,
@@ -169,3 +198,4 @@ async def flush_pending_records(ctx: CommandContext) -> None:
     if ctx.pending_changes:
         change_rows, ctx.pending_changes = ctx.pending_changes, []
         await ctx.session.execute(APPEND_CHANGES, {"changes": json.dumps(change_rows)})
+        instruments().changes_appended.add(len(change_rows))

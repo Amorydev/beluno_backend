@@ -9,6 +9,8 @@ import procrastinate
 from beluno.modules.iam.email_challenges import DELIVER_TASK_NAME, EMAIL_QUEUE, deliver_challenge
 from beluno.modules.iam.maintenance import purge_expired_auth_records
 from beluno.modules.plans.series import extend_all_series
+from beluno.modules.sync_audit.maintenance import compact_changes, purge_operations
+from beluno.worker.deadletter import queue_health
 from beluno.worker.runtime import get_email_sender, get_worker_runtime
 
 app = procrastinate.App(connector=procrastinate.PsycopgConnector())
@@ -55,3 +57,40 @@ async def extend_series_horizons(timestamp: int) -> int:
 
     del timestamp
     return await extend_all_series(get_worker_runtime())
+
+
+@app.periodic(cron="41 3 * * *", periodic_id="sync.compact_changes")
+@app.task(
+    name="sync.compact_changes",
+    queue="maintenance",
+    retry=3,
+    queueing_lock="sync:compact_changes",
+)
+async def compact_sync_changes(timestamp: int) -> int:
+    """Daily: drop change rows past retention and raise each scope's compaction floor."""
+
+    del timestamp
+    return await compact_changes(get_worker_runtime())
+
+
+@app.periodic(cron="53 3 * * *", periodic_id="sync.purge_operations")
+@app.task(
+    name="sync.purge_operations",
+    queue="maintenance",
+    retry=3,
+    queueing_lock="sync:purge_operations",
+)
+async def purge_sync_operations(timestamp: int) -> int:
+    """Daily: remove idempotency records whose retention has elapsed."""
+
+    del timestamp
+    return await purge_operations(get_worker_runtime())
+
+
+@app.periodic(cron="*/5 * * * *", periodic_id="jobs.report_queue_health")
+@app.task(name="jobs.report_queue_health", queue="maintenance", queueing_lock="jobs:health")
+async def report_queue_health(timestamp: int) -> dict[str, float]:
+    """Every 5 minutes: publish queue depths and the oldest waiting age as a gauge."""
+
+    del timestamp
+    return (await queue_health(get_worker_runtime())).as_measurements()
