@@ -6,10 +6,13 @@ priority: P1
 tags: [backend, python, fastapi, postgresql, offline-sync, ledger, security]
 blockedBy: []
 blocks: []
+supersededBy: "261006-2032-trip-os-ui-realignment (phases 6-8)"
 created: 2026-10-06
 ---
 
 # Beluno Backend Implementation Plan
+
+> **Superseded from Phase 6 on (2026-10-06).** The Stitch "Trip OS" UI is trip-first (trips, hangouts, crews). The remaining work continues in [261006-2032-trip-os-ui-realignment](../261006-2032-trip-os-ui-realignment/plan.md): it removes groups, series, and travel; aligns the money screens; and ships in releases. Phases 6–8 below are kept for reference only.
 
 ## Overview
 
@@ -49,9 +52,9 @@ Phases 2–4 are implemented in this repository (its root is the backend; no `ba
 | 3 | 2 | 4 weeks | [Identity, Groups and Plans](./phase-03-identity-groups-plans.md) | completed |
 | 4 | 3 | 4 weeks | [Reliability and Sync Kernel](./phase-04-reliability-sync-kernel.md) | completed |
 | 5 | 4 | 5 weeks | [Financial Ledger](./phase-05-finance-ledger.md) | completed |
-| 6 | 4 | 5 weeks, parallel with 5 | [Planning and Coordination](./phase-06-planning-coordination.md) | pending |
-| 7 | 5, 6 | 4 weeks | [Lifecycle and Integrations](./phase-07-lifecycle-integrations.md) | pending |
-| 8 | 5, 6, 7 | 4–6 weeks incl. soak | [Security, Quality and Release](./phase-08-security-quality-release.md) | pending |
+| 6 | 4 | 5 weeks, parallel with 5 | [Planning and Coordination](./phase-06-planning-coordination.md) | superseded |
+| 7 | 5, 6 | 4 weeks | [Lifecycle and Integrations](./phase-07-lifecycle-integrations.md) | superseded |
+| 8 | 5, 6, 7 | 4–6 weeks incl. soak | [Security, Quality and Release](./phase-08-security-quality-release.md) | superseded |
 
 ## Global Acceptance Criteria
 

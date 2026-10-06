@@ -8,8 +8,11 @@ and docs stay in English.
 
 - `README.md`, `docs/adr/` (especially 0004 offline sync and 0007 self-hosted identity),
   `docs/contracts/`, `docs/architecture/`.
-- `plans/261005-2356-beluno-backend-plan/plan.md` and the current phase file, including its
-  "Execution Decisions" and "Completion Notes".
+- `plans/261006-2032-trip-os-ui-realignment/plan.md` and the current phase file, including its
+  "Execution Decisions" and "Completion Notes". The UI it follows is the Stitch "Trip OS" project
+  and `~/juntro/docs/trip-os-product-blueprint.md`. The earlier plan
+  (`plans/261005-2356-beluno-backend-plan/`) records Phases 2–5 as built; its Phases 6–8 are
+  superseded.
 
 ## Fixed decisions (ask the user before reversing any of them)
 
