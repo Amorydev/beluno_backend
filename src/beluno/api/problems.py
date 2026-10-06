@@ -13,6 +13,7 @@ PROBLEM_DESCRIPTIONS = {
     409: "The request conflicts with the current resource state.",
     412: "The If-Match version is stale.",
     422: "The request does not satisfy the contract.",
+    426: "The client protocol or schema version is not supported; upgrade the client.",
     428: "An If-Match header is required.",
     429: "Too many requests; retry after the Retry-After interval.",
     503: "A dependency or feature is temporarily unavailable.",

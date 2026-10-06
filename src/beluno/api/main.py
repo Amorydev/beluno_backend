@@ -28,6 +28,7 @@ from beluno.api.routers import (
     me,
     plan_series,
     plans,
+    sync,
     travel,
 )
 from beluno.auth import AccessTokenCodec
@@ -158,6 +159,7 @@ def create_app(
         travel.router,
         invites.router,
         plan_series.router,
+        sync.router,
     ):
         app.include_router(router)
 

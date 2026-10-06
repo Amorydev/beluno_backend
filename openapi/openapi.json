@@ -1,6 +1,85 @@
 {
   "components": {
     "schemas": {
+      "ChangeItem": {
+        "description": "One entity state to apply. ``seq`` is null for snapshot rows.\n\n``data`` is the entity's public representation (the same contract the REST\nresource returns) and is null for ``delete``. Apply an upsert only when\n``version`` is at least the locally stored version; a delete always wins.",
+        "properties": {
+          "changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed At"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "entity_id": {
+            "format": "uuid",
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "operation": {
+            "enum": [
+              "upsert",
+              "delete"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "seq",
+          "entity_type",
+          "entity_id",
+          "operation",
+          "version",
+          "changed_at",
+          "data"
+        ],
+        "title": "ChangeItem",
+        "type": "object"
+      },
       "ClaimInviteCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -13,6 +92,86 @@
           }
         },
         "title": "ClaimInviteCreateRequest",
+        "type": "object"
+      },
+      "ClientInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "app_version": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ios",
+                  "android",
+                  "web",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "schema_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Version"
+          }
+        },
+        "title": "ClientInfo",
+        "type": "object"
+      },
+      "CommandInfo": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "target_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Fields",
+            "type": "array"
+          },
+          "versioned": {
+            "title": "Versioned",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "schema_version",
+          "versioned",
+          "target_fields"
+        ],
+        "title": "CommandInfo",
         "type": "object"
       },
       "CreatedInviteResponse": {
@@ -614,6 +773,96 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HandshakeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClientInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "directory_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Directory Cursor"
+          },
+          "protocol_version": {
+            "minimum": 1.0,
+            "title": "Protocol Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "protocol_version"
+        ],
+        "title": "HandshakeRequest",
+        "type": "object"
+      },
+      "HandshakeResponse": {
+        "properties": {
+          "commands": {
+            "items": {
+              "$ref": "#/components/schemas/CommandInfo"
+            },
+            "title": "Commands",
+            "type": "array"
+          },
+          "features": {
+            "$ref": "#/components/schemas/SyncFeatures"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/SyncLimits"
+          },
+          "next_directory_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Directory Cursor"
+          },
+          "protocol": {
+            "$ref": "#/components/schemas/ProtocolInfo"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/RetentionInfo"
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeEntry"
+            },
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "protocol",
+          "features",
+          "limits",
+          "retention",
+          "commands",
+          "scopes",
+          "next_directory_cursor"
+        ],
+        "title": "HandshakeResponse",
         "type": "object"
       },
       "HealthResponse": {
@@ -2036,6 +2285,29 @@
         "title": "ProfileUpdateRequest",
         "type": "object"
       },
+      "ProtocolInfo": {
+        "properties": {
+          "max_version": {
+            "title": "Max Version",
+            "type": "integer"
+          },
+          "min_version": {
+            "title": "Min Version",
+            "type": "integer"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "min_version",
+          "max_version"
+        ],
+        "title": "ProtocolInfo",
+        "type": "object"
+      },
       "PublicProblemResponse": {
         "description": "Typed-client-safe problem fields guaranteed across every API error.",
         "properties": {
@@ -2108,6 +2380,149 @@
           "code"
         ],
         "title": "PublicProblemResponse",
+        "type": "object"
+      },
+      "PullRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "page_size": {
+            "anyOf": [
+              {
+                "maximum": 500.0,
+                "minimum": 10.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Size"
+          },
+          "protocol_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/PullScopeRequest"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scopes"
+        ],
+        "title": "PullRequest",
+        "type": "object"
+      },
+      "PullResponse": {
+        "properties": {
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/PullScopeResponse"
+            },
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scopes"
+        ],
+        "title": "PullResponse",
+        "type": "object"
+      },
+      "PullScopeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "scope": {
+            "maxLength": 48,
+            "pattern": "^(user|group|plan):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "title": "PullScopeRequest",
+        "type": "object"
+      },
+      "PullScopeResponse": {
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeItem"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "head": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "unavailable",
+              "resync_required"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "status",
+          "cursor",
+          "has_more",
+          "head",
+          "changes"
+        ],
+        "title": "PullScopeResponse",
         "type": "object"
       },
       "RedeemInviteRequest": {
@@ -2239,6 +2654,29 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "RetentionInfo": {
+        "properties": {
+          "change_retention_days": {
+            "title": "Change Retention Days",
+            "type": "integer"
+          },
+          "offline_window_days": {
+            "title": "Offline Window Days",
+            "type": "integer"
+          },
+          "operation_retention_days": {
+            "title": "Operation Retention Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "offline_window_days",
+          "change_retention_days",
+          "operation_retention_days"
+        ],
+        "title": "RetentionInfo",
+        "type": "object"
+      },
       "RsvpRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2256,6 +2694,47 @@
           "status"
         ],
         "title": "RsvpRequest",
+        "type": "object"
+      },
+      "ScopeEntry": {
+        "description": "One scope the caller may sync right now.",
+        "properties": {
+          "access": {
+            "enum": [
+              "self",
+              "manager",
+              "member",
+              "reader",
+              "invited"
+            ],
+            "title": "Access",
+            "type": "string"
+          },
+          "floor": {
+            "title": "Floor",
+            "type": "integer"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "integer"
+          },
+          "head": {
+            "title": "Head",
+            "type": "integer"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "head",
+          "floor",
+          "generation",
+          "access"
+        ],
+        "title": "ScopeEntry",
         "type": "object"
       },
       "SeriesCreateRequest": {
@@ -2740,6 +3219,65 @@
           "current"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SyncFeatures": {
+        "properties": {
+          "disabled_commands": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Disabled Commands",
+            "type": "array"
+          },
+          "pull_enabled": {
+            "title": "Pull Enabled",
+            "type": "boolean"
+          },
+          "push_enabled": {
+            "title": "Push Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "push_enabled",
+          "pull_enabled",
+          "disabled_commands"
+        ],
+        "title": "SyncFeatures",
+        "type": "object"
+      },
+      "SyncLimits": {
+        "properties": {
+          "pull_max_page_size": {
+            "title": "Pull Max Page Size",
+            "type": "integer"
+          },
+          "pull_max_scopes": {
+            "title": "Pull Max Scopes",
+            "type": "integer"
+          },
+          "pull_page_size": {
+            "title": "Pull Page Size",
+            "type": "integer"
+          },
+          "push_max_bytes": {
+            "title": "Push Max Bytes",
+            "type": "integer"
+          },
+          "push_max_operations": {
+            "title": "Push Max Operations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "push_max_operations",
+          "push_max_bytes",
+          "pull_max_scopes",
+          "pull_page_size",
+          "pull_max_page_size"
+        ],
+        "title": "SyncLimits",
         "type": "object"
       },
       "TokenResponse": {
@@ -10664,6 +11202,160 @@
         "summary": "Update Segment",
         "tags": [
           "travel"
+        ]
+      }
+    },
+    "/v1/sync/handshake": {
+      "post": {
+        "description": "Negotiate the protocol and list the scopes the caller may sync right now.\n\nA scope missing from the directory has been revoked: purge it locally.",
+        "operationId": "handshake_v1_sync_handshake_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandshakeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandshakeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "426": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The client protocol or schema version is not supported; upgrade the client."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Handshake",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/v1/sync/pull": {
+      "post": {
+        "description": "Fetch one page per scope: a snapshot page while bootstrapping, then changes.\n\nApply a page and store its cursor in one local transaction; keep the old\ncursor if applying fails. ``resync_required`` means the cursor predates the\nretention floor, a restore, or an access change: pull again with a null cursor.",
+        "operationId": "pull_v1_sync_pull_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PullRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PullResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "426": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The client protocol or schema version is not supported; upgrade the client."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pull",
+        "tags": [
+          "sync"
         ]
       }
     }
