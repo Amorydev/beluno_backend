@@ -13232,7 +13232,7 @@
         ]
       },
       "put": {
-        "description": "Append a new revision; the previous one is reversed, never overwritten.",
+        "description": "Append a new revision; the previous one is reversed, never overwritten.\n\nWhile refunds are in effect the currency and split stay as they are.",
         "operationId": "revise_expense_v1_plans__plan_id__expenses__expense_id__put",
         "parameters": [
           {

@@ -39,7 +39,7 @@ and docs stay in English.
   INSERT inside `session.begin_nested()` and catch `IntegrityError`.
 - `SELECT ... FOR UPDATE` also applies the UPDATE policy. Keep the unlocked fallback
   (`_select_visible` in `src/beluno/authorization/access.py`) so 403 stays distinct from 404.
-- Migrations are forward-only and numbered (`000004_...` next). RLS, triggers, grants, and
+- Migrations are forward-only and numbered (`000007_...` next). RLS, triggers, grants, and
   SECURITY DEFINER functions (owned by migrator, `SET search_path = pg_catalog, pg_temp`) are raw
   SQL inside the migration. The header states forward action, lock/scan risk, validation query,
   compatibility, and rollback. New functions: `REVOKE EXECUTE ... FROM PUBLIC`, then grant only

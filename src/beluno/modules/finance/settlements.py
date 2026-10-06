@@ -41,6 +41,7 @@ from beluno.modules.finance.money import check_amount
 from beluno.modules.finance.postings import Party, transfer_postings
 from beluno.modules.finance.rates import record_rate
 from beluno.modules.finance.states import SETTLEMENT_TRANSITIONS, SettlementStatus
+from beluno.modules.iam.users import is_actor_account
 from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
 
 SETTLEMENT_ENTITY = "settlement"
@@ -291,7 +292,9 @@ async def reverse_settlement(
         settlement.status != SettlementStatus.CONFIRMED.value
         and _own_participant(ledger) == ledger.resolve(settlement.to_participant_id)
     )
-    recorder_or_manager = settlement.recorded_by_user_id == actor or _manages_settlements(ledger)
+    recorder_or_manager = _manages_settlements(ledger) or await is_actor_account(
+        ctx, settlement.recorded_by_user_id
+    )
     if not (unconfirmed_creditor or (recorder_or_manager and _may_record(ledger))):
         raise forbidden(
             "Only whoever recorded this settlement, a plan manager, or a creditor who never "

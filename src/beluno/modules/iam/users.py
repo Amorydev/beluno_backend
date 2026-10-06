@@ -43,6 +43,21 @@ async def find_user_id_by_email(ctx: CommandContext, email: str) -> UUID | None:
     return value if isinstance(value, UUID) else None
 
 
+async def is_actor_account(ctx: CommandContext, user_id: UUID) -> bool:
+    """Whether ``user_id`` is the actor, or a guest account that was merged into the actor.
+
+    Records keep the user who made them; after a guest claims an existing account,
+    the records the guest made still belong to that person.
+    """
+
+    if user_id == ctx.require_actor().user_id:
+        return True
+    merged = await ctx.session.execute(
+        text("SELECT iam.user_merged_into_actor(:user_id)"), {"user_id": user_id}
+    )
+    return merged.scalar_one() is True
+
+
 async def load_user(ctx: CommandContext, user_id: UUID, *, for_update: bool = False) -> User:
     statement = select(User).where(User.id == user_id)
     if for_update:

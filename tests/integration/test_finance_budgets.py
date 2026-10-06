@@ -258,7 +258,7 @@ async def test_other_modules_record_costs_through_the_port(
         state=CommitmentState.COMMITTED,
     )
     async with open_context(runtime, actor) as ctx:
-        access = await load_plan(ctx, UUID(trip.plan_id))
+        access = await load_plan(ctx, UUID(trip.plan_id), for_update=True)
         recorded = await COST_COMMITMENTS.record(
             ctx,
             access,
@@ -269,7 +269,7 @@ async def test_other_modules_record_costs_through_the_port(
         )
         commitment_id = recorded.id
     async with open_context(runtime, actor) as ctx:
-        access = await load_plan(ctx, UUID(trip.plan_id))
+        access = await load_plan(ctx, UUID(trip.plan_id), for_update=True)
         again = await COST_COMMITMENTS.record(
             ctx,
             access,
@@ -293,7 +293,7 @@ async def test_other_modules_record_costs_through_the_port(
     )
     assert edited.status_code == 403
     async with open_context(runtime, actor) as ctx:
-        access = await load_plan(ctx, UUID(trip.plan_id))
+        access = await load_plan(ctx, UUID(trip.plan_id), for_update=True)
         await COST_COMMITMENTS.cancel(
             ctx, access, source_type="booking", source_id=booking_id, commitment_kind="deposit"
         )

@@ -127,8 +127,9 @@ async def update_manual(
 class CostCommitmentPort:
     """How other modules record the costs they plan; finance tables stay finance's.
 
-    Callers pass the plan access they already authorized for their own action and
-    run inside their own transaction, so the commitment commits with the booking,
+    Callers pass the plan access they already authorized for their own action,
+    loaded with the plan row locked (``load_plan(..., for_update=True)``), and run
+    inside their own transaction, so the commitment commits with the booking,
     itinerary item, or task that caused it.
     """
 

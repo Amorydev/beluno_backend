@@ -4,7 +4,7 @@ import pytest
 
 from beluno.config import Settings
 from beluno.db.roles import set_actor_context
-from beluno.db.session import Database
+from beluno.db.session import UTC_SESSION_OPTION, Database, session_options
 
 
 class RecordingSession:
@@ -32,6 +32,14 @@ async def test_database_creates_and_closes_async_engine_without_connecting() -> 
 
     assert database.configured is True
     await database.close()
+
+
+def test_session_options_pin_utc_and_keep_the_dsn_options() -> None:
+    assert session_options("postgresql+psycopg://u:p@db/beluno") == UTC_SESSION_OPTION
+    assert (
+        session_options("postgresql+psycopg://u:p@db/beluno?options=-c%20statement_timeout%3D5s")
+        == "-c statement_timeout=5s -c timezone=UTC"
+    )
 
 
 async def test_actor_context_sets_empty_value_when_actor_is_absent() -> None:

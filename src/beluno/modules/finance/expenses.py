@@ -55,6 +55,7 @@ from beluno.modules.finance.splits import (
     resolve_split,
     validate_payers,
 )
+from beluno.modules.iam.users import is_actor_account
 from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
 
 EXPENSE_ENTITY = "expense"
@@ -329,6 +330,10 @@ async def revise_expense(
             raise invalid_state("A refunded expense keeps its currency; void it and add a new one")
         if draft.amount_minor < sum(refund.amount_minor for refund in refunds):
             raise refund_exceeds_amount()
+        # Refunds credit the people who bore the cost under this split; a new split
+        # would leave that credit with people who no longer share the expense.
+        if draft.split_input != current.revision.split_input:
+            raise invalid_state("A refunded expense keeps its split; void it and add a new one")
     previous = {payer.participant_id for payer in current.payers if payer.participant_id}
     previous |= {split.participant_id for split in current.splits}
     previous_link = current.revision.commitment_id
@@ -463,9 +468,8 @@ async def _open_expense(
     expense = await _find(ctx, plan_id, expense_id, for_update=True)
     if expense is None:
         raise not_found()
-    actor = ctx.require_actor()
     may_manage = decide_plan(PlanAction.MANAGE_EXPENSES, ledger.access.subject) is Decision.ALLOW
-    if expense.created_by_user_id != actor.user_id and not may_manage:
+    if not may_manage and not await is_actor_account(ctx, expense.created_by_user_id):
         raise forbidden("Only the person who added this expense or a plan manager can change it")
     if expense.version != expected_version:
         raise version_conflict(expense)

@@ -7,6 +7,7 @@ import pytest
 
 from beluno.testkit.api_client import SignedIn, sign_in, signed_in_from
 from beluno.testkit.database import AdminDatabase
+from beluno.testkit.finance import equal_expense, if_match
 from beluno.testkit.identity import IdentityProviderStub
 
 pytestmark = pytest.mark.integration
@@ -168,6 +169,70 @@ async def test_guest_claiming_an_account_outside_the_plan_relinks_the_participan
     plan_view = await api.get(f"/v1/plans/{plan['id']}", headers=after.headers)
     assert plan_view.json()["my_participant"]["id"] == guest_participant["id"]
     assert admin.scalar("SELECT status FROM iam.users WHERE id = %s", guest.user_id) == "disabled"
+
+
+async def test_an_account_that_claims_a_guest_keeps_changing_the_guests_records(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
+) -> None:
+    owner = await sign_in(api, identity_provider)
+    member = await sign_in(api, identity_provider, subject="member-sub")
+    await sign_in(api, identity_provider, subject="existing-sub")
+    plan = await make_plan(api, owner)
+    joined = await api.post(
+        "/v1/invites/redeem",
+        json={"token": await invite_token(api, owner, plan["id"])},
+        headers=member.headers,
+    )
+    assert joined.status_code == 200, joined.text
+    assert joined.json()["participant"]["role"] == "member"
+    guest, gia = await join_as_guest(api, await invite_token(api, owner, plan["id"]))
+    expense = await api.post(
+        f"/v1/plans/{plan['id']}/expenses",
+        json=equal_expense(30_000, gia["id"], [gia["id"]], currency="VND"),
+        headers=guest.headers,
+    )
+    assert expense.status_code == 201, expense.text
+    owner_participant = (await api.get(f"/v1/plans/{plan['id']}", headers=owner.headers)).json()[
+        "my_participant"
+    ]["id"]
+    settlement = await api.post(
+        f"/v1/plans/{plan['id']}/settlements",
+        json={
+            "from_participant_id": gia["id"],
+            "to_participant_id": owner_participant,
+            "currency": "VND",
+            "amount_minor": 5_000,
+            "occurred_on": "2026-10-06",
+        },
+        headers=guest.headers,
+    )
+    assert settlement.status_code == 201, settlement.text
+
+    claimed = await api.post(
+        "/v1/auth/google",
+        json={"id_token": identity_provider.id_token(subject="existing-sub")},
+        headers=guest.headers,
+    )
+    assert claimed.status_code == 200, claimed.text
+    after = signed_in_from(claimed.json())
+    # Only the account the guest became inherits its records, not other members.
+    foreign = await api.post(
+        f"/v1/plans/{plan['id']}/expenses/{expense.json()['id']}/void",
+        headers=if_match(1, member),
+    )
+    assert foreign.status_code == 403, foreign.text
+
+    reversed_payment = await api.post(
+        f"/v1/plans/{plan['id']}/settlements/{settlement.json()['id']}/reverse",
+        headers=if_match(1, after),
+    )
+    assert reversed_payment.status_code == 200, reversed_payment.text
+    voided = await api.post(
+        f"/v1/plans/{plan['id']}/expenses/{expense.json()['id']}/void",
+        headers=if_match(1, after),
+    )
+    assert voided.status_code == 200, voided.text
+    assert voided.json()["state"] == "voided"
 
 
 async def test_placeholder_claim_links_the_same_participant(

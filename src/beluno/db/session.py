@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -16,6 +16,21 @@ from sqlalchemy.ext.asyncio import (
 
 from beluno.config import Settings
 from beluno.db.roles import set_actor_context
+
+UTC_SESSION_OPTION = "-c timezone=UTC"
+
+
+def session_options(dsn: str) -> str:
+    """Server options for every pooled connection: the DSN's own, then a UTC session zone.
+
+    ``timestamptz`` values come back in the session time zone. Pinning it to UTC
+    makes a row serialize identically in the write response, REST reads, and
+    sync pulls, whatever ``TimeZone`` the server or role defaults to.
+    """
+
+    configured = make_url(dsn).query.get("options")
+    existing = " ".join(configured) if isinstance(configured, tuple) else configured
+    return f"{existing} {UTC_SESSION_OPTION}" if existing else UTC_SESSION_OPTION
 
 
 class Database:
@@ -34,6 +49,7 @@ class Database:
                 pool_recycle=1_800,
                 # Statement parameters (amounts, notes, descriptions) never reach error text.
                 hide_parameters=True,
+                connect_args={"options": session_options(active_dsn)},
             )
             self._session_factory = async_sessionmaker(
                 self._engine,
