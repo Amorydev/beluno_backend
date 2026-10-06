@@ -1,0 +1,255 @@
+{
+  "description": "One plan-scope change item per finance entity type, as pull returns them.",
+  "items": [
+    {
+      "changed_at": null,
+      "data": {
+        "balances": [
+          {
+            "balance_minor": -5000,
+            "currency": "USD",
+            "fund": true,
+            "participant_id": null
+          },
+          {
+            "balance_minor": 5450,
+            "currency": "USD",
+            "fund": false,
+            "participant_id": "01a110e9-fc94-792d-b26c-4552e8365801"
+          },
+          {
+            "balance_minor": -450,
+            "currency": "USD",
+            "fund": false,
+            "participant_id": "01a110e9-fca6-7aaa-920f-c280d3ca2413"
+          }
+        ],
+        "disputed_settlements": 0,
+        "fund": [
+          {
+            "available_minor": 5000,
+            "currency": "USD"
+          }
+        ],
+        "ledger_seq": 4,
+        "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+        "status": "open",
+        "version": 5
+      },
+      "entity_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+      "entity_type": "ledger",
+      "operation": "upsert",
+      "seq": null,
+      "version": 5
+    },
+    {
+      "changed_at": null,
+      "data": {
+        "created_at": "2026-10-06T11:12:12.703121Z",
+        "created_by_user_id": "01a110e9-fbba-7a1b-88a9-a0a38a2a90fa",
+        "id": "01a110e9-fdac-78cc-b222-caf51ca9a91b",
+        "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+        "refunded_minor": 100,
+        "refunds": [
+          {
+            "amount_minor": 100,
+            "created_at": "2026-10-06T11:12:12.772293Z",
+            "created_by_user_id": "01a110e9-fbba-7a1b-88a9-a0a38a2a90fa",
+            "currency": "USD",
+            "fund": false,
+            "id": "01a110e9-fdf8-75f4-9e99-836af8b3b648",
+            "note": null,
+            "recipient_participant_id": "01a110e9-fc94-792d-b26c-4552e8365801",
+            "reversed": false,
+            "shares": [
+              {
+                "amount_minor": 50,
+                "participant_id": "01a110e9-fc94-792d-b26c-4552e8365801"
+              },
+              {
+                "amount_minor": 50,
+                "participant_id": "01a110e9-fca6-7aaa-920f-c280d3ca2413"
+              }
+            ]
+          }
+        ],
+        "revision": {
+          "amount_minor": 3000,
+          "base": {
+            "amount_minor": 3000,
+            "currency": "USD",
+            "rate": null,
+            "rate_as_of": null,
+            "rate_source": "identity"
+          },
+          "category": "lodging",
+          "commitment_id": "01a110e9-fd8a-7184-9d6b-25523dd0584b",
+          "created_at": "2026-10-06T11:12:12.703121Z",
+          "created_by_user_id": "01a110e9-fbba-7a1b-88a9-a0a38a2a90fa",
+          "currency": "USD",
+          "description": "Cabin",
+          "id": "01a110e9-fdac-7525-9d2e-301413774673",
+          "notes": null,
+          "occurred_on": "2026-10-06",
+          "payers": [
+            {
+              "amount_minor": 3000,
+              "fund": false,
+              "participant_id": "01a110e9-fc94-792d-b26c-4552e8365801"
+            }
+          ],
+          "revision_number": 1,
+          "shares": [
+            {
+              "owed_minor": 1500,
+              "participant_id": "01a110e9-fc94-792d-b26c-4552e8365801"
+            },
+            {
+              "owed_minor": 1500,
+              "participant_id": "01a110e9-fca6-7aaa-920f-c280d3ca2413"
+            }
+          ],
+          "split": {
+            "method": "equal",
+            "participant_ids": [
+              "01a110e9-fc94-792d-b26c-4552e8365801",
+              "01a110e9-fca6-7aaa-920f-c280d3ca2413"
+            ]
+          },
+          "split_algorithm": "lr-v1"
+        },
+        "state": "active",
+        "updated_at": "2026-10-06T11:12:12.772293Z",
+        "version": 2,
+        "voided_at": null
+      },
+      "entity_id": "01a110e9-fdac-78cc-b222-caf51ca9a91b",
+      "entity_type": "expense",
+      "operation": "upsert",
+      "seq": null,
+      "version": 2
+    },
+    {
+      "changed_at": null,
+      "data": {
+        "amount_minor": 1000,
+        "confirmed_at": null,
+        "confirmed_by_user_id": null,
+        "created_at": "2026-10-06T11:12:12.830315Z",
+        "currency": "USD",
+        "disputed_at": null,
+        "disputed_by_user_id": null,
+        "fee_minor": null,
+        "from_participant_id": "01a110e9-fca6-7aaa-920f-c280d3ca2413",
+        "id": "01a110e9-fe2b-724d-a079-fbb602e86dca",
+        "kind": "payment",
+        "method": "cash",
+        "note": null,
+        "occurred_on": "2026-10-07",
+        "overpaid": false,
+        "paid": null,
+        "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+        "recorded_by_user_id": "01a110e9-fc2c-7379-95b3-01238eea1460",
+        "reversed_at": null,
+        "reversed_by_user_id": null,
+        "status": "recorded",
+        "to_participant_id": "01a110e9-fc94-792d-b26c-4552e8365801",
+        "updated_at": "2026-10-06T11:12:12.830315Z",
+        "version": 1
+      },
+      "entity_id": "01a110e9-fe2b-724d-a079-fbb602e86dca",
+      "entity_type": "settlement",
+      "operation": "upsert",
+      "seq": null,
+      "version": 1
+    },
+    {
+      "changed_at": null,
+      "data": {
+        "category": null,
+        "created_at": "2026-10-06T11:12:12.873291Z",
+        "currency": "USD",
+        "id": "01a110e9-fe58-768c-b230-3ff12e83fc4a",
+        "limit_minor": 10000,
+        "participant_id": null,
+        "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+        "scope": "total",
+        "updated_at": "2026-10-06T11:12:12.873291Z",
+        "version": 1
+      },
+      "entity_id": "01a110e9-fe58-768c-b230-3ff12e83fc4a",
+      "entity_type": "budget",
+      "operation": "upsert",
+      "seq": null,
+      "version": 1
+    },
+    {
+      "changed_at": null,
+      "data": {
+        "amount_minor": 3000,
+        "base": {
+          "amount_minor": 3000,
+          "currency": "USD",
+          "rate": null,
+          "rate_as_of": null,
+          "rate_source": "identity"
+        },
+        "category": "lodging",
+        "commitment_kind": "manual",
+        "created_at": "2026-10-06T11:12:12.665987Z",
+        "created_by_user_id": "01a110e9-fbba-7a1b-88a9-a0a38a2a90fa",
+        "currency": "USD",
+        "description": "Cabin",
+        "expense_id": "01a110e9-fdac-78cc-b222-caf51ca9a91b",
+        "id": "01a110e9-fd8a-7184-9d6b-25523dd0584b",
+        "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+        "source_id": "01a110e9-fd8a-7184-9d6b-25523dd0584b",
+        "source_type": "manual",
+        "state": "converted_to_expense",
+        "updated_at": "2026-10-06T11:12:12.703121Z",
+        "version": 2
+      },
+      "entity_id": "01a110e9-fd8a-7184-9d6b-25523dd0584b",
+      "entity_type": "cost_commitment",
+      "operation": "upsert",
+      "seq": null,
+      "version": 2
+    },
+    {
+      "changed_at": null,
+      "data": {
+        "created_at": "2026-10-06T11:12:12.905963Z",
+        "custodian_participant_id": "01a110e9-fc94-792d-b26c-4552e8365801",
+        "note": "Envelope",
+        "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+        "updated_at": "2026-10-06T11:12:12.905963Z",
+        "version": 1
+      },
+      "entity_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+      "entity_type": "fund",
+      "operation": "upsert",
+      "seq": null,
+      "version": 1
+    },
+    {
+      "changed_at": null,
+      "data": {
+        "amount_minor": 5000,
+        "created_at": "2026-10-06T11:12:12.601766Z",
+        "created_by_user_id": "01a110e9-fbba-7a1b-88a9-a0a38a2a90fa",
+        "currency": "USD",
+        "id": "01a110e9-fd4c-780d-adaa-95b7e9ddf77a",
+        "kind": "contribution",
+        "note": null,
+        "occurred_on": "2026-10-06",
+        "participant_id": "01a110e9-fc94-792d-b26c-4552e8365801",
+        "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e"
+      },
+      "entity_id": "01a110e9-fd4c-780d-adaa-95b7e9ddf77a",
+      "entity_type": "fund_movement",
+      "operation": "upsert",
+      "seq": null,
+      "version": 1
+    }
+  ]
+}

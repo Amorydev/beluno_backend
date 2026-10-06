@@ -21,6 +21,7 @@ from beluno import __version__
 from beluno.api.commands import build_registry
 from beluno.api.routers import (
     auth,
+    finance,
     groups,
     health,
     internal,
@@ -38,11 +39,14 @@ from beluno.db.session import Database
 from beluno.modules.context import Runtime, utc_now
 from beluno.modules.iam.external_identity import ExternalIdentityVerifier
 from beluno.observability.context import get_request_id, reset_request_id, set_request_id
-from beluno.observability.setup import configure_observability
+from beluno.observability.setup import configure_observability, logger, safe_extra
 from beluno.sync.executor import CommandRunner
 from beluno.token_hashing import TokenHasher
 
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
+error_log = logger("beluno.api")
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
@@ -157,6 +161,8 @@ def create_app(
         groups.router,
         plans.router,
         travel.router,
+        finance.currency_router,
+        finance.router,
         invites.router,
         plan_series.router,
         sync.router,
@@ -250,6 +256,20 @@ def create_app(
             code=code,
             title=title,
             detail=detail,
+        )
+
+    @app.exception_handler(Exception)
+    async def handle_unexpected_error(request: Request, error: Exception) -> JSONResponse:
+        # Our log line names only the error type (database errors can carry row values).
+        # Starlette still re-raises afterwards so the server and Sentry see the failure.
+        error_log.error(
+            "unhandled error", **safe_extra(event="unhandled_error", error=type(error).__name__)
+        )
+        return problem_response(
+            request,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="INTERNAL_ERROR",
+            title="Internal server error",
         )
 
     @app.exception_handler(RequestValidationError)

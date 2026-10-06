@@ -31,6 +31,23 @@ The `groups` and `plans` schemas model social structure:
 - **plans**: individual instances from series or standalone; support state machines (draft → planning → active → settling → completed).
 - **plan_participants**: stable historical identities for voting, money, and task ownership; guest claims link to users without rewriting history.
 
+## Finance
+
+The `finance` schema holds each plan's ledger (ADR 0003). Amounts are `BIGINT`
+minor units of a currency pinned in `finance.currencies`.
+
+- **plan_ledger_heads**: one per plan; `ledger_seq`, status (`open|settled|reopened`), open dispute count; every finance write locks it after the plan row.
+- **ledger_accounts / account_balances**: one account per participant and currency plus a fund account per currency; balances are a synchronous projection.
+- **expenses / expense_revisions / expense_payers / expense_splits**: stable identity plus immutable revisions with raw split input, `lr-v1` resolved shares, and an optional base-currency snapshot.
+- **expense_refunds / refund_shares**, **settlements** (payments and waivers), **fund_settings / fund_movements**, **fx_snapshots**.
+- **ledger_transactions / ledger_postings**: the journal; every transaction sums to zero per currency and carries the next `ledger_seq`.
+- **budgets** and **cost_commitments** (finance-owned; other modules use the `CostCommitmentPort`).
+
+Canonical rows are append-only (triggers reject UPDATE/DELETE); deferred
+constraint triggers verify sums and posting shapes at commit; RLS limits every
+row to active participants of its plan; the worker reaches finance data only
+through SECURITY DEFINER reconciliation gates.
+
 ## Security and Audit
 
 All table rows have RLS policies (SECURITY DEFINER helper functions):

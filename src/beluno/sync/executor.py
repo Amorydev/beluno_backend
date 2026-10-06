@@ -81,10 +81,15 @@ class CommandRunner:
         settings = self.runtime.settings
         if command.name in settings.sync_disabled_commands:
             raise feature_disabled()
+        if command.feature == "finance" and not settings.finance_writes_enabled:
+            raise feature_disabled()
         if command.versioned and call.expected_version is None:
             raise precondition_required()
         if command.rate_limit is not None and not await self._is_replay(actor, command, call):
-            await enforce_rate_limit(self.runtime, command.rate_limit, str(actor.user_id))
+            subject = str(actor.user_id)
+            if command.rate_limit_target is not None:
+                subject = f"{subject}:{call.id(command.rate_limit_target)}"
+            await enforce_rate_limit(self.runtime, command.rate_limit, subject)
         started = time.perf_counter()
         attempt = 1
         meters = instruments()

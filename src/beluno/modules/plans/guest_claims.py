@@ -18,6 +18,7 @@ from beluno.authorization.policy import AccessState, PlanRole
 from beluno.contracts.errors import conflict
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.merges import lock_plan_for_merge, transfer_merged_balances
 from beluno.modules.plans.changes import bump, record_participant_change
 
 
@@ -27,6 +28,20 @@ async def transfer_guest_participations(
     target_user_id: UUID,
     merge_existing: bool,
 ) -> None:
+    if merge_existing and target_user_id != guest_user_id:
+        # Merges move money: lock each affected plan (in one order) before any
+        # participant row, as finance writers do.
+        planned = await ctx.session.execute(
+            select(PlanParticipant.plan_id).where(
+                PlanParticipant.user_id == guest_user_id,
+                PlanParticipant.access_state != AccessState.MERGED.value,
+            )
+        )
+        merging = await _target_rows_by_plan(
+            ctx, guest_user_id, target_user_id, [plan_id for (plan_id,) in planned.all()]
+        )
+        for plan_id in sorted(merging):
+            await lock_plan_for_merge(ctx, plan_id)
     guest_rows = list(
         (
             await ctx.session.execute(
@@ -50,7 +65,9 @@ async def transfer_guest_participations(
             await record_participant_change(ctx, row, "plan_participant.guest_upgraded")
         return
 
-    existing = await _target_rows_by_plan(ctx, guest_user_id, target_user_id, guest_rows)
+    existing = await _target_rows_by_plan(
+        ctx, guest_user_id, target_user_id, [row.plan_id for row in guest_rows]
+    )
     conflicts = [row for row in guest_rows if row.plan_id in existing]
     if conflicts and not merge_existing:
         raise conflict(
@@ -73,17 +90,18 @@ async def transfer_guest_participations(
         bump(row, ctx)
         await ctx.session.flush()
         await record_participant_change(ctx, row, action)
+        if row.access_state == AccessState.MERGED.value:
+            await transfer_merged_balances(ctx, row.plan_id, row.id)
 
 
 async def _target_rows_by_plan(
     ctx: CommandContext,
     guest_user_id: UUID,
     target_user_id: UUID,
-    guest_rows: list[PlanParticipant],
+    plan_ids: list[UUID],
 ) -> dict[UUID, UUID]:
     """Map plan → the target account's non-merged participant ID, read as the target."""
 
-    plan_ids = [row.plan_id for row in guest_rows]
     if not plan_ids:
         return {}
     await ctx.act_as(target_user_id)

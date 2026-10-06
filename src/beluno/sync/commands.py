@@ -65,6 +65,10 @@ class Command(Generic[PayloadT, ResponseT]):
     # The command checks an expected entity version (``If-Match`` on REST).
     versioned: bool = False
     rate_limit: RateLimit | None = None
+    # Counts the rate limit per actor and this target (e.g. per plan) instead of per actor.
+    rate_limit_target: str | None = None
+    # Feature group with its own kill switch (``finance`` → BELUNO_FINANCE_WRITES_ENABLED).
+    feature: str | None = None
     # Reads the ETag version from a rendered response; None when there is none.
     etag: Callable[[Any], int] | None = None
 

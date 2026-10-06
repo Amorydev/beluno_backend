@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
 import secrets
 
 import httpx
+import pytest
 
 from beluno.api.main import create_app
 from beluno.config import Settings
@@ -67,3 +69,26 @@ async def test_oversized_body_is_rejected_before_routing() -> None:
     assert response.headers["content-type"].startswith("application/problem+json")
     assert response.json()["code"] == "REQUEST_TOO_LARGE"
     assert response.json()["request_id"] == response.headers["x-request-id"]
+
+
+async def test_unexpected_errors_use_problem_contract_and_log_their_type(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    app = create_app(settings=Settings())
+
+    @app.get("/test-only-crash")
+    async def test_only_crash() -> None:
+        raise RuntimeError("amount 12345 for secret dinner")
+
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    with caplog.at_level(logging.ERROR):
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get("/test-only-crash")
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "INTERNAL_ERROR"
+    assert "secret dinner" not in response.text
+    ours = [record for record in caplog.records if record.name == "beluno.api"]
+    assert [getattr(record, "error", None) for record in ours] == ["RuntimeError"]
+    assert all("secret dinner" not in record.getMessage() for record in ours)

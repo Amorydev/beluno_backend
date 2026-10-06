@@ -8,10 +8,21 @@ from zoneinfo import available_timezones
 
 from pydantic import AfterValidator, BaseModel, StringConstraints
 
+CONTROL_CHARACTERS = frozenset(chr(code) for code in (*range(0, 32), 127)) - {"\n", "\t"}
+
+
+def reject_control_characters(value: str) -> str:
+    """Text never carries NUL or other control characters (newlines and tabs aside)."""
+
+    if any(character in CONTROL_CHARACTERS for character in value):
+        raise ValueError("must not contain control characters")
+    return value
+
 
 def clean_text(value: str) -> str:
     """Collapse internal whitespace and trim; reject strings that become empty."""
 
+    reject_control_characters(value)
     cleaned = " ".join(value.split())
     if not cleaned:
         raise ValueError("must not be blank")
@@ -19,6 +30,7 @@ def clean_text(value: str) -> str:
 
 
 def strip_optional_text(value: str) -> str:
+    reject_control_characters(value)
     cleaned = value.strip()
     if not cleaned:
         raise ValueError("must not be blank")

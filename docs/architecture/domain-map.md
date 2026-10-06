@@ -17,6 +17,7 @@ User ──< PlanSeries ──< Plan ──< PlanParticipant
 - **Plan**: individual dinner, coffee, sport, birthday, outing, or trip; state machine (draft → planning → active → settling → completed).
 - **PlanParticipant**: stable historical identity for votes, tasks, money, and RSVP; guest claims link participants to users without rewriting history.
 - **Invites**: reusable group invites (membership) and plan invites (join or claim existing participant).
+- **Finance**: the plan ledger (expenses, refunds, settlements, budgets, cost commitments, virtual fund). Other modules record planned costs only through `CostCommitmentPort`; participant merges call the finance merge port inside the claim transaction.
 
 Modules communicate through application ports or transactional events, never by
 ad-hoc access to another module's tables. Domain writes are transactional: they

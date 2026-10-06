@@ -114,6 +114,7 @@ async def handshake(
             push_enabled=settings.sync_push_enabled,
             pull_enabled=settings.sync_pull_enabled,
             disabled_commands=sorted(settings.sync_disabled_commands),
+            finance_writes_enabled=settings.finance_writes_enabled,
         ),
         limits=SyncLimits(
             push_max_operations=settings.sync_push_max_operations,

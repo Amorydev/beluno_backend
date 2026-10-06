@@ -49,6 +49,16 @@ The `guest` role belongs to guest identities, which never pass
 | plan.invites.manage | allow | allow | deny | deny | deny | deny |
 | plan.travel.view | allow | allow | allow | allow | allow | allow |
 | plan.travel.manage | allow | allow | allow | deny | deny | deny |
+| plan.finance.view | allow | allow | allow | allow | allow | deny |
+| plan.expenses.create | allow | allow | allow | deny | allow | deny |
+| plan.expenses.manage | allow | allow | deny | deny | deny | deny |
+| plan.settlements.record | allow | allow | allow | deny | allow | deny |
+| plan.settlements.manage | allow | allow | deny | deny | deny | deny |
+| plan.settlements.answer | allow | allow | allow | allow | allow | deny |
+| plan.budgets.manage | allow | allow | deny | deny | deny | deny |
+| plan.fund.contribute | allow | allow | allow | deny | allow | deny |
+| plan.fund.manage | allow | allow | deny | deny | deny | deny |
+| plan.ledger.adjust | step-up | deny | deny | deny | deny | deny |
 <!-- plan-matrix:end -->
 
 State narrowing (applies on top of the table):
@@ -58,6 +68,25 @@ State narrowing (applies on top of the table):
   requires `draft`, `planning`, or `active`. `completed`, `archived`, and
   `cancelled` plans are read-only except state changes, duplication, and
   deletion.
+- Finance writes (expenses, budgets, fund, adjustments) require `draft`,
+  `planning`, `active`, or `settling`; settlements and waivers also accept
+  `completed`, because people pay each other back after the plan is over.
+- Row rules on top of the table: an expense is revised, voided, or refunded by
+  its creator (who must still hold `plan.expenses.create`) or by anyone with
+  `plan.expenses.manage`; naming the fund as a payer also needs
+  `plan.fund.manage` or being the fund's custodian. A settlement is recorded by
+  one of its two parties or by a manager. The creditor (the participant the
+  money now belongs to after merges) confirms or disputes it with
+  `plan.settlements.answer`; managers answer for creditors who are placeholders
+  or no longer active, never for a settlement they owe themselves. Its recorder
+  or a manager reverses it, and the creditor may reverse one they never
+  confirmed. A waiver is given by the creditor (managers for placeholder or
+  inactive creditors, never when they are the debtor) and never exceeds what
+  the debtor owes the group and the creditor is owed. Participants contribute
+  to the fund for themselves; contributions for others, withdrawals, and fund
+  settings need `plan.fund.manage`.
+- Finance is private to the plan's active participants: group members reading
+  a group-visible plan do not see expenses, balances, or settlements.
 - While deletion is scheduled only reads, leaving, and `plan.delete`
   (restore) are allowed.
 - `pending_approval`, `left`, `removed`, and `merged` participants have no
