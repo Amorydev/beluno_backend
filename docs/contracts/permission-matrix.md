@@ -128,7 +128,7 @@ and an invite-token holder can only count one use.
 
 | Role | Access |
 |---|---|
-| `api_runtime` | DML on module tables under RLS; insert-only on audit/change log; enqueue jobs |
-| `worker_runtime` | email challenge delivery, auth record purge, series materialization acting as the series creator; insert-only audit |
+| `api_runtime` | DML on module tables under RLS; insert-only audit events; change rows only through `sync_audit.append_changes`/`read_changes` (visibility checked per scope); own operation records; scope heads readable for visible scopes; enqueue jobs |
+| `worker_runtime` | email challenge delivery, auth record purge, series materialization acting as the series creator; insert-only audit; `append_changes`; retention gates `compact_changes`/`purge_operations`; job queue tooling |
 | `scheduler_runtime` | job queue only |
 | `migrator` | owns tables and SECURITY DEFINER policy helpers; never used by application traffic |

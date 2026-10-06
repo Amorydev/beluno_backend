@@ -19,5 +19,6 @@ User ──< PlanSeries ──< Plan ──< PlanParticipant
 - **Invites**: reusable group invites (membership) and plan invites (join or claim existing participant).
 
 Modules communicate through application ports or transactional events, never by
-ad-hoc access to another module's tables. Domain writes are transactional and
-enqueue audit and outbox events in the same transaction.
+ad-hoc access to another module's tables. Domain writes are transactional: they
+record audit and change rows through `record_mutation` (written at commit with
+per-scope sequencing) and enqueue jobs in the same transaction.

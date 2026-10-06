@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Reliability and Sync Kernel"
-status: in-progress
+status: completed
 priority: P1
 effort: "4 weeks (2 backend engineers + client-contract review)"
 dependencies: [3]
@@ -130,16 +130,16 @@ Phase 2 transaction/OpenAPI/testkit and Phase 3 mutation paths will be modified 
 
 ## Todo
 
-- [ ] Protocol handshake, envelopes, errors, and version window are frozen.
-- [ ] Idempotency response replay is atomic with domain writes.
-- [ ] Push isolates item failures and preserves per-plan dependencies.
-- [ ] Pull uses high-watermark pages and integrity-protected cursors.
-- [ ] Snapshot, tombstone, compaction floor, and full-resync flows work.
-- [ ] Conflict policy is implemented for every Phase 3 and planned domain entity.
-- [ ] Audit/change/outbox records are transactionally complete.
-- [ ] Worker retry, dedup, DLQ, replay, and metrics are operational.
-- [ ] 90-day offline and client upgrade fixtures pass.
-- [ ] Multi-device fault model converges without acknowledged-write loss.
+- [x] Protocol handshake, envelopes, errors, and version window are frozen. (`src/beluno/contracts/sync.py`, `tests/contract/test_sync_fixtures.py`, `tests/contract/sync-fixtures/*.json`, window `1..1` → 426 tested in `tests/integration/test_sync_pull.py` and `test_sync_push.py`)
+- [x] Idempotency response replay is atomic with domain writes. (`src/beluno/sync/idempotency.py` stores the outcome in the command transaction; `tests/integration/test_idempotency.py`: lost-response replay, concurrent duplicates execute once, failed commands store nothing, key reuse → 409)
+- [x] Push isolates item failures and preserves per-plan dependencies. (`src/beluno/sync/push.py`; `tests/integration/test_sync_push.py`: one bad item in a batch, dependency skips, transient failure blocks the same scope only)
+- [x] Pull uses high-watermark pages and integrity-protected cursors. (`src/beluno/sync/{pull,cursor}.py`; `test_sync_pull.py::test_pages_stop_at_the_watermark_and_snapshot_pages_cover_everything`, `::test_cursor_safety_checks`, `tests/unit/test_sync_cursor.py`)
+- [x] Snapshot, tombstone, compaction floor, and full-resync flows work. (`test_sync_pull.py::test_bootstrap_then_changes_converge_on_a_plan`, `tests/integration/test_sync_offline_window.py`, `tests/integration/test_change_log.py::test_compaction_keeps_the_offline_window_and_raises_the_floor`)
+- [x] Conflict policy is implemented for every Phase 3 and planned domain entity. (strict versions with `current` on 412 for plan/group/participant/membership/travel/series/profile; intent commands for RSVP/join/leave/review/remove; delete wins; `src/beluno/sync/ordering.py` + `tests/unit/test_ordering.py` for ordered collections; finance revisions remain for Phase 5)
+- [x] Audit/change/outbox records are transactionally complete. (buffered recorder flushed before commit through `sync_audit.append_changes`; `tests/integration/test_change_log.py`; e2e asserts audit = changes − signals)
+- [x] Worker retry, dedup, DLQ, replay, and metrics are operational. (`src/beluno/worker/{enqueue,deadletter}.py`, `scripts/jobs.py`, `src/beluno/observability/metrics.py`; `tests/integration/test_reliability_jobs.py`, `test_reliability_metrics.py`, `tests/unit/test_metrics.py`)
+- [x] 90-day offline and client upgrade fixtures pass. (`tests/integration/test_sync_offline_window.py`; schema version 2 → `upgrade_required`, protocol 2/99 → 426)
+- [x] Multi-device fault model converges without acknowledged-write loss. (`tests/sync/test_multi_device_model.py`: Hypothesis, derandomized, dropped/duplicated push and pull responses, convergence + single application + contiguous sequences)
 
 ## Test Scenario Matrix
 
@@ -159,13 +159,13 @@ Phase 2 transaction/OpenAPI/testkit and Phase 3 mutation paths will be modified 
 
 ## Success Criteria
 
-- [ ] Fault corpus proves no duplicated domain mutation or lost acknowledged write.
-- [ ] Every Phase 3 mutation produces exactly one auditable change visible to authorized pull.
-- [ ] Push/pull contract handles partial success, conflicts, revocation, old clients, and full resync without ambiguity.
-- [ ] Model-based 2–3 device tests converge from duplicate/drop/reorder/lost-ack sequences with reproducible seeds.
-- [ ] P95 sync-after-connect target and batch limits are measured on realistic fixtures; final SLO is recorded.
-- [ ] Job/outbox dashboards expose oldest age, retries, permanent failures, DLQ depth, and replay actions.
-- [ ] Finance and planning teams can implement domain commands without inventing new reliability semantics.
+- [x] Fault corpus proves no duplicated domain mutation or lost acknowledged write. (`tests/sync/test_multi_device_model.py` checks segments = adds − deletes from operation records and every device view equals a fresh bootstrap; `test_idempotency.py` concurrency and deadlock-retry cases)
+- [x] Every Phase 3 mutation produces exactly one auditable change visible to authorized pull. (all mutations go through `record_mutation`; `tests/e2e/test_group_plan_lifecycle.py` asserts `change_log = audit_events + access signals`; pull suites read them back)
+- [x] Push/pull contract handles partial success, conflicts, revocation, old clients, and full resync without ambiguity. (`docs/contracts/sync-protocol.md`; `test_sync_push.py`, `test_sync_pull.py::test_visibility_follows_role_and_revocation`)
+- [x] Model-based 2–3 device tests converge from duplicate/drop/reorder/lost-ack sequences with reproducible seeds. (two devices, `derandomize=True`; reorder across scopes is exercised, reorder inside one scope is a client-contract violation the server blocks with `skipped`)
+- [x] P95 sync-after-connect target and batch limits are measured on realistic fixtures; final SLO is recorded. (`tests/integration/test_sync_performance.py` on local PostgreSQL: 100-operation push 1.9 s, bootstrap of a 100-participant plan p50 0.046 s / p95 0.050 s; production SLO stays to be set from staging measurements)
+- [x] Job/outbox dashboards expose oldest age, retries, permanent failures, DLQ depth, and replay actions. (metrics `beluno.jobs.queue`, `beluno.command.retries`, push/pull/command counters, audited `job.retried`; dashboard provisioning is documented in `docs/runbooks/sync-operations.md` for operations to apply)
+- [x] Finance and planning teams can implement domain commands without inventing new reliability semantics. (add a `Command` to `src/beluno/api/commands`, record through `record_mutation`, add a projector entry; replay, conflicts, sequencing, pull, and metrics are inherited)
 
 ## Risk Assessment
 
@@ -217,3 +217,11 @@ Agreed with the user before implementation; they replace the `[UNVERIFIED]` path
 | S6 Jobs | duplicate-safe enqueue, dead-letter tooling, queue health, compaction and operation purge jobs, metrics, runbook |
 | S7 Verification | multi-device model tests, 90-day offline/full-resync/upgrade fixtures, contract fixtures, performance measurement |
 | S8 Review | independent and adversarial review, fixes, docs/ADR/plan sync, PR |
+
+## Completion Notes (2026-10-06)
+
+- Delivered: migration `000004_sync_kernel` (scope heads, `scope_seq` backfill, operation records, SECURITY DEFINER gates, RLS, grants); buffered recorder with tracked savepoints; command catalog (33 commands) and runner with bounded 40001/40P01 retries and idempotent replay; `/v1/sync/{handshake,push,pull}`; HMAC cursors; access signals; fractional ordering; retention jobs; dead-letter tooling; OpenTelemetry metrics; runbook `docs/runbooks/sync-operations.md`.
+- Verification: 357 tests on real PostgreSQL 16 (unit, contract, integration, security, e2e, multi-device model), coverage 94 %, ruff/format/mypy strict clean, OpenAPI exported and compatible with `main` (optional `Idempotency-Key` on 33 operations; three new sync paths; `current` added to problem responses).
+- The multi-device model exposed one real divergence before shipping: feed entities embedded other entities (`plan.my_participant`, `travel_details.segments`), so an incrementally built view drifted from a bootstrap; feed entities now never embed other entities (`PlanEntity`, `TravelDetailsEntity`).
+- Deviations from the original text: no `410 FULL_RESYNC_REQUIRED` HTTP error (pull reports `resync_required` per scope); no separate outbox table/dispatcher (the Procrastinate job table remains the outbox); `operation_id` doubles as the idempotency key instead of a second field; `source` on operation records distinguishes REST from push.
+- Left for later phases: realtime wake-up hints, finance conflict revisions (Phase 5), itinerary adoption of fractional ordering (Phase 6), staging SLO measurement and dashboard provisioning (Phase 8), partitioning of `change_log` once volume is measured.

@@ -51,6 +51,15 @@ To dry-run migrations and verify SQL:
 uv run alembic upgrade head --sql
 ```
 
+## Sync and reliability
+
+Every mutation is a catalog command (`src/beluno/api/commands`) that REST and
+`POST /v1/sync/push` share: optional `Idempotency-Key` on REST, `operation_id`
+on push, stored outcomes replayed for repeats. Clients discover their scopes with
+`POST /v1/sync/handshake` and read changes with `POST /v1/sync/pull`; see
+`docs/contracts/sync-protocol.md`. Operators use `scripts/jobs.py` for dead
+letters and `docs/runbooks/sync-operations.md` for metrics and retention.
+
 ## Runtime
 
 The service has three concurrent processes (one database URL per process):

@@ -11,7 +11,9 @@ Mobile / web clients
 ```
 
 Clients never write domain tables directly. The API owns authorization,
-idempotency, audit records, change-log entries, and domain transactions.
+idempotency, audit records, change-log entries, and domain transactions. Offline
+clients talk to `/v1/sync/handshake`, `/v1/sync/push`, and `/v1/sync/pull`
+(`docs/contracts/sync-protocol.md`); REST mutations are the same commands.
 
 The application runs in three concurrent processes from one package:
 

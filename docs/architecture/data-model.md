@@ -37,5 +37,7 @@ All table rows have RLS policies (SECURITY DEFINER helper functions):
 
 - **RLS**: enforces tenant and participation boundaries; all writes pass through application authorization logic first.
 - **Write guards**: tenant-aware triggers (000003_tenant_write_guards.py) prevent bulk operations and orphaned changes.
-- **sync_audit.audit_events**: immutable log of user actions (created, modified, deleted), keyed by plan or group for client sync.
-- **sync_audit.change_log**: server-sequenced entity versioning for offline-sync clients; tracks scope, operation (upsert/delete), and actor.
+- **sync_audit.audit_events**: immutable log of user actions (created, modified, deleted), keyed by plan or group.
+- **sync_audit.change_log**: pointer rows (`scope_type`, `scope_id`, `scope_seq`, entity, version, operation) with a contiguous per-scope sequence assigned by `sync_audit.append_changes` at commit; the source of cursor-based pull.
+- **sync_audit.scope_heads**: per-scope last sequence, compaction floor, and generation (bumped after a restore).
+- **sync_audit.operations**: stored outcomes of idempotent commands keyed by `(actor, command, idempotency_key)`, kept 180 days.

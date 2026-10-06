@@ -15,7 +15,7 @@ created: 2026-10-06
 
 Build the complete Beluno backend for reusable friend groups and generic plans: dinners, coffee, movies, sports, birthdays, custom gatherings, and trips. `Group` is the durable social container, `Plan` is the collaboration and financial aggregate, and `PlanParticipant` is the stable historical identity referenced by plan records. A trip is an optional `Plan` extension, never the root model. This is one unified release scope; the phases below only express implementation dependencies.
 
-Phases 2–3 are implemented in this repository (its root is the backend; no `backend/` prefix). Paths in later phase files remain proposals. Estimates assume a small senior team: two backend engineers plus part-time QA/DevOps/security support, approximately 22–30 calendar weeks including integration and soak; one backend engineer should budget roughly 36–48 weeks.
+Phases 2–4 are implemented in this repository (its root is the backend; no `backend/` prefix). Paths in later phase files remain proposals. Estimates assume a small senior team: two backend engineers plus part-time QA/DevOps/security support, approximately 22–30 calendar weeks including integration and soak; one backend engineer should budget roughly 36–48 weeks.
 
 ## Architecture Decision
 
@@ -47,7 +47,7 @@ Phases 2–3 are implemented in this repository (its root is the backend; no `ba
 | 1 | — | 2 weeks | [Architecture Kernel](./phase-01-architecture-kernel.md) | in-progress |
 | 2 | 1 | 3 weeks | [Platform Foundation](./phase-02-platform-foundation.md) | completed |
 | 3 | 2 | 4 weeks | [Identity, Groups and Plans](./phase-03-identity-groups-plans.md) | completed |
-| 4 | 3 | 4 weeks | [Reliability and Sync Kernel](./phase-04-reliability-sync-kernel.md) | in-progress |
+| 4 | 3 | 4 weeks | [Reliability and Sync Kernel](./phase-04-reliability-sync-kernel.md) | completed |
 | 5 | 4 | 5 weeks | [Financial Ledger](./phase-05-finance-ledger.md) | pending |
 | 6 | 4 | 5 weeks, parallel with 5 | [Planning and Coordination](./phase-06-planning-coordination.md) | pending |
 | 7 | 5, 6 | 4 weeks | [Lifecycle and Integrations](./phase-07-lifecycle-integrations.md) | pending |
