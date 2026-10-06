@@ -104,7 +104,7 @@ async def _sign_in(ctx: CommandContext, request: AuthenticationRequest) -> Issue
     user_id = await _resolve_account(ctx, identity)
     if user_id is None:
         try:
-            async with ctx.session.begin_nested():
+            async with ctx.savepoint():
                 user = await users.create_registered_user(ctx, identity)
         except IntegrityError:
             # A concurrent first sign-in created the account; use it.

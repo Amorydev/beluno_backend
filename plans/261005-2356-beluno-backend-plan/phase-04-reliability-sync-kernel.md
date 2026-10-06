@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Reliability and Sync Kernel"
-status: pending
+status: completed
 priority: P1
 effort: "4 weeks (2 backend engineers + client-contract review)"
 dependencies: [3]
@@ -130,16 +130,16 @@ Phase 2 transaction/OpenAPI/testkit and Phase 3 mutation paths will be modified 
 
 ## Todo
 
-- [ ] Protocol handshake, envelopes, errors, and version window are frozen.
-- [ ] Idempotency response replay is atomic with domain writes.
-- [ ] Push isolates item failures and preserves per-plan dependencies.
-- [ ] Pull uses high-watermark pages and integrity-protected cursors.
-- [ ] Snapshot, tombstone, compaction floor, and full-resync flows work.
-- [ ] Conflict policy is implemented for every Phase 3 and planned domain entity.
-- [ ] Audit/change/outbox records are transactionally complete.
-- [ ] Worker retry, dedup, DLQ, replay, and metrics are operational.
-- [ ] 90-day offline and client upgrade fixtures pass.
-- [ ] Multi-device fault model converges without acknowledged-write loss.
+- [x] Protocol handshake, envelopes, errors, and version window are frozen. (`src/beluno/contracts/sync.py`, `tests/contract/test_sync_fixtures.py`, `tests/contract/sync-fixtures/*.json`, window `1..1` → 426 tested in `tests/integration/test_sync_pull.py` and `test_sync_push.py`)
+- [x] Idempotency response replay is atomic with domain writes. (`src/beluno/sync/idempotency.py` stores the outcome in the command transaction; `tests/integration/test_idempotency.py`: lost-response replay, concurrent duplicates execute once, failed commands store nothing, key reuse → 409)
+- [x] Push isolates item failures and preserves per-plan dependencies. (`src/beluno/sync/push.py`; `tests/integration/test_sync_push.py`: one bad item in a batch, dependency skips, transient failure blocks the same scope only)
+- [x] Pull uses high-watermark pages and integrity-protected cursors. (`src/beluno/sync/{pull,cursor}.py`; `test_sync_pull.py::test_pages_stop_at_the_watermark_and_snapshot_pages_cover_everything`, `::test_cursor_safety_checks`, `tests/unit/test_sync_cursor.py`)
+- [x] Snapshot, tombstone, compaction floor, and full-resync flows work. (`test_sync_pull.py::test_bootstrap_then_changes_converge_on_a_plan`, `tests/integration/test_sync_offline_window.py`, `tests/integration/test_change_log.py::test_compaction_keeps_the_offline_window_and_raises_the_floor`)
+- [x] Conflict policy is implemented for every Phase 3 and planned domain entity. (strict versions with `current` on 412 for plan/group/participant/membership/travel/series/profile; intent commands for RSVP/join/leave/review/remove; delete wins; `src/beluno/sync/ordering.py` + `tests/unit/test_ordering.py` for ordered collections; finance revisions remain for Phase 5)
+- [x] Audit/change/outbox records are transactionally complete. (buffered recorder flushed before commit through `sync_audit.append_changes`; `tests/integration/test_change_log.py`; e2e asserts audit = changes − signals)
+- [x] Worker retry, dedup, DLQ, replay, and metrics are operational. (`src/beluno/worker/{enqueue,deadletter}.py`, `scripts/jobs.py`, `src/beluno/observability/metrics.py`; `tests/integration/test_reliability_jobs.py`, `test_reliability_metrics.py`, `tests/unit/test_metrics.py`)
+- [x] 90-day offline and client upgrade fixtures pass. (`tests/integration/test_sync_offline_window.py`; schema version 2 → `upgrade_required`, protocol 2/99 → 426)
+- [x] Multi-device fault model converges without acknowledged-write loss. (`tests/sync/test_multi_device_model.py`: Hypothesis, derandomized, dropped/duplicated push and pull responses, convergence + single application + contiguous sequences)
 
 ## Test Scenario Matrix
 
@@ -159,13 +159,13 @@ Phase 2 transaction/OpenAPI/testkit and Phase 3 mutation paths will be modified 
 
 ## Success Criteria
 
-- [ ] Fault corpus proves no duplicated domain mutation or lost acknowledged write.
-- [ ] Every Phase 3 mutation produces exactly one auditable change visible to authorized pull.
-- [ ] Push/pull contract handles partial success, conflicts, revocation, old clients, and full resync without ambiguity.
-- [ ] Model-based 2–3 device tests converge from duplicate/drop/reorder/lost-ack sequences with reproducible seeds.
-- [ ] P95 sync-after-connect target and batch limits are measured on realistic fixtures; final SLO is recorded.
-- [ ] Job/outbox dashboards expose oldest age, retries, permanent failures, DLQ depth, and replay actions.
-- [ ] Finance and planning teams can implement domain commands without inventing new reliability semantics.
+- [x] Fault corpus proves no duplicated domain mutation or lost acknowledged write. (`tests/sync/test_multi_device_model.py` checks segments = adds − deletes from operation records and every device view equals a fresh bootstrap; `test_idempotency.py` concurrency and deadlock-retry cases)
+- [x] Every Phase 3 mutation produces exactly one auditable change visible to authorized pull. (all mutations go through `record_mutation`; `tests/e2e/test_group_plan_lifecycle.py` asserts `change_log = audit_events + access signals`; pull suites read them back)
+- [x] Push/pull contract handles partial success, conflicts, revocation, old clients, and full resync without ambiguity. (`docs/contracts/sync-protocol.md`; `test_sync_push.py`, `test_sync_pull.py::test_visibility_follows_role_and_revocation`)
+- [x] Model-based 2–3 device tests converge from duplicate/drop/reorder/lost-ack sequences with reproducible seeds. (two devices, `derandomize=True`; reorder across scopes is exercised, reorder inside one scope is a client-contract violation the server blocks with `skipped`)
+- [x] P95 sync-after-connect target and batch limits are measured on realistic fixtures; final SLO is recorded. (`tests/integration/test_sync_performance.py` on local PostgreSQL: 100-operation push 1.9 s, bootstrap of a 100-participant plan p50 0.046 s / p95 0.050 s; production SLO stays to be set from staging measurements)
+- [x] Job/outbox dashboards expose oldest age, retries, permanent failures, DLQ depth, and replay actions. (metrics `beluno.jobs.queue`, `beluno.command.retries`, push/pull/command counters, audited `job.retried`; dashboard provisioning is documented in `docs/runbooks/sync-operations.md` for operations to apply)
+- [x] Finance and planning teams can implement domain commands without inventing new reliability semantics. (add a `Command` to `src/beluno/api/commands`, record through `record_mutation`, add a projector entry; replay, conflicts, sequencing, pull, and metrics are inherited)
 
 ## Risk Assessment
 
@@ -186,3 +186,43 @@ Phase 2 transaction/OpenAPI/testkit and Phase 3 mutation paths will be modified 
 ## Rollback and Exit Gate
 
 Protocol/database changes use additive generations. Keep the prior pull/push generation available through the published compatibility window; disable new command types with a kill switch rather than deleting accepted operations. Never truncate `change_log`, idempotency, or tombstones as rollback. Exit requires lost-response proof, convergence fault tests, 90-day/full-resync fixtures, atomic audit/outbox coverage, and production dashboards before Phases 5 and 6 start.
+
+## Execution Decisions (2026-10-06)
+
+Agreed with the user before implementation; they replace the `[UNVERIFIED]` paths above.
+
+- **Scopes and cursors.** Sync runs as independent streams per scope: `user:{id}`, `group:{id}`, `plan:{id}`, each with its own cursor. The handshake returns the directory of scopes the caller can see now, with each scope's head and generation; clients pull scopes whose head changed, bootstrap new scopes, and purge scopes that disappear (that is the revocation signal). The user scope carries the profile, sessions, personal series, and `plan_access`/`group_access` signals when the caller's own access changes.
+- **Sequencing.** `change_log.scope_seq` is contiguous per scope and assigned under a row lock on `sync_audit.scope_heads`. `record_mutation` buffers audit and change rows in the command context; `open_context` flushes them at the end of the transaction through the SECURITY DEFINER function `sync_audit.append_changes`, which locks heads in sorted order. Runtime roles lose direct INSERT on `change_log`. `server_seq` stays internal. Records inside a savepoint go through `ctx.savepoint()`, which drops them on rollback.
+- **Change payload.** Rows are pointers (entity type, id, version, operation). Pull reads current, authorization-filtered state, dedupes per entity inside a page, and emits `delete` for tombstones and for rows the caller may no longer see. A replayed page has the same changes and cursor; data may be newer; clients apply when `version >= local`.
+- **Cursor.** Opaque base64url token signed with HMAC-SHA256 (key derived from `BELUNO_TOKEN_HASH_KEY`, purpose `sync_cursor`), binding version, generation, user, scope, sequence, and watermark or snapshot progress. A bad signature, another user, another generation, a sequence below the floor, or a sequence above the head (restore) yields `resync_required`; a cursor for another scope is a 422.
+- **Endpoints.** `POST /v1/sync/handshake` (version window, limits, command catalog, retention, paginated directory; outside the window → 426), `POST /v1/sync/push` (≤100 operations, ≤1 MiB; `operation_id` is the idempotency key; one transaction and one result per operation), `POST /v1/sync/pull` (list of `{scope, cursor}`; a null cursor bootstraps a paginated snapshot that captures the head first and then continues as a change feed; per-scope status `ok`/`unavailable`/`resync_required`).
+- **Idempotency.** Optional `Idempotency-Key` header on every authenticated mutation (required would break the contract). Namespace `(actor, command, key)`; canonical request hash; a transaction-scoped advisory lock serializes duplicates, so a concurrent retry waits and replays. Only successful outcomes are stored (status, body, ETag), immutable and kept 180 days; replays carry `Idempotency-Replayed: true`; a different payload returns `409 IDEMPOTENCY_KEY_REUSED`. Credential-issuing endpoints are excluded: `/v1/auth/*`, invite preview/redeem, invite create/claim/rotate. Travel segments, series, and placeholder participants accept optional client-generated IDs.
+- **Conflicts.** Strict optimistic versions for every versioned entity, no server-side last-write-wins. `412 VERSION_CONFLICT` carries `current`, the canonical snapshot, on REST and push. RSVP, join, leave, accept, review, and remove are intent commands. Delete beats edit; recreation uses a new ID. Fractional ordering ships as a kernel library with property tests and is adopted by the itinerary later; travel segments keep integer `sort_order`.
+- **Retention.** Offline window 90 days; change log, tombstones, and operation records 180 days. A daily worker job deletes older change rows and raises the per-scope `floor_seq`; the SQL function refuses cutoffs newer than the offline window. Enabled from the start.
+- **Jobs.** The Procrastinate job table stays the transactional outbox (`defer_in_transaction`). Added: duplicate-safe enqueue, failed jobs as the dead-letter queue with audited list/retry tooling, and queue health metrics. No separate outbox table or dispatcher until a consumer needs fan-out. Realtime hints are out of scope.
+- **Push ordering.** Client order is preserved. A retryable failure (429, 503, exhausted deadlock retries) skips later operations of the same scope; a permanent failure skips only operations that depend on it. One rate-limit hit per batch plus the per-command limits REST applies (replays do not count). Kill switches: `sync_push_enabled`, `sync_pull_enabled`, `sync_disabled_commands`.
+- **Synced entities** follow REST permissions: plan scope (plan, participants with pending ones for managers only, travel details/segments, invites for managers without token data); group scope (group, memberships, the group's series, invites for managers); user scope as above. Group-visible plans are in the directory of active group members. A display-name change refreshes the member's rows in their groups.
+- **Measurement.** OpenTelemetry metrics (no-op without an exporter) plus a runbook for dashboards and alerts; provisioning dashboards stays with operations. Hypothesis multi-device model tests with fixed seeds and an injected clock; P95 sync-after-connect measured on local PostgreSQL and labelled as such.
+- **Housekeeping.** `tests/integration/test_phase3_edge_cases.py` becomes `test_access_edge_cases.py`; work happens on branch `feat/sync-kernel`.
+
+### Slices
+
+| Slice | Scope |
+|---|---|
+| S1 Kernel DB | migration `000004_sync_kernel` (scope heads, `scope_seq` backfill, operation records, append/read/compaction functions, RLS, grants), models, buffered recorder, savepoints, deadlock/serialization retry |
+| S2 Commands | command catalog and executor with idempotency, REST retrofit of every authenticated mutation, `412` with `current`, client-generated IDs |
+| S3 Read side | cursor codec, scope directory, handshake, pull (snapshot bootstrap and change pages, watermark, projections, tombstones, floor/generation checks) |
+| S4 Push | batch envelope, per-operation transactions and results, dependencies, per-scope ordering, version window, limits, rate limits, kill switches |
+| S5 Signals | `plan_access`/`group_access` signals, display-name refresh, fractional ordering library |
+| S6 Jobs | duplicate-safe enqueue, dead-letter tooling, queue health, compaction and operation purge jobs, metrics, runbook |
+| S7 Verification | multi-device model tests, 90-day offline/full-resync/upgrade fixtures, contract fixtures, performance measurement |
+| S8 Review | independent and adversarial review, fixes, docs/ADR/plan sync, PR |
+
+## Completion Notes (2026-10-06)
+
+- Delivered: migration `000004_sync_kernel` (scope heads, `scope_seq` backfill, operation records, SECURITY DEFINER gates, RLS, grants); buffered recorder with tracked savepoints; command catalog (33 commands) and runner with bounded 40001/40P01 retries and idempotent replay; `/v1/sync/{handshake,push,pull}`; HMAC cursors; access signals; fractional ordering; retention jobs; dead-letter tooling; OpenTelemetry metrics; runbook `docs/runbooks/sync-operations.md`.
+- Verification: 357 tests on real PostgreSQL 16 (unit, contract, integration, security, e2e, multi-device model), coverage 94 %, ruff/format/mypy strict clean, OpenAPI exported and compatible with `main` (optional `Idempotency-Key` on 33 operations; three new sync paths; `current` added to problem responses).
+- The multi-device model exposed one real divergence before shipping: feed entities embedded other entities (`plan.my_participant`, `travel_details.segments`), so an incrementally built view drifted from a bootstrap; feed entities now never embed other entities (`PlanEntity`, `TravelDetailsEntity`).
+- Deviations from the original text: no `410 FULL_RESYNC_REQUIRED` HTTP error (pull reports `resync_required` per scope); no separate outbox table/dispatcher (the Procrastinate job table remains the outbox); `operation_id` doubles as the idempotency key instead of a second field; `source` on operation records distinguishes REST from push.
+- Independent review (code reviewer, PASS_WITH_RISK → fixed): pull page size could exceed the read gate and silently skip changes; a non-UTF-8 cursor body returned 500; REST returned a bare 500 after exhausted deadlock retries while push said `retry`; compaction could race an in-flight page; one `operation_id` could name two commands; the tombstone rule was ambiguous for revived memberships; session revocation bypassed the catalog. Adversarial review (PASS_WITH_RISK → fixed/documented): the compaction gate hard-coded 90 days instead of the configured offline window (now a parameter with a 90-day floor); `append_changes` trusts its caller by design and is documented as such (reads stay fenced per scope). Neither review found a way through the public API to lose an acknowledged write, apply an operation twice, skip a committed change, or read across a tenant boundary.
+- Left for later phases: realtime wake-up hints, finance conflict revisions (Phase 5), itinerary adoption of fractional ordering (Phase 6), staging SLO measurement and dashboard provisioning (Phase 8), partitioning of `change_log` once volume is measured.

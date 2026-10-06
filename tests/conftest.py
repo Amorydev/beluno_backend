@@ -14,10 +14,13 @@ import pytest
 from psycopg import sql
 
 from beluno.api.main import create_app
+from beluno.auth import AccessTokenCodec
 from beluno.config import Settings
 from beluno.db.bootstrap import bootstrap_job_schema, run_migrations
 from beluno.db.session import Database
-from beluno.testkit.database import AdminDatabase
+from beluno.modules.context import Runtime
+from beluno.modules.iam.external_identity import ExternalIdentityVerifier
+from beluno.testkit.database import TRUNCATE_ALL_SQL, AdminDatabase
 from beluno.testkit.environment import (
     RUNTIME_PASSWORDS,
     IntegrationEnvironment,
@@ -26,6 +29,7 @@ from beluno.testkit.environment import (
     role_dsn,
 )
 from beluno.testkit.identity import IdentityProviderStub
+from beluno.token_hashing import TokenHasher
 
 
 class HealthyDatabase:
@@ -67,18 +71,6 @@ async def degraded_client() -> AsyncIterator[httpx.AsyncClient]:
 # otherwise Testcontainers when Docker is available, otherwise skips. Each test
 # session gets a fresh database with reviewed migrations, the job schema, and
 # least-privilege runtime roles; tables are truncated before each test.
-
-TRUNCATE_SQL = """
-TRUNCATE
-    sync_audit.audit_events, sync_audit.change_log,
-    plans.travel_segments, plans.travel_plan_details, plans.plan_invites, groups.group_invites,
-    plans.plan_participants, plans.plans, plans.plan_series,
-    groups.group_memberships, groups.groups,
-    iam.rate_limit_counters, iam.email_challenges, iam.refresh_tokens, iam.sessions,
-    iam.user_identities, iam.users,
-    jobs.procrastinate_events, jobs.procrastinate_jobs
-CASCADE
-"""
 
 
 def _docker_is_available() -> bool:
@@ -179,7 +171,7 @@ def integration_environment(admin_cluster_dsn: str) -> Iterator[IntegrationEnvir
 @pytest.fixture
 def environment(integration_environment: IntegrationEnvironment) -> IntegrationEnvironment:
     with psycopg.connect(integration_environment.admin_dsn, autocommit=True) as connection:
-        connection.execute(TRUNCATE_SQL)
+        connection.execute(TRUNCATE_ALL_SQL)
     return integration_environment
 
 
@@ -218,3 +210,37 @@ async def api(
 @pytest.fixture
 def admin(environment: IntegrationEnvironment) -> AdminDatabase:
     return AdminDatabase(environment.admin_dsn)
+
+
+@pytest.fixture
+async def runtime(live_settings: Settings) -> AsyncIterator[Runtime]:
+    """An API-role runtime for exercising services below the HTTP layer."""
+
+    database = Database(live_settings)
+    yield Runtime(
+        settings=live_settings,
+        database=database,
+        tokens=AccessTokenCodec(live_settings),
+        hasher=TokenHasher.from_settings(live_settings),
+        identity_verifier=ExternalIdentityVerifier(live_settings),
+    )
+    await database.close()
+
+
+@pytest.fixture
+def scratch_database(admin_cluster_dsn: str) -> Iterator[IntegrationEnvironment]:
+    """An empty database with runtime-role grants and no migrations applied."""
+
+    _provision_roles(admin_cluster_dsn)
+    name = f"beluno_scratch_{uuid4().hex[:12]}"
+    database_admin_dsn = _create_database(admin_cluster_dsn, name)
+    settings = build_settings(
+        api_dsn=role_dsn(database_admin_dsn, "api_runtime"),
+        worker_dsn=role_dsn(database_admin_dsn, "worker_runtime"),
+        scheduler_dsn=role_dsn(database_admin_dsn, "scheduler_runtime"),
+        migration_dsn=role_dsn(database_admin_dsn, "migrator"),
+    )
+    try:
+        yield IntegrationEnvironment(settings=settings, admin_dsn=database_admin_dsn)
+    finally:
+        _drop_database(admin_cluster_dsn, name)

@@ -23,12 +23,17 @@ submitted values.
 | `INVALID_STATE_TRANSITION` | 409 | Action is not valid in the resource's current state |
 | `OWNER_TRANSFER_REQUIRED` | 409 | Owner must transfer ownership before leaving |
 | `PARTICIPANT_MERGE_REQUIRED` | 409 | Claim would merge with an existing participation; resend with consent |
-| `IDEMPOTENCY_KEY_REUSED` | 409 | Same key was sent with a different payload |
-| `FULL_RESYNC_REQUIRED` | 410 | Client cursor predates retention/compaction floor |
-| `VERSION_CONFLICT` | 412 | `If-Match` version is stale |
-| `REQUEST_TOO_LARGE` | 413 | Body exceeds the configured request-size limit |
+| `IDEMPOTENCY_KEY_REUSED` | 409 | Same `Idempotency-Key` or `operation_id` was sent with a different request |
+| `OPERATION_SKIPPED` | 409 (push item only) | The operation was not attempted: an earlier operation on the same scope must be retried first, or a dependency was not applied |
+| `VERSION_CONFLICT` | 412 | `expected_version`/`If-Match` is stale; `current` carries the canonical representation |
+| `REQUEST_TOO_LARGE` | 413 | Body or push batch exceeds the configured size limit |
 | `VALIDATION_FAILED` | 422 | Request cannot satisfy a public contract |
-| `CLIENT_UPGRADE_REQUIRED` | 426 | Client protocol cannot preserve invariants |
+| `CLIENT_UPGRADE_REQUIRED` | 426 | Sync protocol or command schema version is outside the supported window |
 | `PRECONDITION_REQUIRED` | 428 | Update requires an `If-Match` header |
 | `RATE_LIMITED` | 429 | Abuse limit reached; honour `Retry-After` |
-| `FEATURE_DISABLED` | 503 | Entry point disabled by an operational kill switch |
+| `FEATURE_DISABLED` | 503 | Entry point or command disabled by an operational kill switch |
+| `RETRY_LATER` | 503 | Transient database conflict after bounded retries; nothing changed, resend unchanged after `Retry-After` |
+
+Sync pull never reports a stale cursor as an HTTP error: the per-scope status
+`resync_required` replaces the earlier `410 FULL_RESYNC_REQUIRED` design, and
+`unavailable` means the scope is not the caller's to read.

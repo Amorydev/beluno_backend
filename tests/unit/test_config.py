@@ -60,3 +60,13 @@ def test_auth_requires_signing_keys_and_hash_key() -> None:
 def test_short_token_hash_key_is_rejected() -> None:
     with pytest.raises(ValidationError):
         Settings(token_hash_key="too-short")
+
+
+def test_sync_retention_and_page_size_are_bounded() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, sync_pull_page_size=1_000)  # type: ignore[call-arg]
+    with pytest.raises(RuntimeError, match="OFFLINE_WINDOW"):
+        Settings(  # type: ignore[call-arg]
+            _env_file=None, sync_offline_window_days=90, sync_change_retention_days=30
+        ).assert_retention_requirements()
+    Settings(_env_file=None, sync_pull_page_size=500).assert_retention_requirements()  # type: ignore[call-arg]

@@ -4,13 +4,29 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, Response, status
 
-from beluno.api.dependencies import ActorDep, OptionalActorDep, RuntimeDep, client_subject
+from beluno.api.commands import groups as group_commands
+from beluno.api.commands import plans as plan_commands
+from beluno.api.dependencies import (
+    ActorDep,
+    OptionalActorDep,
+    RunnerDep,
+    RuntimeDep,
+    client_subject,
+)
+from beluno.api.http import IdempotencyKey, command_call, finish
+from beluno.api.presenters import (
+    created_invite_response,
+    device_info,
+    group_response,
+    invite_response,
+    participant_response,
+    plan_response,
+    timing_contract,
+    token_response,
+)
 from beluno.api.problems import problem_responses
-from beluno.api.routers.auth import device_info, token_response
-from beluno.api.routers.groups import group_response
-from beluno.api.routers.plans import participant_response, plan_response, timing_contract
 from beluno.authorization.policy import AccessState, GroupRole, PlanRole
 from beluno.contracts.invites import (
     ClaimInviteCreateRequest,
@@ -25,56 +41,18 @@ from beluno.contracts.invites import (
     RedeemInviteRequest,
     RedeemInviteResponse,
 )
-from beluno.db.models.groups import GroupInvite
-from beluno.db.models.plans import PlanInvite
 from beluno.modules import invitations
 from beluno.modules.context import open_context
 from beluno.modules.groups import invites as group_invites
 from beluno.modules.iam import rate_limits
 from beluno.modules.plans import invites as plan_invites
 from beluno.modules.plans import service as plan_service
+from beluno.sync.commands import EmptyPayload
 
 router = APIRouter(tags=["invites"])
 
 MANAGE_ERRORS = problem_responses(401, 403, 404, 409, 422, 429, 503)
 PUBLIC_ERRORS = problem_responses(401, 403, 404, 409, 422, 429, 503)
-
-
-def invite_response(invite: PlanInvite | GroupInvite) -> InviteResponse:
-    if isinstance(invite, PlanInvite):
-        details = {
-            "kind": "plan",
-            "purpose": invite.purpose,
-            "allow_guests": invite.allow_guests,
-            "requires_approval": invite.requires_approval,
-            "email_bound": invite.intended_email_hash is not None,
-            "target_participant_id": invite.target_participant_id,
-        }
-    else:
-        details = {
-            "kind": "group",
-            "purpose": "join",
-            "allow_guests": False,
-            "requires_approval": False,
-            "email_bound": False,
-            "target_participant_id": None,
-        }
-    return InviteResponse.model_validate(
-        {
-            "id": invite.id,
-            "role": invite.role,
-            "max_uses": invite.max_uses,
-            "use_count": invite.use_count,
-            "expires_at": invite.expires_at,
-            "state": invite.state,
-            "created_at": invite.created_at,
-            **details,
-        }
-    )
-
-
-def created_response(invite: PlanInvite | GroupInvite, token: str) -> CreatedInviteResponse:
-    return CreatedInviteResponse(**invite_response(invite).model_dump(), token=token)
 
 
 async def _limit_invite_creation(runtime: RuntimeDep, actor: ActorDep) -> None:
@@ -103,7 +81,7 @@ async def create_plan_invite(
     )
     async with open_context(runtime, actor) as ctx:
         created = await plan_invites.create_join_invite(ctx, plan_id, settings)
-    return created_response(created.invite, created.token)
+    return created_invite_response(created.invite, created.token)
 
 
 @router.post(
@@ -126,7 +104,7 @@ async def create_claim_invite(
         created = await plan_invites.create_claim_invite(
             ctx, plan_id, participant_id, body.expires_in_hours
         )
-    return created_response(created.invite, created.token)
+    return created_invite_response(created.invite, created.token)
 
 
 @router.get(
@@ -146,11 +124,16 @@ async def list_plan_invites(
     responses=MANAGE_ERRORS,
 )
 async def revoke_plan_invite(
-    plan_id: UUID, invite_id: UUID, runtime: RuntimeDep, actor: ActorDep
+    plan_id: UUID,
+    invite_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
 ) -> InviteResponse:
-    async with open_context(runtime, actor) as ctx:
-        invite = await plan_invites.revoke_invite(ctx, plan_id, invite_id)
-    return invite_response(invite)
+    call = command_call(idempotency_key, plan_id=plan_id, invite_id=invite_id)
+    result = await runner.run(actor, plan_commands.PLAN_INVITE_REVOKE, call, EmptyPayload())
+    return finish(response, result)
 
 
 @router.post(
@@ -165,7 +148,7 @@ async def rotate_plan_invite(
     await _limit_invite_creation(runtime, actor)
     async with open_context(runtime, actor) as ctx:
         created = await plan_invites.rotate_invite(ctx, plan_id, invite_id)
-    return created_response(created.invite, created.token)
+    return created_invite_response(created.invite, created.token)
 
 
 @router.post(
@@ -186,7 +169,7 @@ async def create_group_invite(
             max_uses=body.max_uses,
             expires_in_hours=body.expires_in_hours,
         )
-    return created_response(created.invite, created.token)
+    return created_invite_response(created.invite, created.token)
 
 
 @router.get(
@@ -206,11 +189,16 @@ async def list_group_invites(
     responses=MANAGE_ERRORS,
 )
 async def revoke_group_invite(
-    group_id: UUID, invite_id: UUID, runtime: RuntimeDep, actor: ActorDep
+    group_id: UUID,
+    invite_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
 ) -> InviteResponse:
-    async with open_context(runtime, actor) as ctx:
-        invite = await group_invites.revoke_invite(ctx, group_id, invite_id)
-    return invite_response(invite)
+    call = command_call(idempotency_key, group_id=group_id, invite_id=invite_id)
+    result = await runner.run(actor, group_commands.GROUP_INVITE_REVOKE, call, EmptyPayload())
+    return finish(response, result)
 
 
 @router.post("/v1/invites/preview", response_model=InvitePreviewResponse, responses=PUBLIC_ERRORS)

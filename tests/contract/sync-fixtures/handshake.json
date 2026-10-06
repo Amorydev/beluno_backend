@@ -1,0 +1,15 @@
+{
+  "request": {"protocol_version": 1, "client": {"platform": "ios", "app_version": "1.4.0", "schema_version": 1}},
+  "response": {
+    "protocol": {"version": 1, "min_version": 1, "max_version": 1},
+    "features": {"push_enabled": true, "pull_enabled": true, "disabled_commands": []},
+    "limits": {"push_max_operations": 100, "push_max_bytes": 1048576, "pull_max_scopes": 20, "pull_page_size": 200, "pull_max_page_size": 500},
+    "retention": {"offline_window_days": 90, "change_retention_days": 180, "operation_retention_days": 180},
+    "commands": [{"name": "plan.update", "schema_version": 1, "versioned": true, "target_fields": ["plan_id"]}],
+    "scopes": [
+      {"scope": "user:01a10000-0000-7000-8000-000000000001", "head": 4, "floor": 0, "generation": 1, "access": "self"},
+      {"scope": "plan:01a10000-0000-7000-8000-000000000002", "head": 12, "floor": 0, "generation": 1, "access": "manager"}
+    ],
+    "next_directory_cursor": null
+  }
+}

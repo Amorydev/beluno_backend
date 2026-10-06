@@ -209,5 +209,5 @@ def test_role_and_table_ownership_invariants(admin: AdminDatabase) -> None:
         "WHERE c.relnamespace IN ('iam'::regnamespace, 'groups'::regnamespace, "
         "'plans'::regnamespace, 'sync_audit'::regnamespace) AND c.relkind = 'r'"
     )
-    assert len(tables) == 17
+    assert len(tables) == 19
     assert all(rls and owner == "migrator" for _, rls, owner in tables), tables

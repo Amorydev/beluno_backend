@@ -7,7 +7,7 @@ from typing import Any
 
 from beluno.db.models.plans import Plan, PlanInvite, PlanParticipant, PlanSeries
 from beluno.modules.context import CommandContext
-from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
+from beluno.modules.sync_audit.recorder import ChangeScope, record_change, record_mutation
 
 
 async def record_plan_change(
@@ -52,6 +52,16 @@ async def record_participant_change(
             **(metadata or {}),
         },
     )
+    if participant.user_id is not None:
+        # The person's own user scope learns about their access without reading the plan.
+        await record_change(
+            ctx,
+            entity_type="plan_access",
+            entity_id=participant.plan_id,
+            entity_version=participant.version,
+            scope=ChangeScope.USER,
+            scope_id=participant.user_id,
+        )
 
 
 async def record_invite_change(

@@ -165,7 +165,13 @@ async def test_group_plan_access_spine(
     ).json()
     assert [person["display_name"] for person in copy_roster] == ["Minh"]
 
-    # Every accepted mutation left an audit event and a change-log entry.
+    # Every accepted mutation left an audit event and a change-log entry; access
+    # signals add change rows of their own without an audit event.
     events = admin.scalar("SELECT count(*) FROM sync_audit.audit_events")
     changes = admin.scalar("SELECT count(*) FROM sync_audit.change_log")
-    assert events == changes > 20
+    signals = admin.scalar(
+        "SELECT count(*) FROM sync_audit.change_log "
+        "WHERE entity_type IN ('plan_access', 'group_access')"
+    )
+    assert events > 20
+    assert changes == events + signals

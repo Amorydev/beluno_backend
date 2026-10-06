@@ -185,7 +185,7 @@ async def insert_plan_with_owner(ctx: CommandContext, plan: Plan) -> PlanPartici
         role=PlanRole.OWNER,
     )
     try:
-        async with ctx.session.begin_nested():
+        async with ctx.savepoint():
             ctx.session.add(plan)
             await ctx.session.flush()
             ctx.session.add(owner)
@@ -373,7 +373,7 @@ async def _load_for_change(
     access = await load_plan(ctx, plan_id, for_update=True)
     require_plan(access, action)
     if access.plan.version != expected_version:
-        raise version_conflict()
+        raise version_conflict(access.plan)
     return access
 
 

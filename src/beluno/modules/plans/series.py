@@ -30,6 +30,7 @@ from beluno.authorization.policy import (
     Visibility,
 )
 from beluno.contracts.errors import (
+    conflict,
     forbidden,
     invalid_state,
     not_found,
@@ -60,6 +61,7 @@ log = logger("beluno.plans.series")
 
 @dataclass(frozen=True)
 class SeriesDraft:
+    series_id: UUID | None
     group_id: UUID | None
     title: str
     kind: str
@@ -110,7 +112,7 @@ async def create_series(ctx: CommandContext, draft: SeriesDraft) -> SeriesResult
     if draft.duration_minutes is not None and draft.local_start_time is None:
         raise validation_error("duration_minutes requires local_start_time")
     series = PlanSeries(
-        id=new_id(),
+        id=draft.series_id or new_id(),
         group_id=group.id if group else None,
         created_by_user_id=actor.user_id,
         title=draft.title,
@@ -132,8 +134,12 @@ async def create_series(ctx: CommandContext, draft: SeriesDraft) -> SeriesResult
         created_at=ctx.now,
         updated_at=ctx.now,
     )
-    ctx.session.add(series)
-    await ctx.session.flush()
+    try:
+        async with ctx.savepoint():
+            ctx.session.add(series)
+            await ctx.session.flush()
+    except IntegrityError as error:
+        raise conflict("ALREADY_EXISTS", "A resource with this id already exists") from error
     await _record_series(ctx, series, "plan_series.created")
     created = await materialize(ctx, series)
     return SeriesResult(series=series, created_plan_ids=created)
@@ -228,6 +234,7 @@ async def split_series(
     await _cancel_untouched(ctx, series, from_date=from_date)
     start_time = changes.local_start_time or series.local_start_time
     successor = SeriesDraft(
+        series_id=None,
         group_id=series.group_id,
         title=changes.title or series.title,
         kind=series.kind,
@@ -375,7 +382,7 @@ async def _insert_occurrence(
     try:
         # A savepoint keeps a concurrent duplicate from aborting the whole run. ON
         # CONFLICT is not usable here: RLS would require the new row to be readable.
-        async with ctx.session.begin_nested():
+        async with ctx.savepoint():
             await ctx.session.execute(statement)
     except IntegrityError:
         return None
@@ -490,7 +497,7 @@ async def _managed_series(
     if series.created_by_user_id != actor.user_id or actor.is_guest:
         raise forbidden("Only the series creator can change it")
     if series.version != expected_version:
-        raise version_conflict()
+        raise version_conflict(series)
     return series
 
 

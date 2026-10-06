@@ -1,0 +1,45 @@
+{
+  "request": {
+    "protocol_version": 1,
+    "device_id": "phone-1",
+    "operations": [
+      {
+        "operation_id": "01a10000-0000-7000-8000-00000000aa01",
+        "command": "plan.update",
+        "schema_version": 1,
+        "target": {"plan_id": "01a10000-0000-7000-8000-000000000002"},
+        "expected_version": 3,
+        "depends_on": [],
+        "payload": {"title": "Dinner, later"},
+        "client_created_at": "2026-10-06T08:00:00Z"
+      },
+      {
+        "operation_id": "01a10000-0000-7000-8000-00000000aa02",
+        "command": "plan.rsvp",
+        "target": {"plan_id": "01a10000-0000-7000-8000-000000000002"},
+        "depends_on": ["01a10000-0000-7000-8000-00000000aa01"],
+        "payload": {"status": "going"}
+      }
+    ]
+  },
+  "response": {
+    "results": [
+      {
+        "operation_id": "01a10000-0000-7000-8000-00000000aa01",
+        "outcome": "conflict",
+        "status": 412,
+        "version": null,
+        "body": null,
+        "problem": {"status": 412, "code": "VERSION_CONFLICT", "detail": "Reload the resource and retry with its current version", "details": null, "current": {"id": "01a10000-0000-7000-8000-000000000002", "title": "Dinner", "version": 4}, "retry_after_seconds": null}
+      },
+      {
+        "operation_id": "01a10000-0000-7000-8000-00000000aa02",
+        "outcome": "skipped",
+        "status": null,
+        "version": null,
+        "body": null,
+        "problem": {"status": 409, "code": "OPERATION_SKIPPED", "detail": "depends on operation 01a10000-0000-7000-8000-00000000aa01, which was not applied"}
+      }
+    ]
+  }
+}

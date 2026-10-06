@@ -8,6 +8,7 @@ from beluno.db.session import Database
 from beluno.modules.context import Runtime
 from beluno.modules.iam.email_delivery import EmailSender, build_email_sender
 from beluno.modules.iam.external_identity import ExternalIdentityVerifier
+from beluno.observability.setup import configure_observability
 from beluno.token_hashing import TokenHasher
 
 _runtime: Runtime | None = None
@@ -20,6 +21,7 @@ def get_worker_runtime() -> Runtime:
     global _runtime
     if _runtime is None:
         settings = get_settings()
+        configure_observability(None, settings)
         _runtime = Runtime(
             settings=settings,
             database=Database.for_worker(settings),
