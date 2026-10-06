@@ -400,3 +400,17 @@ def test_reconciliation_reports_drift_and_rebuild_repairs_it(
         # The worker reaches finance rows only through these gates.
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             worker.execute("SELECT count(*) FROM finance.ledger_postings")
+
+
+def test_the_merge_gate_only_moves_merged_rows_for_participants(
+    api_connection: psycopg.Connection, tenant: Tenant
+) -> None:
+    call = (
+        "SELECT finance.transfer_merged_balances(%s, %s, gen_random_uuid(), %s, NULL, now())"
+    )
+    with pytest.raises(psycopg.errors.InsufficientPrivilege), api_connection.transaction():
+        act_as(api_connection, tenant.outsider_user)
+        api_connection.execute(call, (tenant.plan_id, tenant.friend, tenant.outsider_user))
+    with pytest.raises(psycopg.errors.InvalidParameterValue), api_connection.transaction():
+        act_as(api_connection, tenant.owner_user)
+        api_connection.execute(call, (tenant.plan_id, tenant.friend, tenant.owner_user))

@@ -819,6 +819,10 @@ DECLARE
     survivor_account uuid;
     settled boolean;
 BEGIN
+    -- Only someone taking part in this plan's merge (claimer or claimed guest) may run it.
+    IF NOT plans.actor_has_participant_row(p_plan_id) THEN
+        RAISE EXCEPTION 'not a participant of this plan' USING ERRCODE = 'insufficient_privilege';
+    END IF;
     SELECT finance.resolve_participant(p_plan_id, merged_into_participant_id) INTO survivor
     FROM plans.plan_participants
     WHERE plan_id = p_plan_id AND id = p_participant_id AND access_state = 'merged';
