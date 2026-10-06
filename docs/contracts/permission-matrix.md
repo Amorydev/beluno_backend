@@ -85,8 +85,14 @@ State narrowing (applies on top of the table):
   (managers for placeholder or inactive creditors, never when they are the
   debtor) and never exceeds what the debtor owes overall and what the
   creditor is owed overall. Participants contribute to the fund for themselves;
-  contributions for others, withdrawals, and fund settings need `plan.fund.manage`
-  (owner or admin; no capability grants it).
+  contributions for others, withdrawals, and fund settings (including the target)
+  need `plan.fund.manage` (owner or admin; no capability grants it). Fund counts
+  (kitty stocktakes) are recorded by the custodian or a manager with `plan.fund.manage`.
+  Consolidation (settling everything in base currency) is `plan.ledger.consolidate`
+  (owner or admin only). Ledger configuration (settings) is `plan.ledger.configure`
+  (owner or admin). Ledger confirmation (participant intent) is `plan.ledger.confirm`
+  (all roles). Base currency change (owner or admin) appends a numbered rate; an
+  open consolidation blocks it.
 - Finance is private to the plan's active participants.
 - While deletion is scheduled only reads, leaving, and `plan.delete`
   (restore) are allowed.

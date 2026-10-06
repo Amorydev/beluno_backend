@@ -48,6 +48,8 @@ It cannot see these, so they are recorded here:
 - Sync commands removed: `plan.join`, `group.*`, `series.*`, `travel.*`.
   `plan.participant.change_role` became `plan.participant.update` (role,
   default share, capabilities, avatar colour).
+- `plan.update` no longer accepts `base_currency` (use
+  `POST /v1/plans/{id}/base-currency`).
 - Request bodies forbid unknown fields, so removed fields (`group_id`,
   `visibility`, `kind`, series and travel fields) now return `422`.
 - Nested response fields went away with them (plan list items, invite preview

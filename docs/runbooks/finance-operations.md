@@ -18,13 +18,35 @@ postings, revisions, or settlements; corrections are new entries.
 Logs carry plan and account identifiers only; amounts, descriptions, and notes
 are never logged.
 
+## Market Rates
+
+The `finance.ingest_market_rates` job runs daily to fetch market rates for offline
+estimates. Rates are stored in `finance.market_rates` (reference table, append-only,
+worker-only insert). The API serves the latest rates via `GET /v1/fx/rates?base=XXX`
+with `estimate_only: true`; the ledger never reads them. A `RateProvider` port
+exists for plugging in a rate source; currently a no-op adapter (no provider chosen;
+ECB lacks VND).
+
+## Consolidation
+
+A consolidation freezes one rate per foreign currency with open balances and moves
+everything into the base currency. Only the latest consolidation can be reversed
+via `POST /ledger/consolidations/{id}/reverse` with `If-Match`; reversal is
+possible only while no payment or waiver still in effect was recorded after it
+(409 `CONSOLIDATION_SETTLED`); reverse those first if the group agrees. A
+reversal posts one `conversion_reversal`. While a consolidation is active and
+the ledger is not settled, the base currency cannot change (409
+`CONSOLIDATION_OPEN`).
+
 ## Kill switch
 
 Set `BELUNO_FINANCE_WRITES_ENABLED=false` and restart the API. Every finance
 command answers `503 FEATURE_DISABLED` (push reports `retry`, so clients keep
 their outbox); reads, the journal, explanations, and sync pull stay available.
-The handshake reports `finance_writes_enabled: false`. Single commands can be
-disabled with `BELUNO_SYNC_DISABLED_COMMANDS`.
+The handshake reports `finance_writes_enabled: false`. Commands covered by the
+kill switch: `expense.*`, `settlement.*`, `budget.*`, `commitment.*`, `fund.*`,
+`ledger.*`, and `plan.change_base_currency`. Single commands can be disabled with
+`BELUNO_SYNC_DISABLED_COMMANDS`.
 
 ## Drift response
 
