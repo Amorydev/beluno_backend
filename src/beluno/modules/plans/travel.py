@@ -12,10 +12,11 @@ from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import PlanAction
-from beluno.contracts.errors import not_found, validation_error, version_conflict
+from beluno.contracts.errors import conflict, not_found, validation_error, version_conflict
 from beluno.db.ids import new_id
 from beluno.db.models.plans import TravelPlanDetails, TravelSegment
 from beluno.modules.context import CommandContext
@@ -25,6 +26,7 @@ from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
 
 @dataclass(frozen=True)
 class SegmentInput:
+    segment_id: UUID | None
     segment_type: str
     title: str | None
     origin_label: str | None
@@ -80,7 +82,7 @@ async def put_details(
         action = "travel.details_created"
     else:
         if expected_version is None or details.version != expected_version:
-            raise version_conflict()
+            raise version_conflict(details)
         details.destination_summary = destination_summary
         details.notes = notes
         details.version += 1
@@ -97,7 +99,7 @@ async def add_segment(ctx: CommandContext, plan_id: UUID, data: SegmentInput) ->
     if await ctx.session.get(TravelPlanDetails, plan_id) is None:
         raise validation_error("Add travel details before adding segments")
     segment = TravelSegment(
-        id=new_id(),
+        id=data.segment_id or new_id(),
         plan_id=plan_id,
         version=1,
         created_at=ctx.now,
@@ -105,8 +107,12 @@ async def add_segment(ctx: CommandContext, plan_id: UUID, data: SegmentInput) ->
         deleted_at=None,
     )
     _apply_segment(segment, data)
-    ctx.session.add(segment)
-    await ctx.session.flush()
+    try:
+        async with ctx.savepoint():
+            ctx.session.add(segment)
+            await ctx.session.flush()
+    except IntegrityError as error:
+        raise conflict("ALREADY_EXISTS", "A resource with this id already exists") from error
     await _record(ctx, plan_id, "travel_segment", segment.id, 1, "travel.segment_added")
     return segment
 
@@ -122,7 +128,7 @@ async def update_segment(
     require_plan(access, PlanAction.MANAGE_TRAVEL)
     segment = await _segment(ctx, plan_id, segment_id)
     if segment.version != expected_version:
-        raise version_conflict()
+        raise version_conflict(segment)
     _apply_segment(segment, data)
     segment.version += 1
     segment.updated_at = ctx.now

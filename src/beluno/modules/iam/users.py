@@ -204,7 +204,7 @@ async def update_profile(
     actor = ctx.require_actor()
     user = await load_user(ctx, actor.user_id, for_update=True)
     if user.version != expected_version:
-        raise version_conflict()
+        raise version_conflict(user)
     if changes.display_name is not None:
         user.display_name = changes.display_name
     if changes.locale is not None or changes.clear_locale:

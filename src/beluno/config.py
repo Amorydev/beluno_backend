@@ -100,6 +100,18 @@ class Settings(BaseSettings):
     invites_enabled: bool = True
     guest_access_enabled: bool = True
     participant_claims_enabled: bool = True
+    sync_push_enabled: bool = True
+    sync_pull_enabled: bool = True
+    # Command names (for example ``plan.duplicate``) refused on REST and push alike.
+    sync_disabled_commands: list[str] = Field(default_factory=list)
+
+    # Sync kernel: offline support window and the retention that must outlast it.
+    sync_offline_window_days: int = Field(default=90, ge=1, le=365)
+    sync_change_retention_days: int = Field(default=180, ge=1, le=3_650)
+    sync_operation_retention_days: int = Field(default=180, ge=1, le=3_650)
+    sync_push_max_operations: int = Field(default=100, ge=1, le=1_000)
+    sync_push_max_bytes: int = Field(default=1_048_576, ge=4_096, le=10_485_760)
+    sync_pull_page_size: int = Field(default=200, ge=10, le=1_000)
 
     @field_validator(
         "api_database_url",
@@ -204,6 +216,17 @@ class Settings(BaseSettings):
             self._assert_https_url(
                 "BELUNO_OTEL_EXPORTER_OTLP_ENDPOINT",
                 self.otel_exporter_otlp_endpoint,
+            )
+        self.assert_retention_requirements()
+
+    def assert_retention_requirements(self) -> None:
+        """Retention must outlast the offline window or replays and cursors break."""
+
+        shortest = min(self.sync_change_retention_days, self.sync_operation_retention_days)
+        if shortest < self.sync_offline_window_days:
+            raise RuntimeError(
+                "BELUNO_SYNC_CHANGE_RETENTION_DAYS and BELUNO_SYNC_OPERATION_RETENTION_DAYS "
+                "must be at least BELUNO_SYNC_OFFLINE_WINDOW_DAYS"
             )
 
     def assert_production_requirements(self) -> None:

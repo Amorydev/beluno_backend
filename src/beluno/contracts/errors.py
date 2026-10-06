@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -18,6 +20,8 @@ class ProblemDetails(BaseModel):
     code: str = Field(pattern=r"^[A-Z0-9_]+$")
     request_id: str | None = None
     details: dict[str, str] | None = None
+    # ``VERSION_CONFLICT`` only: the canonical current representation of the resource.
+    current: dict[str, Any] | None = None
 
 
 class PublicProblemResponse(BaseModel):
@@ -30,6 +34,7 @@ class PublicProblemResponse(BaseModel):
     instance: str | None = None
     code: str
     request_id: str | None = None
+    current: dict[str, Any] | None = None
 
 
 class BelunoError(Exception):
@@ -52,6 +57,20 @@ class BelunoError(Exception):
         self.detail = detail
         self.details = details
         self.headers = headers
+        self.current: dict[str, Any] | None = None
+
+
+class VersionConflictError(BelunoError):
+    """A stale expected version; carries the entity so the executor can attach ``current``."""
+
+    def __init__(self, entity: object | None = None) -> None:
+        super().__init__(
+            status=412,
+            code="VERSION_CONFLICT",
+            title="Resource version has changed",
+            detail="Reload the resource and retry with its current version",
+        )
+        self.entity = entity
 
 
 def not_found() -> BelunoError:
@@ -81,13 +100,10 @@ def invalid_state(detail: str) -> BelunoError:
     return conflict("INVALID_STATE_TRANSITION", "Action is not valid in the current state", detail)
 
 
-def version_conflict() -> BelunoError:
-    return BelunoError(
-        status=412,
-        code="VERSION_CONFLICT",
-        title="Resource version has changed",
-        detail="Reload the resource and retry with its current version",
-    )
+def version_conflict(entity: object | None = None) -> BelunoError:
+    """``entity`` is the row whose version was stale; its snapshot is returned as ``current``."""
+
+    return VersionConflictError(entity)
 
 
 def precondition_required() -> BelunoError:

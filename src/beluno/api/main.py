@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from beluno import __version__
+from beluno.api.commands import build_registry
 from beluno.api.routers import (
     auth,
     groups,
@@ -37,6 +38,7 @@ from beluno.modules.context import Runtime, utc_now
 from beluno.modules.iam.external_identity import ExternalIdentityVerifier
 from beluno.observability.context import get_request_id, reset_request_id, set_request_id
 from beluno.observability.setup import configure_observability
+from beluno.sync.executor import CommandRunner
 from beluno.token_hashing import TokenHasher
 
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
@@ -142,6 +144,7 @@ def create_app(
     )
     app.state.database = active_database
     app.state.runtime = runtime
+    app.state.command_runner = CommandRunner(runtime, build_registry())
     configure_observability(app, active_settings)
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=active_settings.api_max_request_bytes)
     app.add_middleware(RequestContextMiddleware)
@@ -191,6 +194,7 @@ def create_app(
         detail: str | None = None,
         details: dict[str, str] | None = None,
         headers: dict[str, str] | None = None,
+        current: dict[str, Any] | None = None,
     ) -> JSONResponse:
         problem = ProblemDetails(
             title=title,
@@ -200,6 +204,7 @@ def create_app(
             code=code,
             request_id=get_request_id(),
             details=details,
+            current=current,
         )
         return JSONResponse(
             status_code=status_code,
@@ -218,6 +223,7 @@ def create_app(
             detail=error.detail,
             details=error.details,
             headers=error.headers,
+            current=error.current,
         )
 
     @app.exception_handler(StarletteHTTPException)

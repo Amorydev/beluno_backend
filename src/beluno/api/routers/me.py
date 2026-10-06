@@ -6,10 +6,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Response, status
 
-from beluno.api.dependencies import ActorDep, RuntimeDep
-from beluno.api.http import IfMatch, parse_if_match, set_etag
+from beluno.api.commands import profile as commands
+from beluno.api.dependencies import ActorDep, RunnerDep, RuntimeDep
+from beluno.api.http import IdempotencyKey, IfMatch, command_call, finish, set_etag
+from beluno.api.presenters import profile_response
 from beluno.api.problems import problem_responses
-from beluno.api.routers.auth import profile_response
 from beluno.contracts.errors import not_found
 from beluno.contracts.iam import ProfileUpdateRequest, SessionResponse, UserProfileResponse
 from beluno.modules.context import open_context
@@ -32,28 +33,18 @@ async def get_profile(
 @router.patch(
     "",
     response_model=UserProfileResponse,
-    responses=problem_responses(401, 412, 422, 428, 503),
+    responses=problem_responses(401, 409, 412, 422, 428, 503),
 )
 async def update_profile(
     body: ProfileUpdateRequest,
-    runtime: RuntimeDep,
+    runner: RunnerDep,
     actor: ActorDep,
     response: Response,
     if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
 ) -> UserProfileResponse:
-    expected_version = parse_if_match(if_match)
-    fields = body.model_fields_set
-    changes = users.ProfileChanges(
-        display_name=body.display_name,
-        locale=body.locale,
-        timezone=body.timezone,
-        clear_locale="locale" in fields and body.locale is None,
-        clear_timezone="timezone" in fields and body.timezone is None,
-    )
-    async with open_context(runtime, actor) as ctx:
-        user = await users.update_profile(ctx, changes, expected_version)
-    set_etag(response, user.version)
-    return profile_response(user)
+    call = command_call(idempotency_key, if_match=if_match)
+    return finish(response, await runner.run(actor, commands.PROFILE_UPDATE, call, body))
 
 
 @router.get(

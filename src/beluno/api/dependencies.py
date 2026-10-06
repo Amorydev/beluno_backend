@@ -10,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from beluno.auth import AuthenticatedActor
 from beluno.db.session import Database
 from beluno.modules.context import Runtime
+from beluno.sync.executor import CommandRunner
 
 bearer_scheme = HTTPBearer(auto_error=False)
 BearerCredentials = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)]
@@ -21,6 +22,10 @@ def get_database(request: Request) -> Database:
 
 def get_runtime(request: Request) -> Runtime:
     return cast(Runtime, request.app.state.runtime)
+
+
+def get_command_runner(request: Request) -> CommandRunner:
+    return cast(CommandRunner, request.app.state.command_runner)
 
 
 def get_current_actor(
@@ -55,5 +60,6 @@ def client_subject(request: Request) -> str:
 
 
 RuntimeDep = Annotated[Runtime, Depends(get_runtime)]
+RunnerDep = Annotated[CommandRunner, Depends(get_command_runner)]
 ActorDep = Annotated[AuthenticatedActor, Depends(get_current_actor)]
 OptionalActorDep = Annotated[AuthenticatedActor | None, Depends(get_optional_actor)]

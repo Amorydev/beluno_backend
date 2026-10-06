@@ -12,6 +12,7 @@ from beluno.api.dependencies import (
     RuntimeDep,
     client_subject,
 )
+from beluno.api.presenters import device_info, token_response
 from beluno.api.problems import problem_responses
 from beluno.contracts.errors import authentication_failed
 from beluno.contracts.iam import (
@@ -23,13 +24,11 @@ from beluno.contracts.iam import (
     JwksResponse,
     RefreshRequest,
     TokenResponse,
-    UserProfileResponse,
 )
-from beluno.db.models.iam import User
 from beluno.modules.context import open_context
 from beluno.modules.iam import email_challenges, rate_limits
 from beluno.modules.iam.external_identity import IdentityProvider, VerifiedIdentity
-from beluno.modules.iam.sessions import DeviceInfo, IssuedTokens, find_session, refresh_session
+from beluno.modules.iam.sessions import IssuedTokens, find_session, refresh_session
 from beluno.modules.iam.sessions import revoke_session as revoke_auth_session
 from beluno.modules.iam.sign_in import AuthenticationRequest, authenticate
 from beluno.modules.plans.guest_claims import transfer_guest_participations
@@ -38,41 +37,6 @@ from beluno.token_hashing import normalize_email
 router = APIRouter(tags=["auth"])
 
 SIGN_IN_ERRORS = problem_responses(401, 403, 409, 422, 429, 503)
-
-
-def profile_response(user: User) -> UserProfileResponse:
-    return UserProfileResponse.model_validate(
-        {
-            "id": user.id,
-            "kind": user.kind,
-            "display_name": user.display_name,
-            "email": user.email,
-            "locale": user.locale,
-            "timezone": user.timezone,
-            "version": user.version,
-        }
-    )
-
-
-def token_response(tokens: IssuedTokens) -> TokenResponse:
-    return TokenResponse(
-        access_token=tokens.access_token,
-        expires_at=tokens.access_token_expires_at,
-        refresh_token=tokens.refresh_token,
-        session_id=tokens.session_id,
-        user=profile_response(tokens.user),
-    )
-
-
-def device_info(device: DeviceRequest | None) -> DeviceInfo:
-    if device is None:
-        return DeviceInfo()
-    return DeviceInfo(
-        client_device_id=device.client_device_id,
-        label=device.label,
-        platform=device.platform,
-        app_version=device.app_version,
-    )
 
 
 async def _complete(

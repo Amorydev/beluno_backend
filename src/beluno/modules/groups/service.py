@@ -296,7 +296,7 @@ async def change_member_role(
     require_group(access, GroupAction.CHANGE_MEMBER_ROLE)
     target = await _live_target(ctx, group_id, user_id)
     if target.version != expected_version:
-        raise version_conflict()
+        raise version_conflict(target)
     if not can_manage_group_member(_role(access), GroupRole(target.role), new_role=role):
         raise forbidden()
     target.role = role.value
@@ -382,7 +382,7 @@ async def _load_for_change(
     access = await load_group(ctx, group_id, for_update=True)
     require_group(access, action)
     if access.group.version != expected_version:
-        raise version_conflict()
+        raise version_conflict(access.group)
     return access
 
 

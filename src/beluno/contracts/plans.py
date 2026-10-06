@@ -82,10 +82,15 @@ class PlanTiming(BaseModel):
 
 
 class ParticipantSeed(BaseModel):
-    """A registered person (``user_id``) or a name-only placeholder."""
+    """A registered person (``user_id``) or a name-only placeholder.
+
+    ``id`` is an optional client-generated participant ID; it is ignored when the
+    person already has a participant row in the plan (that row is reused).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID | None = None
     user_id: UUID | None = None
     placeholder_name: DisplayName | None = None
     role: AssignablePlanRole = "member"
@@ -206,10 +211,14 @@ class TravelDetailsRequest(BaseModel):
 
 
 class TravelSegmentRequest(BaseModel):
-    """Local wall-clock times with IANA zones (flights cross zones), or dates only."""
+    """Local wall-clock times with IANA zones (flights cross zones), or dates only.
+
+    ``id`` is an optional client-generated ID for a new segment; updates ignore it.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID | None = None
     segment_type: Literal["flight", "train", "bus", "car", "ferry", "lodging", "other"]
     title: Label | None = None
     origin_label: Label | None = None
@@ -303,6 +312,7 @@ class SeriesCreateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID | None = None
     group_id: UUID | None = None
     title: Title
     kind: PlanKind = "custom"

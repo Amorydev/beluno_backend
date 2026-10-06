@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from beluno.authorization.access import (
     PlanAccess,
@@ -48,6 +49,8 @@ class Seed:
     user_id: UUID | None
     placeholder_name: str | None
     role: PlanRole
+    # Client-generated ID for a new participant row; ignored when a row is reused.
+    participant_id: UUID | None = None
 
 
 def build_participant(
@@ -61,9 +64,10 @@ def build_participant(
     access_state: AccessState = AccessState.ACTIVE,
     added_by_user_id: UUID | None = None,
     invite_id: UUID | None = None,
+    participant_id: UUID | None = None,
 ) -> PlanParticipant:
     return PlanParticipant(
-        id=new_id(),
+        id=participant_id or new_id(),
         plan_id=plan_id,
         identity_kind=identity_kind,
         user_id=user_id,
@@ -90,8 +94,12 @@ async def insert_participant(
     participant: PlanParticipant,
     action: str = "plan_participant.added",
 ) -> PlanParticipant:
-    ctx.session.add(participant)
-    await ctx.session.flush()
+    try:
+        async with ctx.savepoint():
+            ctx.session.add(participant)
+            await ctx.session.flush()
+    except IntegrityError as error:
+        raise conflict("ALREADY_EXISTS", "A resource with this id already exists") from error
     await record_participant_change(ctx, participant, action)
     return participant
 
@@ -147,6 +155,7 @@ async def add_seeded_participant(
                 display_name=seed.placeholder_name,
                 role=seed.role,
                 added_by_user_id=actor_id,
+                participant_id=seed.participant_id,
             ),
         )
     assert seed.user_id is not None
@@ -169,6 +178,7 @@ async def add_seeded_participant(
             display_name=user.display_name,
             role=seed.role,
             added_by_user_id=actor_id,
+            participant_id=seed.participant_id,
         ),
     )
 
@@ -213,7 +223,7 @@ async def change_role(
     require_plan(access, PlanAction.CHANGE_PARTICIPANT_ROLE)
     target = await _target(ctx, plan_id, participant_id, states=(AccessState.ACTIVE.value,))
     if target.version != expected_version:
-        raise version_conflict()
+        raise version_conflict(target)
     if not can_manage_participant(_role(access), PlanRole(target.role), new_role=role):
         raise forbidden()
     if target.identity_kind != "user" and role is PlanRole.ADMIN:
@@ -334,7 +344,7 @@ async def transfer_ownership(
     access = await load_plan(ctx, plan_id, for_update=True)
     require_plan(access, PlanAction.TRANSFER_OWNERSHIP)
     if access.plan.version != expected_version:
-        raise version_conflict()
+        raise version_conflict(access.plan)
     current = access.participant
     assert current is not None
     if new_owner_participant_id == current.id:
