@@ -134,3 +134,64 @@ class PullScopeResponse(BaseModel):
 
 class PullResponse(BaseModel):
     scopes: list[PullScopeResponse]
+
+
+MAX_PUSH_OPERATIONS = 1_000
+PushOutcome = Literal[
+    "applied", "replayed", "conflict", "rejected", "upgrade_required", "retry", "skipped"
+]
+
+
+class PushOperation(BaseModel):
+    """One queued client mutation. ``operation_id`` doubles as its idempotency key."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: UUID
+    command: CommandName
+    schema_version: int = Field(default=1, ge=1)
+    target: dict[str, UUID] = Field(default_factory=dict)
+    expected_version: int | None = Field(default=None, ge=1)
+    # Operation IDs (from this batch or earlier ones) that must have been applied first.
+    depends_on: list[UUID] = Field(default_factory=list, max_length=20)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    # Untrusted metadata: the server's own sequence orders changes.
+    client_created_at: datetime | None = None
+
+
+class PushRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    protocol_version: int = Field(default=1, ge=1)
+    device_id: str | None = Field(default=None, min_length=1, max_length=64)
+    operations: list[PushOperation] = Field(min_length=1, max_length=MAX_PUSH_OPERATIONS)
+
+
+class PushProblem(BaseModel):
+    """Why an operation did not apply; mirrors the REST problem fields."""
+
+    status: int
+    code: str
+    detail: str | None = None
+    details: dict[str, str] | None = None
+    # ``VERSION_CONFLICT``: the canonical current representation to reconcile against.
+    current: dict[str, Any] | None = None
+    retry_after_seconds: int | None = None
+
+
+class PushResult(BaseModel):
+    """``applied``/``replayed`` carry the command's response; ``conflict``,
+    ``rejected`` and ``upgrade_required`` are permanent for this payload; ``retry``
+    is transient; ``skipped`` means an ordering or dependency requirement failed and
+    the operation was not attempted."""
+
+    operation_id: UUID
+    outcome: PushOutcome
+    status: int | None
+    version: int | None
+    body: dict[str, Any] | None
+    problem: PushProblem | None
+
+
+class PushResponse(BaseModel):
+    results: list[PushResult]

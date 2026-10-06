@@ -2525,6 +2525,278 @@
         "title": "PullScopeResponse",
         "type": "object"
       },
+      "PushOperation": {
+        "additionalProperties": false,
+        "description": "One queued client mutation. ``operation_id`` doubles as its idempotency key.",
+        "properties": {
+          "client_created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Created At"
+          },
+          "command": {
+            "pattern": "^[a-z][a-z0-9_.]{0,63}$",
+            "title": "Command",
+            "type": "string"
+          },
+          "depends_on": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Depends On",
+            "type": "array"
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "target": {
+            "additionalProperties": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Target",
+            "type": "object"
+          }
+        },
+        "required": [
+          "operation_id",
+          "command"
+        ],
+        "title": "PushOperation",
+        "type": "object"
+      },
+      "PushProblem": {
+        "description": "Why an operation did not apply; mirrors the REST problem fields.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "retry_after_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry After Seconds"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "code"
+        ],
+        "title": "PushProblem",
+        "type": "object"
+      },
+      "PushRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "device_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/PushOperation"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Operations",
+            "type": "array"
+          },
+          "protocol_version": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Protocol Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "operations"
+        ],
+        "title": "PushRequest",
+        "type": "object"
+      },
+      "PushResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/PushResult"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "PushResponse",
+        "type": "object"
+      },
+      "PushResult": {
+        "description": "``applied``/``replayed`` carry the command's response; ``conflict``,\n``rejected`` and ``upgrade_required`` are permanent for this payload; ``retry``\nis transient; ``skipped`` means an ordering or dependency requirement failed and\nthe operation was not attempted.",
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "applied",
+              "replayed",
+              "conflict",
+              "rejected",
+              "upgrade_required",
+              "retry",
+              "skipped"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PushProblem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "operation_id",
+          "outcome",
+          "status",
+          "version",
+          "body",
+          "problem"
+        ],
+        "title": "PushResult",
+        "type": "object"
+      },
       "RedeemInviteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -11354,6 +11626,103 @@
           }
         ],
         "summary": "Pull",
+        "tags": [
+          "sync"
+        ]
+      }
+    },
+    "/v1/sync/push": {
+      "post": {
+        "description": "Apply queued operations in order; every operation gets its own result.\n\nKeep retrying ``retry`` and ``skipped`` operations unchanged with the same\n``operation_id``; drop or revise ``rejected``, ``conflict`` and\n``upgrade_required`` ones. Replays of applied operations are free.",
+        "operationId": "push_v1_sync_push_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request body exceeds the configured size limit."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "426": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The client protocol or schema version is not supported; upgrade the client."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Push",
         "tags": [
           "sync"
         ]

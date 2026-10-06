@@ -12,6 +12,7 @@ PROBLEM_DESCRIPTIONS = {
     404: "The resource is absent or not visible to the caller.",
     409: "The request conflicts with the current resource state.",
     412: "The If-Match version is stale.",
+    413: "The request body exceeds the configured size limit.",
     422: "The request does not satisfy the contract.",
     426: "The client protocol or schema version is not supported; upgrade the client.",
     428: "An If-Match header is required.",

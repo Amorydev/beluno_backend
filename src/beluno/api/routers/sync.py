@@ -1,16 +1,16 @@
-"""Sync protocol: handshake and cursor-based pull.
+"""Sync protocol: handshake, idempotent push batches, and cursor-based pull.
 
 Realtime is only a wake-up hint; these endpoints are the durable protocol.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from beluno.api.dependencies import ActorDep, RunnerDep, RuntimeDep
 from beluno.api.problems import problem_responses
 from beluno.api.projection import FeedProjector
-from beluno.contracts.errors import feature_disabled, validation_error
+from beluno.contracts.errors import BelunoError, feature_disabled, validation_error
 from beluno.contracts.sync import (
     MAX_PULL_PAGE_SIZE,
     MAX_PULL_SCOPES,
@@ -22,12 +22,15 @@ from beluno.contracts.sync import (
     PullRequest,
     PullResponse,
     PullScopeResponse,
+    PushRequest,
+    PushResponse,
     RetentionInfo,
     ScopeEntry,
     SyncFeatures,
     SyncLimits,
 )
 from beluno.modules.context import Runtime, open_context
+from beluno.modules.iam import rate_limits
 from beluno.sync.commands import (
     PROTOCOL_VERSION_MAX,
     PROTOCOL_VERSION_MIN,
@@ -42,6 +45,7 @@ from beluno.sync.cursor import (
 )
 from beluno.sync.directory import directory_page
 from beluno.sync.pull import pull_scope
+from beluno.sync.push import push_batch
 from beluno.sync.scopes import ScopeKey
 
 router = APIRouter(prefix="/v1/sync", tags=["sync"])
@@ -49,6 +53,7 @@ PROJECTOR = FeedProjector()
 
 HANDSHAKE_ERRORS = problem_responses(401, 422, 426, 503)
 PULL_ERRORS = problem_responses(401, 422, 426, 503)
+PUSH_ERRORS = problem_responses(401, 413, 422, 426, 429, 503)
 
 
 def require_protocol_version(version: int) -> None:
@@ -179,3 +184,40 @@ async def pull(body: PullRequest, runtime: RuntimeDep, actor: ActorDep) -> PullR
             for page in pages
         ]
     )
+
+
+def request_too_large() -> BelunoError:
+    return BelunoError(
+        status=413,
+        code="REQUEST_TOO_LARGE",
+        title="Push batch too large",
+        detail="Split the batch; see limits.push_max_bytes from the handshake",
+    )
+
+
+@router.post("/push", response_model=PushResponse, responses=PUSH_ERRORS)
+async def push(
+    body: PushRequest, request: Request, runtime: RuntimeDep, runner: RunnerDep, actor: ActorDep
+) -> PushResponse:
+    """Apply queued operations in order; every operation gets its own result.
+
+    Keep retrying ``retry`` and ``skipped`` operations unchanged with the same
+    ``operation_id``; drop or revise ``rejected``, ``conflict`` and
+    ``upgrade_required`` ones. Replays of applied operations are free.
+    """
+
+    require_protocol_version(body.protocol_version)
+    settings = runtime.settings
+    if not settings.sync_push_enabled:
+        raise feature_disabled()
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None and int(declared_length) > settings.sync_push_max_bytes:
+        raise request_too_large()
+    if len(body.operations) > settings.sync_push_max_operations:
+        raise validation_error(
+            f"a batch may contain at most {settings.sync_push_max_operations} operations"
+        )
+    await rate_limits.enforce_rate_limit(
+        runtime, rate_limits.SYNC_PUSH_PER_USER, str(actor.user_id)
+    )
+    return PushResponse(results=await push_batch(runner, actor, body))
