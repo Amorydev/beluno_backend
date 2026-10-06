@@ -179,6 +179,7 @@ def expense_draft(body: ExpenseRequest, origin: RevisionOrigin) -> ExpenseDraft:
                 rate=body.base_rate.rate,
                 source=RateSource(body.base_rate.source),
                 as_of=body.base_rate.as_of,
+                base_currency=body.base_rate.base_currency,
             )
             if body.base_rate
             else None
@@ -644,6 +645,7 @@ def commitment_draft(body: CommitmentCreateRequest | CommitmentUpdateRequest) ->
                 rate=body.base_rate.rate,
                 source=RateSource(body.base_rate.source),
                 as_of=body.base_rate.as_of,
+                base_currency=body.base_rate.base_currency,
             )
             if body.base_rate
             else None

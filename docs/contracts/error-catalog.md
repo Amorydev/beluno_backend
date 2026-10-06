@@ -29,6 +29,7 @@ submitted values.
 | `LEDGER_CHANGED` | 409 | A confirmation named an older `ledger_seq`; review the latest entries and confirm again |
 | `FUND_NOT_EMPTY` | 409 | The kitty still holds money in a currency to consolidate; pay it out first |
 | `CONSOLIDATION_SETTLED` | 409 | A payment or waiver still in effect was recorded after this consolidation; reverse it first or keep the base-currency balances |
+| `BASE_CURRENCY_CHANGED` | 409 | A rate named a base currency the plan has since moved away from; refresh and send a rate to the current one |
 | `CONSOLIDATION_OPEN` | 409 | An active consolidation exists and the ledger is not settled; settle up or reverse that consolidation before changing the base currency |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Same `Idempotency-Key` or `operation_id` was sent with a different request |
 | `OPERATION_SKIPPED` | 409 (push item only) | The operation was not attempted: an earlier operation on the same scope must be retried first, or a dependency was not applied |

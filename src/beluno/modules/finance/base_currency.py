@@ -24,7 +24,13 @@ from sqlalchemy import select
 
 from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import PlanAction
-from beluno.contracts.errors import conflict, invalid_state, validation_error, version_conflict
+from beluno.contracts.errors import (
+    BelunoError,
+    conflict,
+    invalid_state,
+    validation_error,
+    version_conflict,
+)
 from beluno.db.models.finance import (
     BaseCurrencyChange,
     Budget,
@@ -179,6 +185,8 @@ async def change_base_currency(
                 created_at=ctx.now,
             )
         )
+        # The plan's write guard accepts the new base only along a recorded change.
+        await ctx.session.flush()
         exponents = (
             (await ledger.currency(previous)).exponent,
             (await ledger.currency(currency)).exponent,
@@ -203,7 +211,12 @@ async def change_base_currency(
 
 
 def _rebase(amount: int, exponents: tuple[int, int], rate: Decimal, *, minimum: int) -> int:
-    converted = convert(amount, from_exponent=exponents[0], to_exponent=exponents[1], rate=rate)
+    """A setting re-denominated at ``rate``, kept within the supported bounds."""
+
+    try:
+        converted = convert(amount, from_exponent=exponents[0], to_exponent=exponents[1], rate=rate)
+    except BelunoError:
+        return MAX_AMOUNT_MINOR
     return min(max(converted, minimum), MAX_AMOUNT_MINOR)
 
 

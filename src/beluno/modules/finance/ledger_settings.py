@@ -17,12 +17,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
+from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import PlanAction
-from beluno.contracts.errors import conflict
-from beluno.db.models.finance import LedgerConfirmation
+from beluno.contracts.errors import conflict, invalid_state
+from beluno.db.models.finance import LedgerConfirmation, LedgerHead
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.errors import amount_out_of_range
-from beluno.modules.finance.ledger import LEDGER_ENTITY, open_ledger
+from beluno.modules.finance.ledger import LEDGER_ENTITY, ledger_for, open_ledger
 from beluno.modules.finance.views import LedgerSnapshot, ledger_snapshot
 from beluno.modules.sync_audit.recorder import record_audit
 
@@ -70,9 +71,16 @@ async def configure_ledger(
 async def confirm_ledger(ctx: CommandContext, plan_id: UUID, ledger_seq: int) -> LedgerSnapshot:
     """The caller says the ledger as of ``ledger_seq`` looks right (an intent command)."""
 
-    ledger = await open_ledger(ctx, plan_id, PlanAction.CONFIRM_LEDGER)
+    access = await load_plan(ctx, plan_id, for_update=True)
+    require_plan(access, PlanAction.CONFIRM_LEDGER)
+    # Confirming never creates a ledger: with no entries there is nothing to confirm.
+    if await ctx.session.get(LedgerHead, plan_id) is None:
+        raise invalid_state("There are no entries to confirm yet")
+    ledger = await ledger_for(ctx, access)
     own = ledger.access.participant
     assert own is not None
+    if ledger.head.ledger_seq == 0:
+        raise invalid_state("There are no entries to confirm yet")
     if ledger_seq != ledger.head.ledger_seq:
         raise conflict(
             "LEDGER_CHANGED",

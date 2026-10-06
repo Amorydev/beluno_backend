@@ -33,7 +33,7 @@ from beluno.modules.finance.base_currency import base_currency_at
 from beluno.modules.finance.fx import RateSource, convert, parse_rate
 from beluno.modules.finance.ledger import Ledger, ledger_for, open_ledger
 from beluno.modules.finance.money import check_amount
-from beluno.modules.finance.rates import RateInput, record_rate
+from beluno.modules.finance.rates import RateInput, record_rate, require_current_base
 from beluno.modules.finance.states import (
     COMMITMENT_TRANSITIONS,
     LINKABLE_COMMITMENT_STATES,
@@ -263,6 +263,8 @@ async def _apply(ledger: Ledger, commitment: CostCommitment, draft: CommitmentDr
     check_amount(draft.amount_minor, field="amount_minor")
     currency = await ledger.currency(draft.currency)
     base_currency = ledger.access.plan.base_currency
+    if draft.base_rate is not None:
+        require_current_base(draft.base_rate, base_currency)
     snapshot_id: UUID | None = None
     base_amount: int | None = None
     if draft.currency == base_currency:

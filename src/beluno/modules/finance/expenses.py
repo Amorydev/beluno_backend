@@ -47,7 +47,7 @@ from beluno.modules.finance.postings import (
     refund_allocation,
     refund_postings,
 )
-from beluno.modules.finance.rates import RateInput, record_rate
+from beluno.modules.finance.rates import RateInput, record_rate, require_current_base
 from beluno.modules.finance.splits import (
     SPLIT_ALGORITHM,
     Payer,
@@ -591,6 +591,8 @@ async def _base_amount(
 ) -> tuple[int | None, FxSnapshot | None]:
     """The labelled base-currency value: identity, a stored snapshot, or unknown."""
 
+    if draft.base_rate is not None:
+        require_current_base(draft.base_rate, base_currency)
     if draft.currency == base_currency:
         return draft.amount_minor, None
     if draft.base_rate is None:

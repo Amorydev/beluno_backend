@@ -263,8 +263,15 @@ def test_debt_preview_leaves_out_balances_within_the_tolerance() -> None:
         (t.from_participant_id, t.to_participant_id, t.amount_minor) for t in preview.transfers
     ] == [(a, b, 100)]
     assert simplify_debts({a: -3, b: 3}, tolerance=5).transfers == []
+    # B's 2 stays in the fund: within the tolerance it counts as settled.
     payout = simplify_debts({a: 10, b: 2}, fund_available=12, tolerance=5)
     assert [(p.to_participant_id, p.amount_minor) for p in payout.fund_payouts] == [(a, 10)]
+    # Small debts that add up to a large credit are still suggested, exactly.
+    small = dict(zip(PEOPLE[1:6], [-40] * 5, strict=True))
+    owed = simplify_debts({a: 200, **small}, tolerance=50)
+    assert sorted((t.from_participant_id, t.amount_minor) for t in owed.transfers) == sorted(
+        (pid, 40) for pid in small
+    )
 
 
 def test_consolidation_shares_the_converted_total_on_each_side() -> None:
@@ -486,3 +493,24 @@ def test_consolidation_is_zero_sum_and_close_to_each_exact_value(
     for pid, value in balances.items():
         assert (value > 0) == (amounts[pid] >= 0) or amounts[pid] == 0
         assert abs(Decimal(amounts[pid]) - Decimal(value) * scale) < 2
+
+
+@given(
+    st.lists(st.integers(min_value=-10_000, max_value=10_000), min_size=1, max_size=12),
+    st.integers(min_value=0, max_value=500),
+)
+@settings(max_examples=300, deadline=None)
+def test_the_preview_is_empty_exactly_when_everyone_is_within_the_tolerance(
+    values: list[int], tolerance: int
+) -> None:
+    balances = dict(zip(PEOPLE, values, strict=False))
+    balances[PEOPLE[len(balances)]] = -sum(balances.values())
+    preview = simplify_debts(balances, tolerance=tolerance)
+    settled = all(abs(value) <= tolerance for value in balances.values())
+    assert (preview.transfers == []) == settled
+    # Whatever is suggested leaves nobody outside the tolerance.
+    after = dict(balances)
+    for transfer in preview.transfers:
+        after[transfer.from_participant_id] += transfer.amount_minor
+        after[transfer.to_participant_id] -= transfer.amount_minor
+    assert all(abs(value) <= tolerance for value in after.values())

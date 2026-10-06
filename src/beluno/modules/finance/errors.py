@@ -68,6 +68,14 @@ def fund_insufficient() -> BelunoError:
     )
 
 
+def base_currency_changed() -> BelunoError:
+    return conflict(
+        "BASE_CURRENCY_CHANGED",
+        "The plan's base currency changed",
+        "Refresh the plan and give a rate to its current base currency",
+    )
+
+
 def not_available_for_hangout() -> BelunoError:
     return conflict(
         "NOT_AVAILABLE_FOR_HANGOUT",

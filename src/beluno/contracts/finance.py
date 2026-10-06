@@ -72,6 +72,15 @@ class RateRequest(BaseModel):
     as_of: AwareDatetime | None = None
 
 
+class BaseRateRequest(RateRequest):
+    """A rate to the plan's base currency, which the request names."""
+
+    base_currency: CurrencyCode = Field(
+        description="The base currency this rate converts into; 409 BASE_CURRENCY_CHANGED "
+        "when the plan moved to another one since"
+    )
+
+
 class PayerRequest(BaseModel):
     """A participant who paid, or the plan fund (``fund: true``)."""
 
@@ -208,7 +217,7 @@ class ExpenseRequest(BaseModel):
     currency: CurrencyCode
     payers: Annotated[list[PayerRequest], Field(min_length=1, max_length=100)]
     split: Split
-    base_rate: RateRequest | None = Field(
+    base_rate: BaseRateRequest | None = Field(
         default=None,
         description="Rate to the plan's base currency, for budgets and display only",
     )
@@ -615,6 +624,10 @@ class ConsolidateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID | None = None
+    base_currency: CurrencyCode = Field(
+        description="The base currency the rates convert into; 409 BASE_CURRENCY_CHANGED "
+        "when the plan moved to another one since"
+    )
     rates: Annotated[list[ConsolidationRateRequest], Field(min_length=1, max_length=50)]
 
     @model_validator(mode="after")
@@ -744,7 +757,7 @@ class CommitmentCreateRequest(BaseModel):
     currency: CurrencyCode
     amount_minor: StrictInt
     state: Literal["estimated", "committed"] = "estimated"
-    base_rate: RateRequest | None = None
+    base_rate: BaseRateRequest | None = None
 
 
 class CommitmentUpdateRequest(BaseModel):
@@ -755,7 +768,7 @@ class CommitmentUpdateRequest(BaseModel):
     currency: CurrencyCode
     amount_minor: StrictInt
     state: Literal["estimated", "committed", "converted_to_expense", "cancelled", "refunded"]
-    base_rate: RateRequest | None = None
+    base_rate: BaseRateRequest | None = None
 
 
 class CommitmentResponse(BaseModel):

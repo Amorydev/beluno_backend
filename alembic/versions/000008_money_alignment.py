@@ -540,6 +540,11 @@ BEGIN
             PERFORM finance.invariant_violation('reversal does not match its source kind');
         END IF;
     END IF;
+    IF tx.kind = 'conversion_reversal' AND NOT EXISTS (
+        SELECT 1 FROM finance.consolidations WHERE id = tx.consolidation_id AND state = 'reversed'
+    ) THEN
+        PERFORM finance.invariant_violation('conversion reversal leaves its consolidation active');
+    END IF;
     IF tx.kind = 'settlement' AND NOT EXISTS (
         SELECT 1 FROM finance.settlements WHERE id = tx.settlement_id AND kind = 'payment'
     ) OR tx.subtype = 'waiver' AND NOT EXISTS (
@@ -643,6 +648,112 @@ END;
 $$;
 """
 
+# Insider guards for what this migration added: a consolidation is re-verified
+# whenever a rate or line joins it and can only be marked reversed by a real
+# reversal; a plan with finance data changes its base currency only along a
+# recorded change, and the change count never goes back.
+INTEGRITY_SQL = """
+CREATE OR REPLACE FUNCTION finance.verify_consolidation(p_consolidation_id uuid) RETURNS void
+    LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    conversion uuid;
+    consolidation_state text;
+BEGIN
+    SELECT state INTO consolidation_state
+    FROM finance.consolidations WHERE id = p_consolidation_id;
+    SELECT id INTO conversion FROM finance.ledger_transactions
+    WHERE consolidation_id = p_consolidation_id AND kind = 'conversion';
+    IF conversion IS NULL
+       OR (SELECT count(*) FROM finance.ledger_transactions
+           WHERE consolidation_id = p_consolidation_id AND kind = 'conversion') <> 1
+       OR NOT EXISTS (
+           SELECT 1 FROM finance.consolidation_lines WHERE consolidation_id = p_consolidation_id
+       )
+       OR EXISTS (
+           SELECT 1 FROM finance.consolidation_rates AS r
+           WHERE r.consolidation_id = p_consolidation_id AND NOT EXISTS (
+               SELECT 1 FROM finance.consolidation_lines AS l
+               WHERE l.consolidation_id = r.consolidation_id AND l.currency = r.currency
+           )
+       ) THEN
+        PERFORM finance.invariant_violation('consolidation is incomplete');
+    END IF;
+    IF (consolidation_state = 'reversed') <> EXISTS (
+        SELECT 1 FROM finance.ledger_transactions
+        WHERE reverses_transaction_id = conversion AND kind = 'conversion_reversal'
+    ) THEN
+        PERFORM finance.invariant_violation('consolidation state does not match its entries');
+    END IF;
+    PERFORM finance.verify_transaction(conversion);
+END;
+$$;
+
+CREATE FUNCTION finance.check_consolidation_part() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    PERFORM finance.verify_consolidation(NEW.consolidation_id);
+    RETURN NULL;
+END;
+$$;
+CREATE CONSTRAINT TRIGGER consolidation_rates_complete
+    AFTER INSERT ON finance.consolidation_rates DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION finance.check_consolidation_part();
+CREATE CONSTRAINT TRIGGER consolidation_lines_complete
+    AFTER INSERT ON finance.consolidation_lines DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION finance.check_consolidation_part();
+CREATE CONSTRAINT TRIGGER consolidations_state_checked
+    AFTER UPDATE ON finance.consolidations DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION finance.check_consolidation();
+REVOKE EXECUTE ON FUNCTION finance.check_consolidation_part() FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION finance.guard_ledger_head() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.plan_id, NEW.created_at) IS DISTINCT FROM (OLD.plan_id, OLD.created_at)
+       OR NEW.ledger_seq < OLD.ledger_seq OR NEW.version < OLD.version
+       OR NEW.base_change_count < OLD.base_change_count THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION plans.plan_write_guard() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF NOT iam.is_guarded_runtime() THEN
+        RETURN NEW;
+    END IF;
+    -- A plan never changes between trip and hangout.
+    IF NEW.id <> OLD.id OR NEW.created_by_user_id <> OLD.created_by_user_id
+       OR NEW.type <> OLD.type THEN
+        RAISE EXCEPTION 'plan scope is immutable' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF plans.actor_plan_role(NEW.id) IS DISTINCT FROM 'owner'
+       AND plans.actor_plan_role(NEW.id) IS DISTINCT FROM 'admin' THEN
+        RAISE EXCEPTION 'plan update not allowed' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    -- With finance data, the base currency moves only along its latest recorded change.
+    IF NEW.base_currency <> OLD.base_currency
+       AND EXISTS (SELECT 1 FROM finance.plan_ledger_heads WHERE plan_id = NEW.id)
+       AND NOT EXISTS (
+           SELECT 1 FROM finance.base_currency_changes AS c
+           WHERE c.plan_id = NEW.id
+             AND c.from_currency = OLD.base_currency AND c.to_currency = NEW.base_currency
+             AND c.change_number = (
+                 SELECT max(change_number) FROM finance.base_currency_changes
+                 WHERE plan_id = NEW.id
+             )
+       ) THEN
+        RAISE EXCEPTION 'base currency changes need a recorded rate'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+"""
+
 
 def upgrade() -> None:
     op.execute(REVISIONS_SQL)
@@ -653,6 +764,7 @@ def upgrade() -> None:
     op.execute(CONSOLIDATION_TABLES_SQL)
     op.execute(CONSOLIDATION_INVARIANTS_SQL)
     op.execute(BASE_CHANGE_SQL)
+    op.execute(INTEGRITY_SQL)
 
 
 def downgrade() -> None:

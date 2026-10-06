@@ -348,7 +348,7 @@ class Driver:
             expected = model.consolidation()
             response = await self.api.post(
                 self.trip.path("/ledger/consolidations"),
-                json={"rates": [{"currency": "JPY", "rate": JPY_RATE}]},
+                json={"base_currency": "USD", "rates": [{"currency": "JPY", "rate": JPY_RATE}]},
                 headers=self.owner.headers,
             )
             if self.accepted(response):

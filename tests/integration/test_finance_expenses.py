@@ -318,7 +318,7 @@ async def test_foreign_currency_uses_exponents_and_labelled_base_snapshots(
             ann,
             [ann, bea],
             currency="JPY",
-            base_rate={"rate": "0.0067", "source": "estimated"},
+            base_rate={"rate": "0.0067", "source": "estimated", "base_currency": "USD"},
         ),
     )
     base = with_rate["revision"]["base"]

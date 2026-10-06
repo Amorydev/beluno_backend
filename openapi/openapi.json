@@ -290,6 +290,50 @@
         "title": "BaseCurrencyRequest",
         "type": "object"
       },
+      "BaseRateRequest": {
+        "additionalProperties": false,
+        "description": "A rate to the plan's base currency, which the request names.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "base_currency": {
+            "description": "The base currency this rate converts into; 409 BASE_CURRENCY_CHANGED when the plan moved to another one since",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "rate": {
+            "pattern": "^\\d{1,10}(\\.\\d{1,12})?$",
+            "title": "Rate",
+            "type": "string"
+          },
+          "source": {
+            "default": "manual",
+            "enum": [
+              "manual",
+              "estimated"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rate",
+          "base_currency"
+        ],
+        "title": "BaseRateRequest",
+        "type": "object"
+      },
       "BudgetCreateRequest": {
         "additionalProperties": false,
         "description": "A limit in the plan's base currency; ``daily`` applies to every day.",
@@ -760,7 +804,7 @@
           "base_rate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RateRequest"
+                "$ref": "#/components/schemas/BaseRateRequest"
               },
               {
                 "type": "null"
@@ -963,7 +1007,7 @@
           "base_rate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RateRequest"
+                "$ref": "#/components/schemas/BaseRateRequest"
               },
               {
                 "type": "null"
@@ -1021,6 +1065,12 @@
         "additionalProperties": false,
         "description": "One rate for every foreign currency that still has open balances.",
         "properties": {
+          "base_currency": {
+            "description": "The base currency the rates convert into; 409 BASE_CURRENCY_CHANGED when the plan moved to another one since",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Base Currency",
+            "type": "string"
+          },
           "id": {
             "anyOf": [
               {
@@ -1044,6 +1094,7 @@
           }
         },
         "required": [
+          "base_currency",
           "rates"
         ],
         "title": "ConsolidateRequest",
@@ -1924,7 +1975,7 @@
           "base_rate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RateRequest"
+                "$ref": "#/components/schemas/BaseRateRequest"
               },
               {
                 "type": "null"
@@ -2092,7 +2143,7 @@
           "base_rate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RateRequest"
+                "$ref": "#/components/schemas/BaseRateRequest"
               },
               {
                 "type": "null"

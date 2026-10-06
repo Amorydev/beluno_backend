@@ -6,8 +6,11 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
+import psycopg
 import pytest
 
+from beluno.config import Settings
+from beluno.db.ids import new_id
 from beluno.modules.finance.fx import convert
 from beluno.testkit.api_client import SignedIn
 from beluno.testkit.database import AdminDatabase
@@ -80,7 +83,13 @@ async def test_base_values_follow_the_chain_and_originals_never_change(
         api,
         owner,
         trip,
-        equal_expense(3_000, bea, [ann, bea], currency="JPY", base_rate={"rate": "0.0067"}),
+        equal_expense(
+            3_000,
+            bea,
+            [ann, bea],
+            currency="JPY",
+            base_rate={"rate": "0.0067", "base_currency": "USD"},
+        ),
     )
     assert yen["revision"]["base"]["amount_minor"] == 2_010
     commitment = await api.post(
@@ -90,7 +99,7 @@ async def test_base_values_follow_the_chain_and_originals_never_change(
             "currency": "JPY",
             "amount_minor": 10_000,
             "state": "committed",
-            "base_rate": {"rate": "0.0067"},
+            "base_rate": {"rate": "0.0067", "base_currency": "USD"},
         },
         headers=owner.headers,
     )
@@ -167,7 +176,7 @@ async def test_an_open_consolidation_holds_the_base_currency(
     await add_expense(api, trip.owner, trip, equal_expense(3_000, ann, [ann, bea], currency="JPY"))
     consolidated = await api.post(
         trip.path("/ledger/consolidations"),
-        json={"rates": [{"currency": "JPY", "rate": "0.0067"}]},
+        json={"base_currency": "USD", "rates": [{"currency": "JPY", "rate": "0.0067"}]},
         headers=trip.owner.headers,
     )
     assert consolidated.status_code == 201, consolidated.text
@@ -180,3 +189,92 @@ async def test_an_open_consolidation_holds_the_base_currency(
     )
     assert undone.status_code == 200
     assert (await move_base(api, trip.owner, trip, version, "EUR", "0.9")).status_code == 200
+
+
+async def test_rates_made_for_an_older_base_are_refused(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
+) -> None:
+    trip = await finance_plan(api, identity_provider, admin)
+    ann, bea = trip.people["Ann"], trip.people["Bea"]
+    owner = trip.owner
+    await add_expense(api, owner, trip, equal_expense(2_000, ann, [ann, bea], currency="JPY"))
+    # Written offline while the base was still USD, pushed after it moved to VND.
+    queued = equal_expense(
+        1_000, bea, [ann, bea], currency="JPY", base_rate={"rate": "0.0067", "base_currency": "USD"}
+    )
+    moved = await move_base(api, owner, trip, await plan_version(api, trip), "VND", "25000")
+    assert moved.status_code == 200, moved.text
+    pushed = await api.post(
+        "/v1/sync/push",
+        json={
+            "operations": [
+                {
+                    "operation_id": str(new_id()),
+                    "command": "expense.create",
+                    "schema_version": 1,
+                    "target": {"plan_id": trip.plan_id},
+                    "payload": queued,
+                    "client_created_at": "2026-10-06T08:00:00Z",
+                }
+            ]
+        },
+        headers=owner.headers,
+    )
+    result = pushed.json()["results"][0]
+    assert result["outcome"] == "conflict", result
+    assert result["problem"]["code"] == "BASE_CURRENCY_CHANGED"
+    stale = await api.post(
+        trip.path("/ledger/consolidations"),
+        json={"base_currency": "USD", "rates": [{"currency": "JPY", "rate": "0.0067"}]},
+        headers=owner.headers,
+    )
+    assert stale.status_code == 409 and stale.json()["code"] == "BASE_CURRENCY_CHANGED"
+    fresh = {**queued, "base_rate": {"rate": "168", "base_currency": "VND"}}
+    created = await add_expense(api, owner, trip, fresh)
+    assert created["revision"]["base"] == {
+        "currency": "VND",
+        "amount_minor": 168_000,
+        "rate": "168",
+        "rate_source": "manual",
+        "rate_as_of": created["revision"]["base"]["rate_as_of"],
+    }
+
+
+async def test_settings_stay_in_bounds_and_the_database_keeps_the_chain(
+    api: httpx.AsyncClient,
+    identity_provider: IdentityProviderStub,
+    admin: AdminDatabase,
+    live_settings: Settings,
+) -> None:
+    trip = await finance_plan(api, identity_provider, admin)
+    owner = trip.owner
+    nothing = await api.post(
+        trip.path("/ledger/confirm"), json={"ledger_seq": 0}, headers=owner.headers
+    )
+    assert nothing.status_code == 409
+    # Confirming created no ledger, so the base still moves without a rate.
+    assert (await move_base(api, owner, trip, 1, "JPY")).status_code == 200
+    budget = await api.post(
+        trip.path("/budgets"),
+        json={"scope": "total", "limit_minor": 10_000_000},
+        headers=owner.headers,
+    )
+    assert budget.status_code == 201, budget.text
+    huge = await move_base(api, owner, trip, await plan_version(api, trip), "USD", "1000000")
+    assert huge.status_code == 200, huge.text
+    rebased = (await api.get(trip.path("/budgets"), headers=owner.headers)).json()["budgets"][0]
+    assert rebased["budget"]["limit_minor"] == 10**12
+
+    assert live_settings.api_database_dsn is not None
+    dsn = live_settings.api_database_dsn.replace("postgresql+psycopg://", "postgresql://")
+    with psycopg.connect(dsn) as connection:
+        for statement in (
+            "UPDATE plans.plans SET base_currency = 'EUR' WHERE id = %s",
+            "UPDATE finance.plan_ledger_heads SET base_change_count = 0 WHERE plan_id = %s",
+        ):
+            with (
+                pytest.raises(psycopg.errors.InsufficientPrivilege),
+                connection.transaction(),
+            ):
+                connection.execute("SELECT set_config('app.actor_id', %s, true)", (owner.user_id,))
+                connection.execute(statement, (trip.plan_id,))

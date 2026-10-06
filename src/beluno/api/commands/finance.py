@@ -277,7 +277,9 @@ async def _consolidate(
         rate.currency: RateInput(rate=rate.rate, source=RateSource(rate.source), as_of=rate.as_of)
         for rate in body.rates
     }
-    view = await consolidation.consolidate(ctx, call.id("plan_id"), body.id, rates)
+    view = await consolidation.consolidate(
+        ctx, call.id("plan_id"), body.id, body.base_currency, rates
+    )
     return consolidation_response(view)
 
 

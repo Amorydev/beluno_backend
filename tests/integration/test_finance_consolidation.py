@@ -32,7 +32,9 @@ async def consolidate(
     api: httpx.AsyncClient, user: SignedIn, trip: FinancePlan, *rates: dict[str, Any]
 ) -> httpx.Response:
     return await api.post(
-        trip.path("/ledger/consolidations"), json={"rates": list(rates)}, headers=user.headers
+        trip.path("/ledger/consolidations"),
+        json={"base_currency": "USD", "rates": list(rates)},
+        headers=user.headers,
     )
 
 
@@ -237,3 +239,58 @@ async def test_the_database_holds_a_conversion_to_its_lines(
         for statement, params in statements:
             connection.execute(statement, params)
     assert "postings do not match their source entry" in str(error.value)
+
+
+async def test_only_the_latest_consolidation_reverses_and_committed_ones_stay_whole(
+    api: httpx.AsyncClient,
+    identity_provider: IdentityProviderStub,
+    admin: AdminDatabase,
+    live_settings: Settings,
+) -> None:
+    trip = await finance_plan(api, identity_provider, admin)
+    ann, bea = trip.people["Ann"], trip.people["Bea"]
+    owner = trip.owner
+    await add_expense(api, owner, trip, equal_expense(2_000, ann, [ann, bea], currency="JPY"))
+    first = (await consolidate(api, owner, trip, JPY_IN_USD)).json()
+    await add_expense(api, owner, trip, equal_expense(1_000, bea, [ann, bea], currency="JPY"))
+    second = (await consolidate(api, owner, trip, JPY_IN_USD)).json()
+    older = await api.post(
+        trip.path(f"/ledger/consolidations/{first['id']}/reverse"), headers=if_match(1, owner)
+    )
+    assert older.status_code == 409
+    missing = await api.post(
+        trip.path(f"/ledger/consolidations/{new_id()}/reverse"), headers=if_match(1, owner)
+    )
+    assert missing.status_code == 404
+    stale = await api.post(
+        trip.path(f"/ledger/consolidations/{second['id']}/reverse"), headers=if_match(2, owner)
+    )
+    assert stale.status_code == 412
+
+    assert live_settings.api_database_dsn is not None
+    dsn = live_settings.api_database_dsn.replace("postgresql+psycopg://", "postgresql://")
+    tampering: list[tuple[str, tuple[Any, ...], str]] = [
+        (
+            # A line added after the fact no longer matches the posted conversion.
+            "INSERT INTO finance.consolidation_lines (consolidation_id, plan_id, currency, "
+            "participant_id, amount_minor, base_amount_minor) VALUES (%s, %s, 'JPY', %s, 7, 5)",
+            (second["id"], trip.plan_id, trip.people["Cam"]),
+            "postings do not match their source entry",
+        ),
+        (
+            # Marked reversed without the reversing entry.
+            "UPDATE finance.consolidations SET state = 'reversed', reversed_at = now(), "
+            "version = version + 1 WHERE id = %s",
+            (second["id"],),
+            "consolidation state does not match its entries",
+        ),
+    ]
+    with psycopg.connect(dsn) as connection:
+        for statement, params, reason in tampering:
+            with (
+                pytest.raises(psycopg.errors.CheckViolation) as error,
+                connection.transaction(),
+            ):
+                connection.execute("SELECT set_config('app.actor_id', %s, true)", (owner.user_id,))
+                connection.execute(statement, params)
+            assert reason in str(error.value)

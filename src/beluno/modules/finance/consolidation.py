@@ -43,6 +43,7 @@ from beluno.db.models.finance import (
     Settlement,
 )
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.errors import base_currency_changed
 from beluno.modules.finance.fx import convert, parse_rate
 from beluno.modules.finance.ledger import Ledger, open_ledger
 from beluno.modules.finance.postings import FUND, Party, Postings, consolidation_amounts
@@ -102,12 +103,15 @@ async def consolidate(
     ctx: CommandContext,
     plan_id: UUID,
     consolidation_id: UUID | None,
+    base_currency: str,
     rates: Mapping[str, RateInput],
 ) -> ConsolidationView:
-    """Convert every foreign-currency balance into the base currency at the given rates."""
+    """Convert every foreign-currency balance into ``base_currency`` at the given rates."""
 
     ledger = await open_ledger(ctx, plan_id, PlanAction.CONSOLIDATE_LEDGER)
     base = ledger.access.plan.base_currency
+    if base_currency != base:
+        raise base_currency_changed()
     open_balances = _foreign_balances(ledger, base)
     if not open_balances:
         raise invalid_state("Every balance is already in the base currency")
