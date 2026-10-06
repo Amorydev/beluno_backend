@@ -1010,6 +1010,191 @@
         "title": "CreatedInviteResponse",
         "type": "object"
       },
+      "CrewCreateRequest": {
+        "additionalProperties": false,
+        "description": "Name the people directly, or save everyone from a plan (\"Saved from Friday hotpot\").",
+        "properties": {
+          "from_plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Plan Id"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "member_user_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member User Ids"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CrewCreateRequest",
+        "type": "object"
+      },
+      "CrewMemberResponse": {
+        "properties": {
+          "addable": {
+            "description": "A registered person you share an active plan with: a new plan can add them directly. Others join through an invite link.",
+            "title": "Addable",
+            "type": "boolean"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null once the person shares no plan with you",
+            "title": "Display Name"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "addable"
+        ],
+        "title": "CrewMemberResponse",
+        "type": "object"
+      },
+      "CrewResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/CrewMemberResponse"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source_plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Plan Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "members",
+          "source_plan_id",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CrewResponse",
+        "type": "object"
+      },
+      "CrewUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "member_user_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member User Ids"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "CrewUpdateRequest",
+        "type": "object"
+      },
       "CurrencyResponse": {
         "properties": {
           "code": {
@@ -6962,6 +7147,575 @@
         "summary": "Refresh Tokens",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/v1/crews": {
+      "get": {
+        "operationId": "list_crews_v1_crews_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CrewResponse"
+                  },
+                  "title": "Response List Crews V1 Crews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Crews",
+        "tags": [
+          "people"
+        ]
+      },
+      "post": {
+        "description": "Save people you plan with; ``from_plan_id`` saves everyone active in that plan.",
+        "operationId": "create_crew_v1_crews_post",
+        "parameters": [
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrewCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Crew",
+        "tags": [
+          "people"
+        ]
+      }
+    },
+    "/v1/crews/{crew_id}": {
+      "delete": {
+        "operationId": "delete_crew_v1_crews__crew_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crew_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Crew Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Crew",
+        "tags": [
+          "people"
+        ]
+      },
+      "get": {
+        "operationId": "get_crew_v1_crews__crew_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crew_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Crew Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Crew",
+        "tags": [
+          "people"
+        ]
+      },
+      "patch": {
+        "operationId": "update_crew_v1_crews__crew_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crew_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Crew Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrewUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Crew",
+        "tags": [
+          "people"
         ]
       }
     },

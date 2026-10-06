@@ -18,7 +18,7 @@ TRUNCATE
     finance.plan_ledger_heads,
     sync_audit.audit_events, sync_audit.change_log, sync_audit.scope_heads,
     sync_audit.operations,
-    plans.plan_invites, plans.plan_participants, plans.plans,
+    people.crews, plans.plan_invites, plans.plan_participants, plans.plans,
     iam.rate_limit_counters, iam.email_challenges, iam.refresh_tokens, iam.sessions,
     iam.user_identities, iam.users,
     jobs.procrastinate_events, jobs.procrastinate_jobs

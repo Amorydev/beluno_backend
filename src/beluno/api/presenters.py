@@ -13,6 +13,7 @@ from beluno.authorization.access import find_user_participant
 from beluno.authorization.policy import AccessState, PlanRole
 from beluno.contracts.iam import DeviceRequest, TokenResponse, UserProfileResponse
 from beluno.contracts.invites import CreatedInviteResponse, InviteResponse
+from beluno.contracts.people import CrewMemberResponse, CrewResponse
 from beluno.contracts.plans import (
     ParticipantResponse,
     ParticipantSeed,
@@ -23,6 +24,7 @@ from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanInvite, PlanParticipant
 from beluno.modules.context import CommandContext
 from beluno.modules.iam.sessions import DeviceInfo, IssuedTokens
+from beluno.modules.people.crews import CrewView
 from beluno.modules.plans import service as plan_service
 from beluno.modules.plans.participants import Seed
 
@@ -39,6 +41,26 @@ def profile_response(user: User) -> UserProfileResponse:
             "default_currency": user.default_currency,
             "version": user.version,
         }
+    )
+
+
+def crew_response(view: CrewView) -> CrewResponse:
+    crew = view.crew
+    return CrewResponse(
+        id=crew.id,
+        name=crew.name,
+        members=[
+            CrewMemberResponse(
+                user_id=member.user_id,
+                display_name=member.display_name,
+                addable=member.addable,
+            )
+            for member in view.members
+        ],
+        source_plan_id=crew.source_plan_id,
+        version=crew.version,
+        created_at=crew.created_at,
+        updated_at=crew.updated_at,
     )
 
 

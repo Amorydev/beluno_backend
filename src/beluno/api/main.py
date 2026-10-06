@@ -21,6 +21,7 @@ from beluno import __version__
 from beluno.api.commands import build_registry
 from beluno.api.routers import (
     auth,
+    crews,
     finance,
     health,
     internal,
@@ -155,6 +156,7 @@ def create_app(
         internal.router,
         auth.router,
         me.router,
+        crews.router,
         plans.router,
         finance.currency_router,
         finance.router,

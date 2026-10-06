@@ -19,6 +19,7 @@ from sqlalchemy.orm import InstrumentedAttribute
 from beluno.api import finance_projection
 from beluno.api.finance_projection import FINANCE_TYPES
 from beluno.api.presenters import (
+    crew_response,
     invite_response,
     participant_response,
     plan_response,
@@ -30,8 +31,10 @@ from beluno.contracts.iam import SessionResponse
 from beluno.contracts.sync import PlanAccessSignal, PlanEntity
 from beluno.db.models.base import Base
 from beluno.db.models.iam import AuthSession, User
+from beluno.db.models.people import Crew
 from beluno.db.models.plans import Plan, PlanInvite, PlanParticipant
 from beluno.modules.context import CommandContext
+from beluno.modules.people.crews import crew_views
 from beluno.modules.plans.service import PlanView
 from beluno.sync.pull import HIDDEN, Hidden, SnapshotRow
 from beluno.sync.scopes import AccessLevel, ScopeKey
@@ -44,7 +47,7 @@ Pager = Callable[
 ]
 
 SNAPSHOT_ORDER: dict[str, tuple[str, ...]] = {
-    "user": ("user", "session", "plan_access"),
+    "user": ("user", "session", "plan_access", "crew"),
     "plan": ("plan", "plan_participant", "plan_invite", *FINANCE_TYPES),
 }
 
@@ -128,6 +131,13 @@ async def _load_session(
     return session_response(auth_session, actor.session_id)
 
 
+async def _load_crew(ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID) -> Loaded:
+    crew = await ctx.session.get(Crew, id)
+    if crew is None or crew.owner_user_id != scope.scope_id or crew.deleted_at is not None:
+        return None
+    return crew_response((await crew_views(ctx, [crew]))[0])
+
+
 async def _load_plan(ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID) -> Loaded:
     plan = await ctx.session.get(Plan, id)
     return await _plan_view(ctx, plan) if plan else None
@@ -156,6 +166,7 @@ LOADERS: dict[str, Loader] = {
     "plan_access": _load_plan_access,
     "user": _load_user,
     "session": _load_session,
+    "crew": _load_crew,
     "plan": _load_plan,
     "plan_participant": _load_participant,
     "plan_invite": _load_plan_invite,
@@ -205,6 +216,14 @@ async def _page_sessions(
     return [SnapshotRow(row.id, 1, session_response(row, current)) for row in rows]
 
 
+async def _page_crews(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(Crew).where(Crew.owner_user_id == scope.scope_id, Crew.deleted_at.is_(None))
+    views = await crew_views(ctx, await _page(ctx, statement, Crew.id, after, limit))
+    return [SnapshotRow(view.crew.id, view.crew.version, crew_response(view)) for view in views]
+
+
 async def _page_plan(
     ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
 ) -> list[SnapshotRow]:
@@ -238,6 +257,7 @@ PAGERS: dict[str, Pager] = {
     "plan_access": _page_plan_access,
     "user": _page_user,
     "session": _page_sessions,
+    "crew": _page_crews,
     "plan": _page_plan,
     "plan_participant": _page_participants,
     "plan_invite": _page_plan_invites,

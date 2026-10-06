@@ -36,6 +36,11 @@ group-visible plans go away.
   non-managers change only their own avatar colour; capabilities and default
   shares are a manager's call, and a self-inserted row carries none.
 * ``iam.users`` gains ``default_currency``.
+* New schema ``people`` with ``people.crews``: a user's private, saved list of
+  people (``member_user_ids``, 1-50). RLS limits every crew to its owner; a
+  write guard admits a newly listed member only when it is the owner or someone
+  in a plan the owner is active in (the API also requires that person to be
+  active there).
 
 Dependents were listed before writing this migration with:
     SELECT n.nspname || '.' || p.proname FROM pg_proc p
@@ -59,6 +64,7 @@ Validation:
     SELECT count(*) FROM sync_audit.change_log WHERE scope_type = 'group';     -- 0
     SELECT count(*) FROM plans.plans WHERE type IS NULL OR pass_color IS NULL;  -- 0
     SELECT count(*) FROM plans.plan_participants WHERE avatar_color IS NULL;   -- 0
+    SELECT relrowsecurity FROM pg_class WHERE oid = 'people.crews'::regclass;  -- t
 
 Compatibility: breaking by design and accepted before launch (the client has
 not integrated groups, series, travel, or visibility). The API and worker must
@@ -313,12 +319,74 @@ $$;
 """
 
 
+CREWS_SQL = """
+CREATE SCHEMA people;
+REVOKE ALL ON SCHEMA people FROM PUBLIC;
+GRANT USAGE ON SCHEMA people TO api_runtime, worker_runtime;
+
+CREATE TABLE people.crews (
+    id uuid PRIMARY KEY,
+    owner_user_id uuid NOT NULL REFERENCES iam.users (id),
+    name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 60),
+    member_user_ids uuid[] NOT NULL
+        CHECK (cardinality(member_user_ids) BETWEEN 1 AND 50
+               AND array_position(member_user_ids, NULL) IS NULL),
+    source_plan_id uuid,
+    version integer NOT NULL CHECK (version > 0),
+    created_at timestamptz NOT NULL,
+    updated_at timestamptz NOT NULL,
+    deleted_at timestamptz
+);
+CREATE INDEX crews_owner_idx ON people.crews (owner_user_id) WHERE deleted_at IS NULL;
+
+-- A newly listed person is the owner or someone in a plan the owner is active in.
+CREATE FUNCTION people.crew_write_guard() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    added uuid;
+BEGIN
+    IF NOT iam.is_guarded_runtime() THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP = 'UPDATE' AND (NEW.id <> OLD.id OR NEW.owner_user_id <> OLD.owner_user_id
+                             OR NEW.created_at <> OLD.created_at
+                             OR OLD.deleted_at IS NOT NULL) THEN
+        RAISE EXCEPTION 'crew identity is immutable' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    FOR added IN
+        SELECT unnest(NEW.member_user_ids)
+        EXCEPT SELECT unnest(CASE WHEN TG_OP = 'UPDATE' THEN OLD.member_user_ids END)
+    LOOP
+        IF added <> iam.actor_id() AND NOT iam.actor_shares_context(added) THEN
+            RAISE EXCEPTION 'crew members must share a plan with the owner'
+                USING ERRCODE = 'insufficient_privilege';
+        END IF;
+    END LOOP;
+    RETURN NEW;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION people.crew_write_guard() FROM PUBLIC;
+CREATE TRIGGER crews_write_guard BEFORE INSERT OR UPDATE ON people.crews
+    FOR EACH ROW EXECUTE FUNCTION people.crew_write_guard();
+
+ALTER TABLE people.crews ENABLE ROW LEVEL SECURITY;
+CREATE POLICY crews_select ON people.crews FOR SELECT TO api_runtime
+    USING (owner_user_id = iam.actor_id());
+CREATE POLICY crews_insert ON people.crews FOR INSERT TO api_runtime
+    WITH CHECK (owner_user_id = iam.actor_id());
+CREATE POLICY crews_update ON people.crews FOR UPDATE TO api_runtime
+    USING (owner_user_id = iam.actor_id()) WITH CHECK (owner_user_id = iam.actor_id());
+GRANT SELECT, INSERT, UPDATE ON people.crews TO api_runtime;
+"""
+
+
 def upgrade() -> None:
     op.execute(REWRITE_SQL)
     op.execute(SYNC_SQL)
     op.execute(DROP_SQL)
     op.execute(ADD_SQL)
     op.execute(PARTICIPANT_GUARD_SQL)
+    op.execute(CREWS_SQL)
 
 
 def downgrade() -> None:
