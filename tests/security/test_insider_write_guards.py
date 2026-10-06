@@ -12,6 +12,7 @@ from beluno.config import Settings
 from beluno.modules.invite_links import token_digest
 from beluno.testkit.api_client import SignedIn, sign_in
 from beluno.testkit.database import AdminDatabase
+from beluno.testkit.finance import join_with_invite
 from beluno.testkit.identity import IdentityProviderStub
 from beluno.token_hashing import TokenHasher
 
@@ -41,20 +42,6 @@ def run_as(
         return connection.execute(statement, params).rowcount  # type: ignore[arg-type]
 
 
-async def make_group(api: httpx.AsyncClient, owner: SignedIn) -> dict:
-    response = await api.post(
-        "/v1/groups",
-        json={"name": "Crew", "default_currency": "USD", "default_timezone": "UTC"},
-        headers=owner.headers,
-    )
-    return response.json()
-
-
-async def join_group(api: httpx.AsyncClient, owner: SignedIn, group: dict, user: SignedIn) -> None:
-    link = await api.post(f"/v1/groups/{group['id']}/invites", json={}, headers=owner.headers)
-    await api.post("/v1/invites/redeem", json={"token": link.json()["token"]}, headers=user.headers)
-
-
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn, **body: object) -> dict:
     response = await api.post(
         "/v1/plans", json={"title": "Plan", "base_currency": "USD", **body}, headers=owner.headers
@@ -76,10 +63,6 @@ async def test_insiders_cannot_promote_reactivate_or_move_rows(
     owner = await sign_in(api, identity_provider)
     viewer = await sign_in(api, identity_provider)
     removed = await sign_in(api, identity_provider)
-    other_owner = await sign_in(api, identity_provider)
-    group = await make_group(api, owner)
-    foreign_group = await make_group(api, other_owner)
-    await join_group(api, owner, group, viewer)
     plan = await make_plan(api, owner)
     invite = (
         await api.post(
@@ -106,23 +89,11 @@ async def test_insiders_cannot_promote_reactivate_or_move_rows(
         ),
         (
             viewer.user_id,
-            "UPDATE plans.plans SET group_id = %s WHERE id = %s",
-            foreign_group["id"],
+            "UPDATE plans.plans SET created_by_user_id = %s WHERE id = %s",
+            viewer.user_id,
             plan["id"],
         ),
         (viewer.user_id, "UPDATE plans.plans SET title = 'hijacked' WHERE id = %s", plan["id"]),
-        (
-            viewer.user_id,
-            "UPDATE groups.group_memberships SET role = 'admin' WHERE user_id = %s",
-            viewer.user_id,
-        ),
-        (
-            viewer.user_id,
-            "UPDATE groups.group_memberships SET group_id = %s WHERE user_id = %s",
-            foreign_group["id"],
-            viewer.user_id,
-        ),
-        (viewer.user_id, "UPDATE groups.groups SET name = 'hijacked' WHERE id = %s", group["id"]),
     ]
     for actor, statement, *params in attempts:
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -157,9 +128,8 @@ async def test_ownership_transfers_still_work_under_guards(
 ) -> None:
     owner = await sign_in(api, identity_provider)
     friend = await sign_in(api, identity_provider)
-    group = await make_group(api, owner)
-    await join_group(api, owner, group, friend)
-    plan = await make_plan(api, owner, group_id=group["id"], include_all_group_members=True)
+    plan = await make_plan(api, owner)
+    await join_with_invite(api, owner, plan["id"], friend)
     roster = (await api.get(f"/v1/plans/{plan['id']}/participants", headers=owner.headers)).json()
     target = next(row for row in roster if row["user_id"] == friend.user_id)
 
@@ -168,44 +138,7 @@ async def test_ownership_transfers_still_work_under_guards(
         json={"new_owner_participant_id": target["id"]},
         headers={**owner.headers, "If-Match": f'"{plan["version"]}"'},
     )
-    group_transfer = await api.post(
-        f"/v1/groups/{group['id']}/ownership-transfer",
-        json={"new_owner_user_id": friend.user_id},
-        headers={**owner.headers, "If-Match": '"1"'},
-    )
-    assert (plan_transfer.status_code, group_transfer.status_code) == (200, 200)
-
-
-async def test_removed_invitee_cannot_accept_a_withdrawn_invitation(
-    api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
-) -> None:
-    owner = await sign_in(api, identity_provider)
-    friend = await sign_in(api, identity_provider)
-    shared = await make_group(api, owner)
-    await join_group(api, owner, shared, friend)
-    group = await make_group(api, owner)
-    await api.post(
-        f"/v1/groups/{group['id']}/members", json={"user_id": friend.user_id}, headers=owner.headers
-    )
-    # The invitation is withdrawn after the invitee loaded it but before they accept.
-    admin.execute(
-        "UPDATE groups.group_memberships SET state = 'removed', removed_at = now() "
-        "WHERE group_id = %s AND user_id = %s",
-        group["id"],
-        friend.user_id,
-    )
-    accept = await api.post(
-        f"/v1/groups/{group['id']}/invitation", json={"accept": True}, headers=friend.headers
-    )
-    assert accept.status_code == 404
-    assert (
-        admin.scalar(
-            "SELECT state FROM groups.group_memberships WHERE group_id = %s AND user_id = %s",
-            group["id"],
-            friend.user_id,
-        )
-        == "removed"
-    )
+    assert plan_transfer.status_code == 200
 
 
 async def test_closed_plans_and_removed_placeholders_stop_admitting_people(
@@ -267,8 +200,12 @@ async def test_bearer_links_never_grant_management_rights(
     )
     assert guest.json()["participant"]["role"] == "guest"
     guest_headers = {"Authorization": f"Bearer {guest.json()['session']['access_token']}"}
-    travel = await api.put(f"/v1/plans/{plan['id']}/travel", json={}, headers=guest_headers)
-    assert travel.status_code == 403
+    edit = await api.patch(
+        f"/v1/plans/{plan['id']}",
+        json={"title": "Mine now"},
+        headers={**guest_headers, "If-Match": '"1"'},
+    )
+    assert edit.status_code == 403
 
 
 async def test_rotation_and_input_hardening(
@@ -297,16 +234,17 @@ async def test_rotation_and_input_hardening(
     )
     assert renamed.status_code == 200
 
-    offset_time = await api.post(
-        "/v1/plan-series",
+    naive_time = await api.post(
+        "/v1/plans",
         json={
-            "title": "Weekly",
+            "title": "Dinner",
             "base_currency": "USD",
-            "timezone": "UTC",
-            "start_date": "2027-01-04",
-            "local_start_time": "19:00:00+07:00",
-            "recurrence_rule": "FREQ=WEEKLY",
+            "timing": {
+                "mode": "datetime",
+                "starts_at": "2027-01-04T19:00:00",
+                "timezone": "Asia/Ho_Chi_Minh",
+            },
         },
         headers=owner.headers,
     )
-    assert offset_time.status_code == 422
+    assert naive_time.status_code == 422

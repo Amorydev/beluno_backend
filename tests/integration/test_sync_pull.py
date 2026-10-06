@@ -11,38 +11,10 @@ import pytest
 from beluno.config import Settings
 from beluno.testkit.api_client import SignedIn, sign_in
 from beluno.testkit.database import AdminDatabase
+from beluno.testkit.finance import join_with_invite
 from beluno.testkit.identity import IdentityProviderStub
 
 pytestmark = pytest.mark.integration
-
-GROUP = {"name": "Crew", "default_currency": "USD", "default_timezone": "UTC"}
-
-
-async def make_group(api: httpx.AsyncClient, owner: SignedIn) -> dict[str, Any]:
-    response = await api.post("/v1/groups", json=GROUP, headers=owner.headers)
-    assert response.status_code == 201, response.text
-    return response.json()
-
-
-async def join_group(
-    api: httpx.AsyncClient, owner: SignedIn, group_id: str, user: SignedIn
-) -> None:
-    link = await api.post(f"/v1/groups/{group_id}/invites", json={}, headers=owner.headers)
-    joined = await api.post(
-        "/v1/invites/redeem", json={"token": link.json()["token"]}, headers=user.headers
-    )
-    assert joined.status_code == 200, joined.text
-
-
-def seed_invited_member(admin: AdminDatabase, group_id: str, user_id: str) -> None:
-    """A pending direct invitation (the API requires a shared context to send one)."""
-
-    admin.execute(
-        "INSERT INTO groups.group_memberships (group_id, user_id, role, state, version, "
-        "created_at, updated_at) VALUES (%s, %s, 'member', 'invited', 1, now(), now())",
-        group_id,
-        user_id,
-    )
 
 
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn, **body: Any) -> dict[str, Any]:
@@ -108,12 +80,9 @@ async def test_handshake_lists_scopes_by_current_access(
     owner = await sign_in(api, identity_provider, name="Owner")
     member = await sign_in(api, identity_provider, name="Member")
     outsider = await sign_in(api, identity_provider, name="Outsider")
-    group = await make_group(api, owner)
-    await join_group(api, owner, group["id"], member)
-    shared = await make_plan(api, owner, group_id=group["id"], visibility="group")
-    private = await make_plan(api, owner, group_id=group["id"], visibility="participants")
-    invited = await sign_in(api, identity_provider, name="Invited")
-    seed_invited_member(admin, group["id"], invited.user_id)
+    shared = await make_plan(api, owner)
+    private = await make_plan(api, owner)
+    await join_with_invite(api, owner, shared["id"], member)
 
     for version in (2, 99):
         outdated = await api.post(
@@ -131,7 +100,6 @@ async def test_handshake_lists_scopes_by_current_access(
     owner_scopes = {entry["scope"]: entry["access"] for entry in owner_view["scopes"]}
     assert owner_scopes == {
         f"user:{owner.user_id}": "self",
-        f"group:{group['id']}": "manager",
         f"plan:{shared['id']}": "manager",
         f"plan:{private['id']}": "manager",
     }
@@ -144,28 +112,16 @@ async def test_handshake_lists_scopes_by_current_access(
     }
     assert member_scopes == {
         f"user:{member.user_id}": "self",
-        f"group:{group['id']}": "member",
-        f"plan:{shared['id']}": "reader",
+        f"plan:{shared['id']}": "member",
     }
-    invited_scopes = {
-        entry["scope"]: entry["access"] for entry in (await handshake(api, invited))["scopes"]
-    }
-    assert invited_scopes == {f"user:{invited.user_id}": "self", f"group:{group['id']}": "invited"}
     outsider_scopes = [entry["scope"] for entry in (await handshake(api, outsider))["scopes"]]
     assert outsider_scopes == [f"user:{outsider.user_id}"]
 
-    # Joining the shared plan upgrades the member; leaving the group drops everything.
-    joined = await api.post(f"/v1/plans/{shared['id']}/join", headers=member.headers)
-    assert joined.status_code == 200
-    assert {e["scope"]: e["access"] for e in (await handshake(api, member))["scopes"]}[
-        f"plan:{shared['id']}"
-    ] == "member"
-    left = await api.delete(
-        f"/v1/groups/{group['id']}/members/{member.user_id}", headers=member.headers
-    )
+    # Leaving the plan drops its scope from the directory.
+    left = await api.post(f"/v1/plans/{shared['id']}/leave", headers=member.headers)
     assert left.status_code == 204
     after_leaving = {e["scope"] for e in (await handshake(api, member))["scopes"]}
-    assert after_leaving == {f"user:{member.user_id}", f"plan:{shared['id']}"}
+    assert after_leaving == {f"user:{member.user_id}"}
 
 
 async def test_bootstrap_then_changes_converge_on_a_plan(
@@ -173,14 +129,12 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
 ) -> None:
     owner = await sign_in(api, identity_provider, name="Owner")
     plan = await make_plan(api, owner, participants=[{"placeholder_name": "Grandma"}])
-    await api.put(
-        f"/v1/plans/{plan['id']}/travel", json={"notes": "bring cake"}, headers=owner.headers
-    )
-    segment = await api.post(
-        f"/v1/plans/{plan['id']}/travel/segments",
-        json={"segment_type": "car", "timing_mode": "date", "start_date": "2026-12-01"},
+    budget = await api.post(
+        f"/v1/plans/{plan['id']}/budgets",
+        json={"scope": "total", "limit_minor": 50_000},
         headers=owner.headers,
     )
+    assert budget.status_code == 201, budget.text
     invite = await api.post(f"/v1/plans/{plan['id']}/invites", json={}, headers=owner.headers)
     scope = f"plan:{plan['id']}"
 
@@ -191,27 +145,21 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
         "plan",
         "plan_participant",
         "plan_participant",
-        "travel_details",
-        "travel_segment",
         "plan_invite",
+        "ledger",
+        "budget",
     ]
     plan_item = snapshot[0]
     assert plan_item["data"]["title"] == "Dinner" and plan_item["version"] == 1
-    # Entities never embed other entities: no my_participant here, no segments below.
+    # Entities never embed other entities: no my_participant here.
     assert "my_participant" not in plan_item["data"]
     assert (
         snapshot[1]["data"]["role"] == "owner" and snapshot[1]["data"]["user_id"] == owner.user_id
     )
-    invite_item = snapshot[-1]
+    invite_item = snapshot[3]
     assert invite_item["entity_id"] == invite.json()["id"]
     assert "token" not in invite_item["data"]
-    assert snapshot[3]["data"] == {
-        "plan_id": plan["id"],
-        "destination_summary": None,
-        "notes": "bring cake",
-        "version": 1,
-    }
-    assert snapshot[4]["entity_id"] == segment.json()["id"]
+    assert snapshot[5]["entity_id"] == budget.json()["id"]
 
     # Nothing new: an empty page with the same position.
     quiet = await pull_once(api, owner, scope, cursor)
@@ -230,7 +178,7 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
     )
     assert again.status_code == 200
     deleted = await api.delete(
-        f"/v1/plans/{plan['id']}/travel/segments/{segment.json()['id']}", headers=owner.headers
+        f"/v1/plans/{plan['id']}/budgets/{budget.json()['id']}", headers=owner.headers
     )
     assert deleted.status_code == 204
 
@@ -238,7 +186,7 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
     # Two plan edits collapse into one item carrying the latest state; the delete is a tombstone.
     assert [(item["entity_type"], item["operation"], item["seq"]) for item in changes] == [
         ("plan", "upsert", 8),
-        ("travel_segment", "delete", 9),
+        ("budget", "delete", 9),
     ]
     assert changes[0]["data"]["title"] == "Brunch" and changes[0]["version"] == 3
     assert changes[1]["data"] is None and changes[1]["version"] == 2
@@ -298,9 +246,8 @@ async def test_visibility_follows_role_and_revocation(
     owner = await sign_in(api, identity_provider, name="Owner")
     member = await sign_in(api, identity_provider, name="Member")
     outsider = await sign_in(api, identity_provider, name="Outsider")
-    group = await make_group(api, owner)
-    await join_group(api, owner, group["id"], member)
-    plan = await make_plan(api, owner, participants=[{"user_id": member.user_id}])
+    plan = await make_plan(api, owner)
+    await join_with_invite(api, owner, plan["id"], member)
     invite = await api.post(
         f"/v1/plans/{plan['id']}/invites", json={"requires_approval": True}, headers=owner.headers
     )
@@ -357,39 +304,16 @@ async def test_visibility_follows_role_and_revocation(
     assert removal[-1]["operation"] == "upsert" and removal[-1]["data"]["access_state"] == "removed"
 
 
-async def test_group_scope_hides_other_members_from_an_invitee_and_tombstones_leavers(
-    api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
+async def test_group_scopes_are_no_longer_syncable(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
 ) -> None:
-    owner = await sign_in(api, identity_provider, name="Owner")
-    member = await sign_in(api, identity_provider, name="Member")
-    invited = await sign_in(api, identity_provider, name="Invited")
-    group = await make_group(api, owner)
-    await join_group(api, owner, group["id"], member)
-    seed_invited_member(admin, group["id"], invited.user_id)
-    scope = f"group:{group['id']}"
-
-    owner_items, owner_cursor, _ = await drain(api, owner, scope, None)
-    assert [item["entity_type"] for item in owner_items] == [
-        "group",
-        "group_membership",
-        "group_membership",
-        "group_membership",
-        "group_invite",
-    ]
-    invited_items, _, _ = await drain(api, invited, scope, None)
-    assert [(item["entity_type"], item["entity_id"]) for item in invited_items] == [
-        ("group", group["id"]),
-        ("group_membership", invited.user_id),
-    ]
-    member_items, _, _ = await drain(api, member, scope, None)
-    assert "group_invite" not in {item["entity_type"] for item in member_items}
-
-    left = await api.delete(
-        f"/v1/groups/{group['id']}/members/{member.user_id}", headers=member.headers
+    person = await sign_in(api, identity_provider, name="Person")
+    response = await api.post(
+        "/v1/sync/pull",
+        json={"scopes": [{"scope": f"group:{uuid4()}", "cursor": None}]},
+        headers=person.headers,
     )
-    assert left.status_code == 204
-    changes, _, _ = await drain(api, owner, scope, owner_cursor)
-    assert entities(changes) == {("group_membership", member.user_id, "delete")}
+    assert response.status_code == 422
 
 
 async def test_user_scope_carries_profile_and_sessions(

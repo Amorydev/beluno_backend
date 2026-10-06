@@ -113,12 +113,10 @@ async def test_same_key_with_a_different_request_is_rejected(
     assert admin.fetch("SELECT title FROM plans.plans") == [("Dinner",)]
 
     # Keys are scoped per command and per actor.
-    other_command = await api.post(
-        "/v1/groups",
-        json={"name": "Crew", "default_currency": "USD", "default_timezone": "UTC"},
-        headers=headers,
+    other_command = await api.put(
+        f"/v1/plans/{first.json()['id']}/rsvp", json={"status": "going"}, headers=headers
     )
-    assert other_command.status_code == 201
+    assert other_command.status_code == 200
     stranger = await sign_in(api, identity_provider, name="Stranger")
     strangers = await api.post(
         "/v1/plans",
@@ -195,43 +193,20 @@ async def test_version_conflict_carries_the_current_snapshot(
     current = await api.get(f"/v1/plans/{plan['id']}", headers=owner.headers)
     assert current.json() == problem["current"]
 
-    travel = await api.put(
-        f"/v1/plans/{plan['id']}/travel", json={"notes": "first"}, headers=owner.headers
-    )
-    assert travel.status_code == 200
-    stale_travel = await api.put(
-        f"/v1/plans/{plan['id']}/travel",
-        json={"notes": "second"},
-        headers={**owner.headers, "If-Match": '"9"'},
-    )
-    assert stale_travel.status_code == 412
-    assert stale_travel.json()["current"]["notes"] == "first"
-
 
 async def test_client_generated_ids_are_honoured_and_duplicates_rejected(
     api: httpx.AsyncClient, identity_provider: IdentityProviderStub
 ) -> None:
     owner = await sign_in(api, identity_provider, name="Owner")
-    plan = await make_plan(api, owner)
-    await api.put(f"/v1/plans/{plan['id']}/travel", json={"notes": "x"}, headers=owner.headers)
-
-    segment_id = str(new_id())
-    segment = {
-        "id": segment_id,
-        "segment_type": "car",
-        "timing_mode": "date",
-        "start_date": "2026-12-01",
-    }
-    created = await api.post(
-        f"/v1/plans/{plan['id']}/travel/segments", json=segment, headers=owner.headers
-    )
+    plan_id = str(new_id())
+    body = {"id": plan_id, "title": "Dinner", "base_currency": "USD"}
+    created = await api.post("/v1/plans", json=body, headers=owner.headers)
     assert created.status_code == 201, created.text
-    assert created.json()["id"] == segment_id
-    duplicate = await api.post(
-        f"/v1/plans/{plan['id']}/travel/segments", json=segment, headers=owner.headers
-    )
+    assert created.json()["id"] == plan_id
+    duplicate = await api.post("/v1/plans", json=body, headers=owner.headers)
     assert duplicate.status_code == 409
     assert duplicate.json()["code"] == "ALREADY_EXISTS"
+    plan = created.json()
 
     participant_id = str(new_id())
     seeded = await api.post(
@@ -247,21 +222,6 @@ async def test_client_generated_ids_are_honoured_and_duplicates_rejected(
         headers=owner.headers,
     )
     assert clash.status_code == 409
-
-    series_id = str(new_id())
-    series_body = {
-        "id": series_id,
-        "title": "Weekly",
-        "base_currency": "USD",
-        "timezone": "UTC",
-        "start_date": "2027-01-04",
-        "recurrence_rule": "FREQ=WEEKLY",
-    }
-    series = await api.post("/v1/plan-series", json=series_body, headers=owner.headers)
-    assert series.status_code == 201, series.text
-    assert series.json()["series"]["id"] == series_id
-    again = await api.post("/v1/plan-series", json=series_body, headers=owner.headers)
-    assert again.status_code == 409
 
 
 async def test_replays_do_not_count_against_rate_limits(

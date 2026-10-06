@@ -9,19 +9,11 @@ relationship queries.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import UUID
 
 from sqlalchemy import select
 
-from beluno.authorization.policy import (
-    AccessState,
-    GroupRole,
-    MembershipState,
-    PlanRole,
-    Visibility,
-)
-from beluno.db.models.groups import GroupMembership
-from beluno.db.models.plans import Plan, PlanParticipant
+from beluno.authorization.policy import AccessState, PlanRole
+from beluno.db.models.plans import PlanParticipant
 from beluno.db.models.sync_audit import ScopeHead
 from beluno.modules.context import CommandContext
 from beluno.modules.sync_audit.recorder import ChangeScope
@@ -40,42 +32,12 @@ class DirectoryEntry:
 
 
 async def visible_scopes(ctx: CommandContext) -> dict[ScopeKey, AccessLevel]:
-    """Every scope the caller may read, from their current memberships and participations."""
+    """Every scope the caller may read, from their current participations."""
 
     actor = ctx.require_actor()
     scopes: dict[ScopeKey, AccessLevel] = {
         ScopeKey(ChangeScope.USER, actor.user_id): AccessLevel.SELF
     }
-    memberships = (
-        await ctx.session.execute(
-            select(GroupMembership.group_id, GroupMembership.role, GroupMembership.state).where(
-                GroupMembership.user_id == actor.user_id,
-                GroupMembership.state.in_(
-                    (MembershipState.ACTIVE.value, MembershipState.INVITED.value)
-                ),
-            )
-        )
-    ).all()
-    active_groups: list[UUID] = []
-    for group_id, role, state in memberships:
-        if state == MembershipState.INVITED.value:
-            level = AccessLevel.INVITED
-        else:
-            active_groups.append(group_id)
-            manager = role in (GroupRole.OWNER.value, GroupRole.ADMIN.value)
-            level = AccessLevel.MANAGER if manager else AccessLevel.MEMBER
-        scopes[ScopeKey(ChangeScope.GROUP, group_id)] = level
-    if active_groups:
-        group_plans = (
-            await ctx.session.execute(
-                select(Plan.id).where(
-                    Plan.group_id.in_(active_groups),
-                    Plan.visibility == Visibility.GROUP.value,
-                )
-            )
-        ).scalars()
-        for plan_id in group_plans:
-            scopes[ScopeKey(ChangeScope.PLAN, plan_id)] = AccessLevel.READER
     participations = (
         await ctx.session.execute(
             select(PlanParticipant.plan_id, PlanParticipant.role).where(

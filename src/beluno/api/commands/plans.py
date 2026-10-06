@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from beluno.api.commands.groups import required_version
 from beluno.api.presenters import (
     invite_response,
     participant_response,
@@ -12,7 +11,7 @@ from beluno.api.presenters import (
     seed_of,
     timing_input,
 )
-from beluno.authorization.policy import PlanRole, PlanState, Visibility
+from beluno.authorization.policy import PlanRole, PlanState
 from beluno.contracts.invites import InviteResponse
 from beluno.contracts.plans import (
     JoinRequestDecision,
@@ -31,23 +30,20 @@ from beluno.modules.context import CommandContext
 from beluno.modules.iam import rate_limits
 from beluno.modules.plans import duplication, invites, service
 from beluno.modules.plans import participants as participant_service
-from beluno.sync.commands import Command, CommandCall, EmptyPayload, version_of
+from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
 
 
 async def _create(ctx: CommandContext, call: CommandCall, body: PlanCreateRequest) -> PlanResponse:
     draft = service.PlanDraft(
         plan_id=body.id,
-        group_id=body.group_id,
         title=body.title,
         kind=body.kind,
         state=PlanState(body.state),
         timing=timing_input(body.timing),
         base_currency=body.base_currency,
-        visibility=Visibility(body.visibility) if body.visibility else None,
         description=body.description,
         location_label=body.location_label,
         seeds=tuple(seed_of(seed) for seed in body.participants),
-        include_all_group_members=body.include_all_group_members,
     )
     return plan_response(await service.create_plan(ctx, draft))
 
@@ -59,7 +55,6 @@ async def _update(ctx: CommandContext, call: CommandCall, body: PlanUpdateReques
         kind=body.kind,
         timing=timing_input(body.timing) if body.timing else None,
         base_currency=body.base_currency,
-        visibility=Visibility(body.visibility) if body.visibility else None,
         description=body.description if "description" in fields else service.UNSET,
         location_label=body.location_label if "location_label" in fields else service.UNSET,
     )
@@ -130,10 +125,6 @@ async def _review_join_request(
     return participant_response(participant)
 
 
-async def _join(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> ParticipantResponse:
-    return participant_response(await participant_service.join_plan(ctx, call.id("plan_id")))
-
-
 async def _leave(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> None:
     await participant_service.leave_plan(ctx, call.id("plan_id"))
 
@@ -148,13 +139,10 @@ async def _duplicate(
 ) -> PlanResponse:
     options = duplication.DuplicateOptions(
         title=body.title,
-        use_source_group="group_id" not in body.model_fields_set,
-        group_id=body.group_id,
         timing=timing_input(body.timing),
         participant_ids=tuple(body.participant_ids) if body.participant_ids is not None else None,
         include_description=body.include_description,
         include_location=body.include_location,
-        include_travel_details=body.include_travel_details,
     )
     return plan_response(await duplication.duplicate_plan(ctx, call.id("plan_id"), options))
 
@@ -250,13 +238,6 @@ PLAN_PARTICIPANT_REVIEW = Command(
     handler=_review_join_request,
     target_fields=("plan_id", "participant_id"),
 )
-PLAN_JOIN = Command(
-    name="plan.join",
-    payload_model=EmptyPayload,
-    response_model=ParticipantResponse,
-    handler=_join,
-    target_fields=("plan_id",),
-)
 PLAN_LEAVE = Command(
     name="plan.leave",
     payload_model=EmptyPayload,
@@ -301,7 +282,6 @@ COMMANDS: list[Command[Any, Any]] = [
     PLAN_PARTICIPANT_CHANGE_ROLE,
     PLAN_PARTICIPANT_REMOVE,
     PLAN_PARTICIPANT_REVIEW,
-    PLAN_JOIN,
     PLAN_LEAVE,
     PLAN_RSVP,
     PLAN_DUPLICATE,

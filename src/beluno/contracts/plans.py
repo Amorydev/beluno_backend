@@ -1,19 +1,12 @@
-"""Plan, participant, RSVP, and travel-extension contracts."""
+"""Plan, participant, and RSVP contracts."""
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
-from typing import Annotated, Literal, Self
+from datetime import date, datetime
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import (
-    AfterValidator,
-    AwareDatetime,
-    BaseModel,
-    ConfigDict,
-    Field,
-    model_validator,
-)
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from beluno.contracts.common import (
     CurrencyCode,
@@ -28,20 +21,8 @@ PlanKind = Literal["dinner", "coffee", "movie", "sport", "birthday", "outing", "
 PlanStateName = Literal[
     "draft", "planning", "active", "settling", "completed", "archived", "cancelled"
 ]
-VisibilityName = Literal["group", "participants"]
 AssignablePlanRole = Literal["admin", "member", "viewer"]
 RsvpAnswer = Literal["going", "maybe", "declined"]
-
-
-def wall_clock_time(value: time | None) -> time | None:
-    """Series times are local wall-clock times; the zone comes from ``timezone``."""
-
-    if value is not None and value.tzinfo is not None:
-        raise ValueError("local_start_time must not include an offset; send the IANA timezone")
-    return value
-
-
-LocalTime = Annotated[time | None, AfterValidator(wall_clock_time)]
 
 
 class PlanTiming(BaseModel):
@@ -106,17 +87,14 @@ class PlanCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID | None = None
-    group_id: UUID | None = None
     title: Title
     kind: PlanKind = "custom"
     state: Literal["draft", "planning"] = "planning"
     timing: PlanTiming = Field(default_factory=PlanTiming)
-    base_currency: CurrencyCode | None = None
-    visibility: VisibilityName | None = None
+    base_currency: CurrencyCode
     description: LongText | None = None
     location_label: Label | None = None
     participants: list[ParticipantSeed] = Field(default_factory=list, max_length=100)
-    include_all_group_members: bool = False
 
 
 class PlanUpdateRequest(BaseModel):
@@ -128,7 +106,6 @@ class PlanUpdateRequest(BaseModel):
     kind: PlanKind | None = None
     timing: PlanTiming | None = None
     base_currency: CurrencyCode | None = None
-    visibility: VisibilityName | None = None
     description: LongText | None = None
     location_label: Label | None = None
 
@@ -156,16 +133,11 @@ class ParticipantResponse(BaseModel):
 
 class PlanResponse(BaseModel):
     id: UUID
-    group_id: UUID | None
-    series_id: UUID | None
-    occurrence_key: str | None
-    is_series_exception: bool
     title: str
     kind: PlanKind
     state: PlanStateName
     timing: PlanTiming
     base_currency: str
-    visibility: VisibilityName
     description: str | None
     location_label: str | None
     deletion_scheduled_at: datetime | None
@@ -203,94 +175,9 @@ class PlanOwnershipTransferRequest(BaseModel):
     new_owner_participant_id: UUID
 
 
-class TravelDetailsRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    destination_summary: Label | None = None
-    notes: LongText | None = None
-
-
-class TravelSegmentRequest(BaseModel):
-    """Local wall-clock times with IANA zones (flights cross zones), or dates only.
-
-    ``id`` is an optional client-generated ID for a new segment; updates ignore it.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: UUID | None = None
-    segment_type: Literal["flight", "train", "bus", "car", "ferry", "lodging", "other"]
-    title: Label | None = None
-    origin_label: Label | None = None
-    destination_label: Label | None = None
-    timing_mode: Literal["date", "datetime"]
-    start_date: date | None = None
-    end_date: date | None = None
-    departure_local: datetime | None = None
-    departure_timezone: TimezoneName | None = None
-    arrival_local: datetime | None = None
-    arrival_timezone: TimezoneName | None = None
-    sort_order: int = Field(default=0, ge=0, le=10_000)
-
-    @model_validator(mode="after")
-    def consistent_fields(self) -> Self:
-        local_fields = (self.departure_local, self.arrival_local)
-        if any(value is not None and value.tzinfo is not None for value in local_fields):
-            raise ValueError("local times must not include an offset; send the IANA zone")
-        if self.timing_mode == "date":
-            ok = self.start_date is not None and all(
-                value is None
-                for value in (
-                    self.departure_local,
-                    self.departure_timezone,
-                    self.arrival_local,
-                    self.arrival_timezone,
-                )
-            )
-        else:
-            ok = (
-                self.departure_local is not None
-                and self.departure_timezone is not None
-                and self.start_date is None
-                and self.end_date is None
-                and (self.arrival_local is None) == (self.arrival_timezone is None)
-            )
-        if not ok:
-            raise ValueError(f"segment fields are inconsistent with '{self.timing_mode}'")
-        return self
-
-
-class TravelSegmentResponse(BaseModel):
-    id: UUID
-    segment_type: str
-    title: str | None
-    origin_label: str | None
-    destination_label: str | None
-    timing_mode: Literal["date", "datetime"]
-    start_date: date | None
-    end_date: date | None
-    departure_local: datetime | None
-    departure_timezone: str | None
-    departs_at: datetime | None
-    arrival_local: datetime | None
-    arrival_timezone: str | None
-    arrives_at: datetime | None
-    sort_order: int
-    version: int
-
-
-class TravelResponse(BaseModel):
-    plan_id: UUID
-    destination_summary: str | None
-    notes: str | None
-    version: int
-    segments: list[TravelSegmentResponse]
-
-
 class PlanDuplicateRequest(BaseModel):
     """Copies only the allowlisted structure; see the ``plan-copy-v1`` manifest.
 
-    Omit ``group_id`` to keep the source group; send ``null`` for no group.
     ``participant_ids`` omitted copies every active registered participant;
     an empty list copies none.
     """
@@ -298,69 +185,7 @@ class PlanDuplicateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: Title | None = None
-    group_id: UUID | None = None
     timing: PlanTiming = Field(default_factory=PlanTiming)
     participant_ids: list[UUID] | None = Field(default=None, max_length=100)
     include_description: bool = True
     include_location: bool = False
-    include_travel_details: bool = True
-
-
-class SeriesCreateRequest(BaseModel):
-    """A recurring plan. ``recurrence_rule`` is an RRULE subset, e.g.
-    ``FREQ=WEEKLY;BYDAY=TH`` or ``FREQ=MONTHLY;BYDAY=-1FR;COUNT=6``."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: UUID | None = None
-    group_id: UUID | None = None
-    title: Title
-    kind: PlanKind = "custom"
-    base_currency: CurrencyCode | None = None
-    visibility: VisibilityName | None = None
-    description: LongText | None = None
-    location_label: Label | None = None
-    timezone: TimezoneName
-    start_date: date
-    local_start_time: LocalTime = None
-    duration_minutes: int | None = Field(default=None, ge=1, le=10_080)
-    recurrence_rule: str = Field(min_length=6, max_length=500)
-    participant_user_ids: list[UUID] = Field(default_factory=list, max_length=100)
-    horizon_days: int = Field(default=56, ge=7, le=366)
-
-
-class SeriesSplitRequest(BaseModel):
-    """Change this and future occurrences from ``from_date``; earlier ones stay as they are."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    from_date: date
-    title: Title | None = None
-    local_start_time: LocalTime = None
-    duration_minutes: int | None = Field(default=None, ge=1, le=10_080)
-    recurrence_rule: str | None = Field(default=None, min_length=6, max_length=500)
-    timezone: TimezoneName | None = None
-
-
-class SeriesResponse(BaseModel):
-    id: UUID
-    group_id: UUID | None
-    title: str
-    kind: PlanKind
-    base_currency: str
-    visibility: VisibilityName
-    timezone: str
-    start_date: date
-    local_start_time: time | None
-    duration_minutes: int | None
-    recurrence_rule: str
-    horizon_days: int
-    materialized_through: date | None
-    state: Literal["active", "cancelled"]
-    version: int
-    created_at: datetime
-
-
-class SeriesWithOccurrencesResponse(BaseModel):
-    series: SeriesResponse
-    occurrences: list[PlanResponse]

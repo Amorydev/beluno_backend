@@ -1,8 +1,8 @@
-"""Load the caller's current relationship to a group or plan and enforce a decision.
+"""Load the caller's current relationship to a plan and enforce a decision.
 
-Every protected endpoint goes through ``load_group``/``load_plan`` plus
-``require_group``/``require_plan``. Lookups run under RLS, so a resource the caller
-cannot see is indistinguishable from one that does not exist.
+Every protected endpoint goes through ``load_plan`` plus ``require_plan``.
+Lookups run under RLS, so a resource the caller cannot see is indistinguishable
+from one that does not exist.
 """
 
 from __future__ import annotations
@@ -16,35 +16,16 @@ from sqlalchemy import Select, select
 from beluno.authorization.policy import (
     AccessState,
     Decision,
-    GroupAction,
-    GroupRole,
-    GroupState,
-    GroupSubject,
-    MembershipState,
     PlanAction,
     PlanRole,
     PlanState,
     PlanSubject,
-    Visibility,
-    decide_group,
     decide_plan,
 )
 from beluno.contracts.errors import forbidden, not_found, step_up_required
 from beluno.db.models.base import Base
-from beluno.db.models.groups import Group, GroupMembership
 from beluno.db.models.plans import Plan, PlanParticipant
 from beluno.modules.context import CommandContext
-
-
-@dataclass(frozen=True)
-class GroupAccess:
-    group: Group
-    membership: GroupMembership | None
-    subject: GroupSubject
-
-    @property
-    def role(self) -> GroupRole | None:
-        return self.subject.role
 
 
 @dataclass(frozen=True)
@@ -95,31 +76,6 @@ def enforce(decision: Decision) -> None:
     raise forbidden()
 
 
-async def load_group(
-    ctx: CommandContext,
-    group_id: UUID,
-    *,
-    for_update: bool = False,
-) -> GroupAccess:
-    actor = ctx.require_actor()
-    group = await _select_visible(ctx, select(Group).where(Group.id == group_id), for_update)
-    if group is None:
-        raise not_found()
-    membership = await ctx.session.get(GroupMembership, (group_id, actor.user_id))
-    subject = GroupSubject(
-        role=GroupRole(membership.role) if membership else None,
-        membership_state=MembershipState(membership.state) if membership else None,
-        group_state=GroupState(group.state),
-        actor_is_guest=actor.is_guest,
-        step_up_fresh=ctx.step_up_is_fresh,
-    )
-    return GroupAccess(group=group, membership=membership, subject=subject)
-
-
-def require_group(access: GroupAccess, action: GroupAction) -> None:
-    enforce(decide_group(action, access.subject))
-
-
 async def load_plan(
     ctx: CommandContext,
     plan_id: UUID,
@@ -131,18 +87,12 @@ async def load_plan(
     if plan is None:
         raise not_found()
     participant = await find_user_participant(ctx, plan_id, actor.user_id)
-    group_member_active = False
-    if plan.group_id is not None:
-        membership = await ctx.session.get(GroupMembership, (plan.group_id, actor.user_id))
-        group_member_active = membership is not None and membership.state == "active"
     return PlanAccess(
         plan=plan,
         participant=participant,
         subject=PlanSubject(
             participant_role=PlanRole(participant.role) if participant else None,
             access_state=AccessState(participant.access_state) if participant else None,
-            group_member_active=group_member_active,
-            visibility=Visibility(plan.visibility),
             plan_state=PlanState(plan.state),
             deletion_scheduled=plan.deletion_scheduled_at is not None,
             actor_is_guest=actor.is_guest,

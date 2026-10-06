@@ -1,7 +1,6 @@
 """Sync projections of finance entities in the plan scope.
 
-Finance is private to the plan's participants: these types are never sent to
-the ``reader`` access level (group members browsing a group-visible plan).
+Finance is private to the plan's active participants.
 """
 
 from __future__ import annotations

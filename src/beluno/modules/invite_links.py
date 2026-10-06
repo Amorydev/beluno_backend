@@ -1,4 +1,4 @@
-"""Shared mechanics for shareable invite links (plan and group invites).
+"""Shared mechanics for shareable plan invite links.
 
 Tokens carry 32 random bytes (base64url); only an HMAC digest is stored, and the
 raw token is returned once at creation. Unusable invites (unknown, expired,

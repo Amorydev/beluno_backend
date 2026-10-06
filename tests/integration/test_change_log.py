@@ -93,52 +93,48 @@ async def test_api_mutations_get_contiguous_sequences_per_scope(
     api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
 ) -> None:
     owner = await sign_in(api, identity_provider, name="Owner")
-    group = (
+    created = [
         await api.post(
-            "/v1/groups",
-            json={"name": "Crew", "default_currency": "USD", "default_timezone": "UTC"},
-            headers=owner.headers,
+            "/v1/plans", json={"title": title, "base_currency": "USD"}, headers=owner.headers
         )
-    ).json()
-    for version, name in ((1, "Crew 2"), (2, "Crew 3")):
+        for title in ("Trip", "Dinner")
+    ]
+    first, second = (response.json() for response in created)
+    for version, title in ((1, "Trip 2"), (2, "Trip 3")):
         renamed = await api.patch(
-            f"/v1/groups/{group['id']}",
-            json={"name": name},
+            f"/v1/plans/{first['id']}",
+            json={"title": title},
             headers={**owner.headers, "If-Match": f'"{version}"'},
         )
         assert renamed.status_code == 200, renamed.text
-    plan = (
-        await api.post(
-            "/v1/plans",
-            json={"title": "Dinner", "group_id": group["id"]},
-            headers=owner.headers,
-        )
-    ).json()
     retitled = await api.patch(
-        f"/v1/plans/{plan['id']}",
+        f"/v1/plans/{second['id']}",
         json={"title": "Late dinner"},
         headers={**owner.headers, "If-Match": '"1"'},
     )
     assert retitled.status_code == 200
 
-    group_rows = scope_rows(admin, group["id"])
-    assert [seq for seq, _, _ in group_rows] == [1, 2, 3, 4]
-    assert [version for _, entity_id, version in group_rows if entity_id == group["id"]] == [
+    first_rows = scope_rows(admin, first["id"])
+    assert [seq for seq, _, _ in first_rows] == [1, 2, 3, 4]
+    assert [version for _, entity_id, version in first_rows if entity_id == first["id"]] == [
         1,
         2,
         3,
     ]
-    plan_rows = scope_rows(admin, plan["id"])
-    assert [seq for seq, _, _ in plan_rows] == [1, 2, 3]
-    assert [version for _, entity_id, version in plan_rows if entity_id == plan["id"]] == [1, 2]
+    second_rows = scope_rows(admin, second["id"])
+    assert [seq for seq, _, _ in second_rows] == [1, 2, 3]
+    assert [version for _, entity_id, version in second_rows if entity_id == second["id"]] == [
+        1,
+        2,
+    ]
     heads = dict(
         admin.fetch(
             "SELECT scope_id::text, last_seq FROM sync_audit.scope_heads "
             "WHERE scope_id = ANY(%s::uuid[])",
-            [group["id"], plan["id"]],
+            [first["id"], second["id"]],
         )
     )
-    assert heads == {group["id"]: 4, plan["id"]: 3}
+    assert heads == {first["id"]: 4, second["id"]: 3}
     assert (
         admin.scalar(
             "SELECT count(*) FROM sync_audit.scope_heads WHERE floor_seq <> 0 OR generation <> 1"

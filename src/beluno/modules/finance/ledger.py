@@ -144,7 +144,7 @@ class Ledger:
             fund_movement_id=fund_movement_id,
             reverses_transaction_id=reverses.id if reverses else None,
             memo=memo,
-            created_by_user_id=ctx.actor.user_id if ctx.actor else ctx.on_behalf_of,
+            created_by_user_id=ctx.actor.user_id if ctx.actor else None,
             operation_id=ctx.operation_id,
             created_at=ctx.now,
         )

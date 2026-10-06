@@ -216,36 +216,6 @@ async def test_role_limits_removed_users_and_rotation(
     assert preview.status_code == 200
 
 
-async def test_group_invite_links_add_registered_members(
-    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
-) -> None:
-    owner = await sign_in(api, identity_provider)
-    friend = await sign_in(api, identity_provider, name="Friend")
-    group = (
-        await api.post(
-            "/v1/groups",
-            json={"name": "Hikers", "default_currency": "USD", "default_timezone": "UTC"},
-            headers=owner.headers,
-        )
-    ).json()
-    invite = await api.post(f"/v1/groups/{group['id']}/invites", json={}, headers=owner.headers)
-    token = invite.json()["token"]
-
-    preview = await api.post("/v1/invites/preview", json={"token": token})
-    assert preview.json()["group"] == {"name": "Hikers"}
-    assert (await redeem(api, token, display_name="Guest")).status_code == 401
-    joined = await redeem(api, token, friend)
-    assert joined.json()["group"]["my_role"] == "member"
-    members = await api.get(f"/v1/groups/{group['id']}/members", headers=owner.headers)
-    assert {member["display_name"] for member in members.json()} == {"Test Member", "Friend"}
-
-    await api.delete(
-        f"/v1/groups/{group['id']}/invites/{invite.json()['id']}", headers=owner.headers
-    )
-    late = await sign_in(api, identity_provider)
-    assert (await redeem(api, token, late)).status_code == 404
-
-
 @pytest.fixture
 async def invites_disabled_api(
     live_settings: Settings, identity_provider: IdentityProviderStub

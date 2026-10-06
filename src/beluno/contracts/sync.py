@@ -8,12 +8,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-SCOPE_PATTERN = r"^(user|group|plan):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+SCOPE_PATTERN = r"^(user|plan):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 ScopeName = Annotated[str, StringConstraints(pattern=SCOPE_PATTERN, max_length=48)]
 CursorToken = Annotated[str, StringConstraints(min_length=1, max_length=512)]
 CommandName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_.]{0,63}$")]
 ScopeStatus = Literal["ok", "unavailable", "resync_required"]
-AccessLevelName = Literal["self", "manager", "member", "reader", "invited"]
+AccessLevelName = Literal["self", "manager", "member"]
 
 MAX_PULL_SCOPES = 20
 MAX_PULL_PAGE_SIZE = 500
@@ -205,8 +205,7 @@ class PushResponse(BaseModel):
 class PlanAccessSignal(BaseModel):
     """User-scope signal: the caller's own participation in a plan changed.
 
-    A state other than ``active`` means the plan scope is no longer theirs to sync
-    (unless the handshake directory still lists it, e.g. as a group reader).
+    A state other than ``active`` means the plan scope is no longer theirs to sync.
     """
 
     plan_id: UUID
@@ -217,43 +216,19 @@ class PlanAccessSignal(BaseModel):
     version: int
 
 
-class GroupAccessSignal(BaseModel):
-    """User-scope signal: the caller's own membership in a group changed."""
-
-    group_id: UUID
-    role: Literal["owner", "admin", "member"]
-    state: Literal["invited", "active", "left", "removed"]
-    version: int
-
-
 class PlanEntity(BaseModel):
     """The ``plan`` entity in the feed: ``PlanResponse`` without the caller-specific
     ``my_participant`` snapshot, which the ``plan_participant`` entity carries instead."""
 
     id: UUID
-    group_id: UUID | None
-    series_id: UUID | None
-    occurrence_key: str | None
-    is_series_exception: bool
     title: str
     kind: str
     state: str
     timing: dict[str, Any]
     base_currency: str
-    visibility: str
     description: str | None
     location_label: str | None
     deletion_scheduled_at: datetime | None
     version: int
     created_at: datetime
     updated_at: datetime
-
-
-class TravelDetailsEntity(BaseModel):
-    """The ``travel_details`` entity: ``TravelResponse`` without the segments, which
-    are ``travel_segment`` entities of their own."""
-
-    plan_id: UUID
-    destination_summary: str | None
-    notes: str | None
-    version: int

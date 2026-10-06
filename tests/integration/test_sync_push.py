@@ -221,20 +221,15 @@ async def test_transient_failures_block_later_operations_on_the_same_scope(
         for _ in range(limit + 1)
     ]
     batch.append(op("plan.rsvp", target={"plan_id": plan["id"]}, payload={"status": "going"}))
-    batch.append(
-        op(
-            "group.create",
-            payload={"name": "Crew", "default_currency": "USD", "default_timezone": "UTC"},
-        )
-    )
+    # A new plan addresses no existing plan, so it is not held back.
+    batch.append(op("plan.create", payload={"title": "Other", "base_currency": "USD"}))
 
     results = await push(api, owner, batch)
 
     assert outcomes(results) == ["applied"] * limit + ["retry", "skipped", "applied"]
     limited = results[limit]["problem"]
     assert limited["code"] == "RATE_LIMITED" and limited["retry_after_seconds"] >= 1
-    assert admin.scalar("SELECT count(*) FROM plans.plans") == limit + 1
-    assert admin.scalar("SELECT count(*) FROM groups.groups") == 1
+    assert admin.scalar("SELECT count(*) FROM plans.plans") == limit + 2
 
     # Replaying the applied duplicates does not consume the limit again.
     replayed = await push(api, owner, results and batch[:limit])

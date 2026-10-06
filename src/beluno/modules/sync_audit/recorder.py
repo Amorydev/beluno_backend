@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 
 class ChangeScope(StrEnum):
     USER = "user"
-    GROUP = "group"
     PLAN = "plan"
 
 
@@ -37,10 +36,10 @@ INSERT_AUDIT_EVENT = text(
     """
     INSERT INTO sync_audit.audit_events (
         id, occurred_at, actor_user_id, actor_session_id, request_id, action,
-        entity_type, entity_id, group_id, plan_id, metadata
+        entity_type, entity_id, plan_id, metadata
     ) VALUES (
         :id, :occurred_at, :actor_user_id, :actor_session_id, :request_id, :action,
-        :entity_type, :entity_id, :group_id, :plan_id, CAST(:metadata AS jsonb)
+        :entity_type, :entity_id, :plan_id, CAST(:metadata AS jsonb)
     )
     """
 )
@@ -56,7 +55,7 @@ def _require_tracked_savepoint(ctx: CommandContext) -> None:
 def _acting_user(ctx: CommandContext, actor_user_id: UUID | None) -> UUID | None:
     if actor_user_id is not None:
         return actor_user_id
-    return ctx.actor.user_id if ctx.actor else ctx.on_behalf_of
+    return ctx.actor.user_id if ctx.actor else None
 
 
 async def record_mutation(
@@ -68,7 +67,6 @@ async def record_mutation(
     entity_version: int,
     scope: ChangeScope,
     scope_id: UUID,
-    group_id: UUID | None = None,
     plan_id: UUID | None = None,
     metadata: Mapping[str, Any] | None = None,
     operation: str = "upsert",
@@ -88,7 +86,6 @@ async def record_mutation(
             "action": action,
             "entity_type": entity_type,
             "entity_id": entity_id,
-            "group_id": group_id,
             "plan_id": plan_id,
             "metadata": json.dumps(redact(dict(metadata or {})), default=str, sort_keys=True),
         }
@@ -128,7 +125,6 @@ async def record_audit(
             "action": action,
             "entity_type": entity_type,
             "entity_id": entity_id,
-            "group_id": None,
             "plan_id": plan_id,
             "metadata": json.dumps(redact(dict(metadata or {})), default=str, sort_keys=True),
         }

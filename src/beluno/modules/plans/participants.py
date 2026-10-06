@@ -125,7 +125,7 @@ def reactivate(
 
 
 async def visible_registered_user(ctx: CommandContext, user_id: UUID) -> User:
-    """RLS only exposes people who share a group or plan with the caller."""
+    """RLS only exposes people who share a plan with the caller."""
 
     user = await ctx.session.get(User, user_id)
     if user is None or user.status != "active":
@@ -267,34 +267,6 @@ async def _leave(ctx: CommandContext, access: PlanAccess) -> None:
     bump(participant, ctx)
     await ctx.session.flush()
     await record_participant_change(ctx, participant, "plan_participant.left")
-
-
-async def join_plan(ctx: CommandContext, plan_id: UUID) -> PlanParticipant:
-    """Self-join a group-visible plan as an active group member."""
-
-    access = await load_plan(ctx, plan_id, for_update=True)
-    require_plan(access, PlanAction.JOIN)
-    actor = ctx.require_actor()
-    existing = access.participant
-    if existing is not None:
-        reactivate(ctx, existing, role=PlanRole.MEMBER)
-        await ctx.session.flush()
-        await record_participant_change(ctx, existing, "plan_participant.rejoined")
-        return existing
-    user = await ctx.session.get(User, actor.user_id)
-    assert user is not None
-    return await insert_participant(
-        ctx,
-        build_participant(
-            ctx,
-            plan_id=plan_id,
-            identity_kind="user",
-            user_id=user.id,
-            display_name=user.display_name,
-            role=PlanRole.MEMBER,
-        ),
-        "plan_participant.joined",
-    )
 
 
 async def review_join_request(

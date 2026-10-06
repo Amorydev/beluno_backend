@@ -356,12 +356,6 @@ async def test_currency_catalog_and_plan_currencies_are_validated(
         "/v1/plans", json={"title": "X", "base_currency": "XYZ"}, headers=trip.owner.headers
     )
     assert unknown.status_code == 422 and unknown.json()["code"] == "CURRENCY_NOT_SUPPORTED"
-    group = await api.patch(
-        f"/v1/groups/{trip.group_id}",
-        json={"default_currency": "ZZZ"},
-        headers=if_match(1, trip.owner),
-    )
-    assert group.status_code == 422 and group.json()["code"] == "CURRENCY_NOT_SUPPORTED"
     # Without finance data the base currency may still change.
     fresh = await api.post(
         "/v1/plans", json={"title": "Fresh", "base_currency": "USD"}, headers=trip.owner.headers
@@ -412,26 +406,21 @@ async def test_only_the_creator_or_a_manager_changes_an_expense(
         assert hidden.status_code == 404, path
 
 
-async def test_group_readers_get_no_finance_data(
+async def test_removed_participants_get_no_finance_data(
     api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
 ) -> None:
     trip = await finance_plan(api, identity_provider, admin, members=("Bea", "Dan"))
     ann, bea = ids(trip, "Ann", "Bea")
     await add_expense(api, trip.owner, trip, equal_expense(400, ann, [ann, bea]))
-    visible = await api.patch(
-        trip.path(), json={"visibility": "group"}, headers=if_match(1, trip.owner)
-    )
-    assert visible.status_code == 200, visible.text
     dan = trip.members["Dan"]
     removed = await api.delete(
         trip.path(f"/participants/{trip.people['Dan']}"), headers=trip.owner.headers
     )
     assert removed.status_code in (200, 204), removed.text
-    assert (await api.get(trip.path(), headers=dan.headers)).status_code == 200
-    assert (await api.get(trip.path("/ledger"), headers=dan.headers)).status_code == 403
-    items, _, status = await pull_all(api, dan, f"plan:{trip.plan_id}")
-    assert status == "ok"
-    assert {item["entity_type"] for item in items} & {"ledger", "expense"} == set()
+    assert (await api.get(trip.path(), headers=dan.headers)).status_code == 404
+    assert (await api.get(trip.path("/ledger"), headers=dan.headers)).status_code == 404
+    _, _, status = await pull_all(api, dan, f"plan:{trip.plan_id}")
+    assert status == "unavailable"
 
 
 async def test_idempotent_create_replays_one_revision(

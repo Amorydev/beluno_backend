@@ -64,12 +64,6 @@ async def test_guest_joins_with_limited_rights(
         f"/v1/plans/{plan['id']}/invites", json={}, headers=guest.headers
     )
     assert denied_invite.status_code == 403
-    group = await api.post(
-        "/v1/groups",
-        json={"name": "x", "default_currency": "USD", "default_timezone": "UTC"},
-        headers=guest.headers,
-    )
-    assert group.status_code == 403
 
 
 async def test_invites_without_guest_access_require_sign_in(

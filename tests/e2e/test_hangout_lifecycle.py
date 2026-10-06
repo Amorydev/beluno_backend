@@ -1,4 +1,4 @@
-"""The access spine end to end through the public API on real PostgreSQL."""
+"""A hangout end to end through the public API on real PostgreSQL."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ async def email_code(api: httpx.AsyncClient, settings: Settings, email: str) -> 
     return challenge_id, match.group(1)
 
 
-async def test_group_plan_access_spine(
+async def test_hangout_access_spine(
     api: httpx.AsyncClient,
     identity_provider: IdentityProviderStub,
     live_settings: Settings,
@@ -65,41 +65,24 @@ async def test_group_plan_access_spine(
     )
     friend = await sign_in(api, identity_provider, name="Minh")
 
-    # Reusable group, joined through a group invite link.
-    group = (
-        await api.post(
-            "/v1/groups",
-            json={
-                "name": "Saigon crew",
-                "default_currency": "VND",
-                "default_timezone": "Asia/Ho_Chi_Minh",
-            },
-            headers=organizer.headers,
-        )
-    ).json()
-    group_link = await api.post(
-        f"/v1/groups/{group['id']}/invites", json={}, headers=organizer.headers
-    )
-    joined_group = await api.post(
-        "/v1/invites/redeem", json={"token": group_link.json()["token"]}, headers=friend.headers
-    )
-    assert joined_group.json()["group"]["my_role"] == "member"
-
-    # A dinner that snapshots the group, plus a guest who joins from a web link.
+    # A dinner the friend joins from a shared link, plus a guest who joins from the web.
     dinner = (
         await api.post(
             "/v1/plans",
             json={
                 "title": "Hotpot",
                 "kind": "dinner",
-                "group_id": group["id"],
-                "include_all_group_members": True,
+                "base_currency": "VND",
                 "timing": {"mode": "date", "start_date": "2026-10-17"},
             },
             headers=organizer.headers,
         )
     ).json()
     link = await api.post(f"/v1/plans/{dinner['id']}/invites", json={}, headers=organizer.headers)
+    joined = await api.post(
+        "/v1/invites/redeem", json={"token": link.json()["token"]}, headers=friend.headers
+    )
+    assert joined.json()["participant"]["role"] == "member"
     guest_join = await api.post(
         "/v1/invites/redeem", json={"token": link.json()["token"], "display_name": "An"}
     )
@@ -170,8 +153,7 @@ async def test_group_plan_access_spine(
     events = admin.scalar("SELECT count(*) FROM sync_audit.audit_events")
     changes = admin.scalar("SELECT count(*) FROM sync_audit.change_log")
     signals = admin.scalar(
-        "SELECT count(*) FROM sync_audit.change_log "
-        "WHERE entity_type IN ('plan_access', 'group_access')"
+        "SELECT count(*) FROM sync_audit.change_log WHERE entity_type = 'plan_access'"
     )
     assert events > 20
     assert changes == events + signals

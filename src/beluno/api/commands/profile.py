@@ -4,15 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from beluno.api.commands.groups import required_version
 from beluno.api.presenters import profile_response
 from beluno.contracts.errors import not_found
 from beluno.contracts.iam import ProfileUpdateRequest, UserProfileResponse
 from beluno.modules.context import CommandContext
-from beluno.modules.groups.service import refresh_member_name
 from beluno.modules.iam import users
 from beluno.modules.iam.sessions import find_session, revoke_session
-from beluno.sync.commands import Command, CommandCall, EmptyPayload, version_of
+from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
 
 
 async def _update(
@@ -27,8 +25,6 @@ async def _update(
         clear_timezone="timezone" in fields and body.timezone is None,
     )
     user = await users.update_profile(ctx, changes, required_version(call))
-    if changes.display_name is not None:
-        await refresh_member_name(ctx, user)
     return profile_response(user)
 
 

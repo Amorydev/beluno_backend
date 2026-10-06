@@ -60,12 +60,6 @@ Title = Annotated[
     AfterValidator(clean_text),
     StringConstraints(min_length=1, max_length=120),
 ]
-GroupName = Annotated[
-    str,
-    StringConstraints(max_length=200),
-    AfterValidator(clean_text),
-    StringConstraints(min_length=1, max_length=80),
-]
 LongText = Annotated[str, AfterValidator(strip_optional_text), StringConstraints(max_length=2000)]
 Label = Annotated[str, AfterValidator(clean_text), StringConstraints(max_length=200)]
 TimezoneName = Annotated[str, StringConstraints(max_length=64), AfterValidator(validate_timezone)]

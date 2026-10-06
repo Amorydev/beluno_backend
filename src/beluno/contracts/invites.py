@@ -9,7 +9,6 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from beluno.contracts.common import DisplayName
-from beluno.contracts.groups import GroupResponse
 from beluno.contracts.iam import EMAIL_PATTERN, DeviceRequest, TokenResponse
 from beluno.contracts.plans import ParticipantResponse, PlanKind, PlanResponse, PlanTiming
 
@@ -33,17 +32,9 @@ class ClaimInviteCreateRequest(BaseModel):
     expires_in_hours: int = ExpiresInHours
 
 
-class GroupInviteCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    role: Literal["admin", "member"] = "member"
-    max_uses: int | None = Field(default=None, ge=1, le=1_000)
-    expires_in_hours: int = ExpiresInHours
-
-
 class InviteResponse(BaseModel):
     id: UUID
-    kind: Literal["plan", "group"]
+    kind: Literal["plan"]
     purpose: Literal["join", "claim"]
     role: str
     allow_guests: bool
@@ -82,31 +73,25 @@ class PlanInvitePreview(BaseModel):
     organizer_name: str | None
 
 
-class GroupInvitePreview(BaseModel):
-    name: str
-
-
 class InvitePreviewResponse(BaseModel):
     """Deliberately minimal: no members, balances, bookings, or locations."""
 
-    kind: Literal["plan", "group"]
+    kind: Literal["plan"]
     purpose: Literal["join", "claim"]
     requires_approval: bool
     allow_guests: bool
     placeholder_name: str | None
     expires_at: datetime
-    plan: PlanInvitePreview | None
-    group: GroupInvitePreview | None
+    plan: PlanInvitePreview
 
 
 class RedeemInviteResponse(BaseModel):
-    kind: Literal["plan", "group"]
+    kind: Literal["plan"]
     status: Literal["active", "pending_approval"]
     plan: PlanResponse | None = Field(
         default=None, description="Present once access is active (not while pending approval)."
     )
     participant: ParticipantResponse | None = None
-    group: GroupResponse | None = None
     session: TokenResponse | None = Field(
         default=None, description="Guest session created for a caller without an account."
     )

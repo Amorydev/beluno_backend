@@ -1,8 +1,7 @@
-"""Generic plans: creation with participant snapshots, updates, lifecycle, deletion.
+"""Plans: creation with participant snapshots, updates, lifecycle, deletion.
 
 ``kind`` only selects presentation defaults; no field required here is
-travel-specific. Plans copy group defaults at creation, so later group edits
-never silently change existing plans.
+travel-specific.
 """
 
 from __future__ import annotations
@@ -15,22 +14,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from beluno.authorization.access import (
-    PlanAccess,
-    load_group,
-    load_plan,
-    require_group,
-    require_plan,
-)
-from beluno.authorization.policy import (
-    AccessState,
-    GroupAction,
-    MembershipState,
-    PlanAction,
-    PlanRole,
-    PlanState,
-    Visibility,
-)
+from beluno.authorization.access import PlanAccess, load_plan, require_plan
+from beluno.authorization.policy import AccessState, PlanAction, PlanRole, PlanState
 from beluno.contracts.errors import (
     conflict,
     forbidden,
@@ -39,7 +24,6 @@ from beluno.contracts.errors import (
     version_conflict,
 )
 from beluno.db.ids import new_id
-from beluno.db.models.groups import Group, GroupMembership
 from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanParticipant
 from beluno.modules.context import CommandContext
@@ -66,17 +50,14 @@ class Timing:
 @dataclass(frozen=True)
 class PlanDraft:
     plan_id: UUID | None
-    group_id: UUID | None
     title: str
     kind: str
     state: PlanState
     timing: Timing
-    base_currency: str | None
-    visibility: Visibility | None
+    base_currency: str
     description: str | None
     location_label: str | None
     seeds: tuple[Seed, ...]
-    include_all_group_members: bool
 
 
 @dataclass(frozen=True)
@@ -85,7 +66,6 @@ class PlanChanges:
     kind: str | None = None
     timing: Timing | None = None
     base_currency: str | None = None
-    visibility: Visibility | None = None
     description: str | None = UNSET
     location_label: str | None = UNSET
 
@@ -121,45 +101,24 @@ def require_registered(ctx: CommandContext) -> None:
         raise forbidden("Sign in with an account to create plans")
 
 
-async def resolve_group(ctx: CommandContext, group_id: UUID | None) -> Group | None:
-    if group_id is None:
-        return None
-    access = await load_group(ctx, group_id)
-    require_group(access, GroupAction.CREATE_PLAN)
-    return access.group
-
-
 def new_plan(
     ctx: CommandContext,
     *,
     plan_id: UUID | None,
-    group: Group | None,
     title: str,
     kind: str,
     state: PlanState,
     timing: Timing,
-    base_currency: str | None,
-    visibility: Visibility | None,
+    base_currency: str,
     description: str | None,
     location_label: str | None,
 ) -> Plan:
-    currency = base_currency or (group.default_currency if group else None)
-    if currency is None:
-        raise validation_error("base_currency is required for a plan without a group")
-    chosen_visibility = visibility or (Visibility.GROUP if group else Visibility.PARTICIPANTS)
-    if chosen_visibility is Visibility.GROUP and group is None:
-        raise validation_error("group visibility requires a group")
     plan = Plan(
         id=plan_id or new_id(),
-        group_id=group.id if group else None,
-        series_id=None,
-        occurrence_key=None,
-        is_series_exception=False,
         title=title,
         kind=kind,
         state=state.value,
-        base_currency=currency,
-        visibility=chosen_visibility.value,
+        base_currency=base_currency,
         description=description,
         location_label=location_label,
         duplicated_from_plan_id=None,
@@ -198,34 +157,17 @@ async def insert_plan_with_owner(ctx: CommandContext, plan: Plan) -> PlanPartici
     return owner
 
 
-async def active_group_member_ids(ctx: CommandContext, group_id: UUID) -> list[UUID]:
-    rows = await ctx.session.execute(
-        select(GroupMembership.user_id)
-        .where(
-            GroupMembership.group_id == group_id,
-            GroupMembership.state == MembershipState.ACTIVE.value,
-        )
-        .order_by(GroupMembership.created_at, GroupMembership.user_id)
-    )
-    return list(rows.scalars())
-
-
 async def create_plan(ctx: CommandContext, draft: PlanDraft) -> PlanView:
     require_registered(ctx)
-    group = await resolve_group(ctx, draft.group_id)
-    currency = draft.base_currency or (group.default_currency if group else None)
-    if currency is not None:
-        await require_supported_currency(ctx, currency)
+    await require_supported_currency(ctx, draft.base_currency)
     plan = new_plan(
         ctx,
         plan_id=draft.plan_id,
-        group=group,
         title=draft.title,
         kind=draft.kind,
         state=draft.state,
         timing=draft.timing,
         base_currency=draft.base_currency,
-        visibility=draft.visibility,
         description=draft.description,
         location_label=draft.location_label,
     )
@@ -234,13 +176,8 @@ async def create_plan(ctx: CommandContext, draft: PlanDraft) -> PlanView:
     await record_participant_change(ctx, owner, "plan_participant.added")
     seeds = list(draft.seeds)
     seeded_user_ids = [seed.user_id for seed in seeds if seed.user_id is not None]
-    seeded_users = set(seeded_user_ids)
-    if len(seeded_users) != len(seeded_user_ids):
+    if len(set(seeded_user_ids)) != len(seeded_user_ids):
         raise validation_error("participants must not repeat a user")
-    if draft.include_all_group_members and group is not None:
-        for user_id in await active_group_member_ids(ctx, group.id):
-            if user_id != owner.user_id and user_id not in seeded_users:
-                seeds.append(Seed(user_id=user_id, placeholder_name=None, role=PlanRole.MEMBER))
     for seed in seeds:
         if seed.user_id == owner.user_id:
             continue
@@ -257,34 +194,18 @@ async def get_plan(ctx: CommandContext, plan_id: UUID) -> PlanView:
 async def list_plans(
     ctx: CommandContext,
     *,
-    group_id: UUID | None,
     after_id: UUID | None,
     limit: int,
 ) -> list[PlanView]:
     actor = ctx.require_actor()
-    if group_id is not None:
-        access = await load_group(ctx, group_id)
-        require_group(access, GroupAction.VIEW)
-        # RLS limits the rows to plans this member can see in the group.
-        statement = (
-            select(Plan, PlanParticipant)
-            .outerjoin(
-                PlanParticipant,
-                (PlanParticipant.plan_id == Plan.id)
-                & (PlanParticipant.user_id == actor.user_id)
-                & (PlanParticipant.access_state == AccessState.ACTIVE.value),
-            )
-            .where(Plan.group_id == group_id)
+    statement = (
+        select(Plan, PlanParticipant)
+        .join(PlanParticipant, PlanParticipant.plan_id == Plan.id)
+        .where(
+            PlanParticipant.user_id == actor.user_id,
+            PlanParticipant.access_state == AccessState.ACTIVE.value,
         )
-    else:
-        statement = (
-            select(Plan, PlanParticipant)
-            .join(PlanParticipant, PlanParticipant.plan_id == Plan.id)
-            .where(
-                PlanParticipant.user_id == actor.user_id,
-                PlanParticipant.access_state == AccessState.ACTIVE.value,
-            )
-        )
+    )
     statement = statement.order_by(Plan.id.desc()).limit(limit)
     if after_id is not None:
         statement = statement.where(Plan.id < after_id)
@@ -312,17 +233,10 @@ async def update_plan(
         if await ledger_exists(ctx, plan.id):
             raise base_currency_locked()
         plan.base_currency = changes.base_currency
-    if changes.visibility is not None:
-        if changes.visibility is Visibility.GROUP and plan.group_id is None:
-            raise validation_error("group visibility requires a group")
-        plan.visibility = changes.visibility.value
     if changes.description is not UNSET:
         plan.description = changes.description
     if changes.location_label is not UNSET:
         plan.location_label = changes.location_label
-    if plan.series_id is not None:
-        # An individually edited occurrence is kept out of later series edits.
-        plan.is_series_exception = True
     bump(plan, ctx)
     await ctx.session.flush()
     await record_plan_change(ctx, plan, "plan.updated")
@@ -340,8 +254,6 @@ async def change_state(
     check_transition(PlanState(plan.state), target)
     previous = plan.state
     plan.state = target.value
-    if plan.series_id is not None:
-        plan.is_series_exception = True
     bump(plan, ctx)
     await ctx.session.flush()
     await record_plan_change(
