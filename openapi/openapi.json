@@ -1,6 +1,74 @@
 {
   "components": {
     "schemas": {
+      "BaseAmountResponse": {
+        "description": "A labelled snapshot in the plan's base currency; never rewrites postings.",
+        "properties": {
+          "amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Minor"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "rate_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate As Of"
+          },
+          "rate_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "identity",
+                  "manual",
+                  "estimated"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Source"
+          }
+        },
+        "required": [
+          "currency",
+          "amount_minor",
+          "rate",
+          "rate_source",
+          "rate_as_of"
+        ],
+        "title": "BaseAmountResponse",
+        "type": "object"
+      },
       "ChangeItem": {
         "description": "One entity state to apply. ``seq`` is null for snapshot rows.\n\n``data`` is the entity's public representation (the same contract the REST\nresource returns) and is null for ``delete``. Apply an upsert only when\n``version`` is at least the locally stored version. A delete carries the\nversion at which the row disappeared and beats every upsert with a version\nnot greater than it; an upsert with a greater version revives the entity\n(a membership that was left and joined again).",
         "properties": {
@@ -283,6 +351,33 @@
         "title": "CreatedInviteResponse",
         "type": "object"
       },
+      "CurrencyResponse": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "exponent": {
+            "title": "Exponent",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "supported",
+              "retired"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "exponent",
+          "state"
+        ],
+        "title": "CurrencyResponse",
+        "type": "object"
+      },
       "CurrentActorResponse": {
         "properties": {
           "user_id": {
@@ -468,6 +563,396 @@
         "title": "EmailVerifyRequest",
         "type": "object"
       },
+      "EqualSplit": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "equal",
+            "title": "Method",
+            "type": "string"
+          },
+          "participant_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Participant Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "method",
+          "participant_ids"
+        ],
+        "title": "EqualSplit",
+        "type": "object"
+      },
+      "ExactShare": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "amount_minor"
+        ],
+        "title": "ExactShare",
+        "type": "object"
+      },
+      "ExactSplit": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "exact",
+            "title": "Method",
+            "type": "string"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/ExactShare"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Shares",
+            "type": "array"
+          }
+        },
+        "required": [
+          "method",
+          "shares"
+        ],
+        "title": "ExactSplit",
+        "type": "object"
+      },
+      "ExpenseCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "base_rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rate to the plan's base currency, for budgets and display only"
+          },
+          "category": {
+            "default": "other",
+            "enum": [
+              "food",
+              "lodging",
+              "transport",
+              "activities",
+              "shopping",
+              "groceries",
+              "fees",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "payers": {
+            "items": {
+              "$ref": "#/components/schemas/PayerRequest"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Payers",
+            "type": "array"
+          },
+          "split": {
+            "discriminator": {
+              "mapping": {
+                "equal": "#/components/schemas/EqualSplit",
+                "exact": "#/components/schemas/ExactSplit",
+                "itemized": "#/components/schemas/ItemizedSplit",
+                "percentage": "#/components/schemas/PercentageSplit",
+                "shares": "#/components/schemas/SharesSplit"
+              },
+              "propertyName": "method"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EqualSplit"
+              },
+              {
+                "$ref": "#/components/schemas/ExactSplit"
+              },
+              {
+                "$ref": "#/components/schemas/PercentageSplit"
+              },
+              {
+                "$ref": "#/components/schemas/SharesSplit"
+              },
+              {
+                "$ref": "#/components/schemas/ItemizedSplit"
+              }
+            ],
+            "title": "Split"
+          }
+        },
+        "required": [
+          "description",
+          "occurred_on",
+          "amount_minor",
+          "currency",
+          "payers",
+          "split"
+        ],
+        "title": "ExpenseCreateRequest",
+        "type": "object"
+      },
+      "ExpenseRequest": {
+        "additionalProperties": false,
+        "description": "A full expense value: creating it or replacing it appends a revision.",
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "base_rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rate to the plan's base currency, for budgets and display only"
+          },
+          "category": {
+            "default": "other",
+            "enum": [
+              "food",
+              "lodging",
+              "transport",
+              "activities",
+              "shopping",
+              "groceries",
+              "fees",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "payers": {
+            "items": {
+              "$ref": "#/components/schemas/PayerRequest"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Payers",
+            "type": "array"
+          },
+          "split": {
+            "discriminator": {
+              "mapping": {
+                "equal": "#/components/schemas/EqualSplit",
+                "exact": "#/components/schemas/ExactSplit",
+                "itemized": "#/components/schemas/ItemizedSplit",
+                "percentage": "#/components/schemas/PercentageSplit",
+                "shares": "#/components/schemas/SharesSplit"
+              },
+              "propertyName": "method"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EqualSplit"
+              },
+              {
+                "$ref": "#/components/schemas/ExactSplit"
+              },
+              {
+                "$ref": "#/components/schemas/PercentageSplit"
+              },
+              {
+                "$ref": "#/components/schemas/SharesSplit"
+              },
+              {
+                "$ref": "#/components/schemas/ItemizedSplit"
+              }
+            ],
+            "title": "Split"
+          }
+        },
+        "required": [
+          "description",
+          "occurred_on",
+          "amount_minor",
+          "currency",
+          "payers",
+          "split"
+        ],
+        "title": "ExpenseRequest",
+        "type": "object"
+      },
+      "ExpenseResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "format": "uuid",
+            "title": "Created By User Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "refunded_minor": {
+            "title": "Refunded Minor",
+            "type": "integer"
+          },
+          "refunds": {
+            "items": {
+              "$ref": "#/components/schemas/RefundResponse"
+            },
+            "title": "Refunds",
+            "type": "array"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/RevisionResponse"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "voided"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "voided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voided At"
+          }
+        },
+        "required": [
+          "id",
+          "plan_id",
+          "state",
+          "revision",
+          "refunds",
+          "refunded_minor",
+          "created_by_user_id",
+          "version",
+          "created_at",
+          "updated_at",
+          "voided_at"
+        ],
+        "title": "ExpenseResponse",
+        "type": "object"
+      },
       "ExternalSignInRequest": {
         "additionalProperties": false,
         "description": "Google/Apple ID token. With a guest bearer token this upgrades or claims the guest;\nwith a registered bearer token it re-authenticates (step-up) the current session.",
@@ -524,6 +1009,24 @@
           "id_token"
         ],
         "title": "ExternalSignInRequest",
+        "type": "object"
+      },
+      "FundAvailabilityResponse": {
+        "properties": {
+          "available_minor": {
+            "title": "Available Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "available_minor"
+        ],
+        "title": "FundAvailabilityResponse",
         "type": "object"
       },
       "GroupCreateRequest": {
@@ -1088,6 +1591,39 @@
         "title": "InviteTokenRequest",
         "type": "object"
       },
+      "ItemizedSplit": {
+        "additionalProperties": false,
+        "properties": {
+          "extras": {
+            "items": {
+              "$ref": "#/components/schemas/SplitExtra"
+            },
+            "maxItems": 10,
+            "title": "Extras",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SplitItem"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "method": {
+            "const": "itemized",
+            "title": "Method",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "items"
+        ],
+        "title": "ItemizedSplit",
+        "type": "object"
+      },
       "JoinRequestDecision": {
         "additionalProperties": false,
         "properties": {
@@ -1119,6 +1655,100 @@
           "keys"
         ],
         "title": "JwksResponse",
+        "type": "object"
+      },
+      "LedgerBalanceResponse": {
+        "properties": {
+          "balance_minor": {
+            "description": "Positive: should receive money; negative: owes",
+            "title": "Balance Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "fund": {
+            "title": "Fund",
+            "type": "boolean"
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          }
+        },
+        "required": [
+          "participant_id",
+          "fund",
+          "currency",
+          "balance_minor"
+        ],
+        "title": "LedgerBalanceResponse",
+        "type": "object"
+      },
+      "LedgerResponse": {
+        "description": "The plan's balances per participant and currency, never netted across currencies.",
+        "properties": {
+          "balances": {
+            "items": {
+              "$ref": "#/components/schemas/LedgerBalanceResponse"
+            },
+            "title": "Balances",
+            "type": "array"
+          },
+          "disputed_settlements": {
+            "title": "Disputed Settlements",
+            "type": "integer"
+          },
+          "fund": {
+            "description": "Money the participants recorded as pooled; Beluno holds and moves none",
+            "items": {
+              "$ref": "#/components/schemas/FundAvailabilityResponse"
+            },
+            "title": "Fund",
+            "type": "array"
+          },
+          "ledger_seq": {
+            "title": "Ledger Seq",
+            "type": "integer"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "settled",
+              "reopened"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plan_id",
+          "status",
+          "ledger_seq",
+          "disputed_settlements",
+          "balances",
+          "fund",
+          "version"
+        ],
+        "title": "LedgerResponse",
         "type": "object"
       },
       "MemberAddRequest": {
@@ -1234,6 +1864,33 @@
           "new_owner_user_id"
         ],
         "title": "OwnershipTransferRequest",
+        "type": "object"
+      },
+      "Page_ExpenseResponse_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Page[ExpenseResponse]",
         "type": "object"
       },
       "Page_GroupResponse_": {
@@ -1543,6 +2200,115 @@
           }
         },
         "title": "ParticipantSeed",
+        "type": "object"
+      },
+      "PayerRequest": {
+        "additionalProperties": false,
+        "description": "A participant who paid, or the plan fund (``fund: true``).",
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "fund": {
+            "default": false,
+            "title": "Fund",
+            "type": "boolean"
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          }
+        },
+        "required": [
+          "amount_minor"
+        ],
+        "title": "PayerRequest",
+        "type": "object"
+      },
+      "PayerResponse": {
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "fund": {
+            "title": "Fund",
+            "type": "boolean"
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          }
+        },
+        "required": [
+          "participant_id",
+          "fund",
+          "amount_minor"
+        ],
+        "title": "PayerResponse",
+        "type": "object"
+      },
+      "PercentageShare": {
+        "additionalProperties": false,
+        "properties": {
+          "basis_points": {
+            "description": "Hundredths of a percent; all shares total 10000",
+            "title": "Basis Points",
+            "type": "integer"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "basis_points"
+        ],
+        "title": "PercentageShare",
+        "type": "object"
+      },
+      "PercentageSplit": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "percentage",
+            "title": "Method",
+            "type": "string"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/PercentageShare"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Shares",
+            "type": "array"
+          }
+        },
+        "required": [
+          "method",
+          "shares"
+        ],
+        "title": "PercentageSplit",
         "type": "object"
       },
       "PlanCreateRequest": {
@@ -2797,6 +3563,43 @@
         "title": "PushResult",
         "type": "object"
       },
+      "RateRequest": {
+        "additionalProperties": false,
+        "description": "Quote-currency units for one unit of the expense currency (major units).",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "rate": {
+            "pattern": "^\\d{1,10}(\\.\\d{1,12})?$",
+            "title": "Rate",
+            "type": "string"
+          },
+          "source": {
+            "default": "manual",
+            "enum": [
+              "manual",
+              "estimated"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rate"
+        ],
+        "title": "RateRequest",
+        "type": "object"
+      },
       "RedeemInviteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2926,6 +3729,187 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "RefundRecipient": {
+        "additionalProperties": false,
+        "properties": {
+          "fund": {
+            "default": false,
+            "title": "Fund",
+            "type": "boolean"
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          }
+        },
+        "title": "RefundRecipient",
+        "type": "object"
+      },
+      "RefundRequest": {
+        "additionalProperties": false,
+        "description": "Money that came back; by default it follows the current owed shares.",
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recipient": {
+            "$ref": "#/components/schemas/RefundRecipient"
+          },
+          "shares": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExactShare"
+                },
+                "maxItems": 100,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shares"
+          }
+        },
+        "required": [
+          "amount_minor",
+          "recipient"
+        ],
+        "title": "RefundRequest",
+        "type": "object"
+      },
+      "RefundResponse": {
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "format": "uuid",
+            "title": "Created By User Id",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "fund": {
+            "title": "Fund",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recipient_participant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Participant Id"
+          },
+          "reversed": {
+            "title": "Reversed",
+            "type": "boolean"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/RefundShareResponse"
+            },
+            "title": "Shares",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "amount_minor",
+          "currency",
+          "recipient_participant_id",
+          "fund",
+          "shares",
+          "note",
+          "reversed",
+          "created_by_user_id",
+          "created_at"
+        ],
+        "title": "RefundResponse",
+        "type": "object"
+      },
+      "RefundShareResponse": {
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "amount_minor"
+        ],
+        "title": "RefundShareResponse",
+        "type": "object"
+      },
       "RetentionInfo": {
         "properties": {
           "change_retention_days": {
@@ -2947,6 +3931,141 @@
           "operation_retention_days"
         ],
         "title": "RetentionInfo",
+        "type": "object"
+      },
+      "RevisionResponse": {
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "base": {
+            "$ref": "#/components/schemas/BaseAmountResponse"
+          },
+          "category": {
+            "enum": [
+              "food",
+              "lodging",
+              "transport",
+              "activities",
+              "shopping",
+              "groceries",
+              "fees",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "format": "uuid",
+            "title": "Created By User Id",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "occurred_on": {
+            "format": "date",
+            "title": "Occurred On",
+            "type": "string"
+          },
+          "payers": {
+            "items": {
+              "$ref": "#/components/schemas/PayerResponse"
+            },
+            "title": "Payers",
+            "type": "array"
+          },
+          "revision_number": {
+            "title": "Revision Number",
+            "type": "integer"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/ShareResponse"
+            },
+            "title": "Shares",
+            "type": "array"
+          },
+          "split": {
+            "discriminator": {
+              "mapping": {
+                "equal": "#/components/schemas/EqualSplit",
+                "exact": "#/components/schemas/ExactSplit",
+                "itemized": "#/components/schemas/ItemizedSplit",
+                "percentage": "#/components/schemas/PercentageSplit",
+                "shares": "#/components/schemas/SharesSplit"
+              },
+              "propertyName": "method"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EqualSplit"
+              },
+              {
+                "$ref": "#/components/schemas/ExactSplit"
+              },
+              {
+                "$ref": "#/components/schemas/PercentageSplit"
+              },
+              {
+                "$ref": "#/components/schemas/SharesSplit"
+              },
+              {
+                "$ref": "#/components/schemas/ItemizedSplit"
+              }
+            ],
+            "title": "Split"
+          },
+          "split_algorithm": {
+            "title": "Split Algorithm",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision_number",
+          "description",
+          "category",
+          "occurred_on",
+          "notes",
+          "amount_minor",
+          "currency",
+          "payers",
+          "split",
+          "split_algorithm",
+          "shares",
+          "base",
+          "created_by_user_id",
+          "created_at"
+        ],
+        "title": "RevisionResponse",
         "type": "object"
       },
       "RsvpRequest": {
@@ -3491,6 +4610,131 @@
           "current"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "ShareResponse": {
+        "properties": {
+          "owed_minor": {
+            "title": "Owed Minor",
+            "type": "integer"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "owed_minor"
+        ],
+        "title": "ShareResponse",
+        "type": "object"
+      },
+      "SharesSplit": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "const": "shares",
+            "title": "Method",
+            "type": "string"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/WeightShare"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Shares",
+            "type": "array"
+          }
+        },
+        "required": [
+          "method",
+          "shares"
+        ],
+        "title": "SharesSplit",
+        "type": "object"
+      },
+      "SplitExtra": {
+        "additionalProperties": false,
+        "description": "Tax, tip, or a service charge, spread over the item subtotals.",
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "required": [
+          "amount_minor"
+        ],
+        "title": "SplitExtra",
+        "type": "object"
+      },
+      "SplitItem": {
+        "additionalProperties": false,
+        "description": "One bill line, split equally among its participants or by ``weights``.",
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "participant_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Participant Ids",
+            "type": "array"
+          },
+          "weights": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 100,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weights"
+          }
+        },
+        "required": [
+          "amount_minor",
+          "participant_ids"
+        ],
+        "title": "SplitItem",
         "type": "object"
       },
       "SyncFeatures": {
@@ -4126,6 +5370,26 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WeightShare": {
+        "additionalProperties": false,
+        "properties": {
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          },
+          "weight": {
+            "title": "Weight",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "participant_id",
+          "weight"
+        ],
+        "title": "WeightShare",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -4728,6 +5992,77 @@
         "summary": "Refresh Tokens",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/v1/currencies": {
+      "get": {
+        "description": "Supported currencies and their pinned minor-unit exponents.",
+        "operationId": "list_currencies_v1_currencies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CurrencyResponse"
+                  },
+                  "title": "Response List Currencies V1 Currencies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Currencies",
+        "tags": [
+          "finance"
         ]
       }
     },
@@ -8558,6 +9893,1026 @@
         ]
       }
     },
+    "/v1/plans/{plan_id}/expenses": {
+      "get": {
+        "operationId": "list_expenses_v1_plans__plan_id__expenses_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ExpenseResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Expenses",
+        "tags": [
+          "finance"
+        ]
+      },
+      "post": {
+        "operationId": "create_expense_v1_plans__plan_id__expenses_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Expense",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/expenses/{expense_id}": {
+      "get": {
+        "operationId": "get_expense_v1_plans__plan_id__expenses__expense_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Expense Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Expense",
+        "tags": [
+          "finance"
+        ]
+      },
+      "put": {
+        "description": "Append a new revision; the previous one is reversed, never overwritten.",
+        "operationId": "revise_expense_v1_plans__plan_id__expenses__expense_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Revise Expense",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/expenses/{expense_id}/refunds": {
+      "post": {
+        "operationId": "refund_expense_v1_plans__plan_id__expenses__expense_id__refunds_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Refund Expense",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/expenses/{expense_id}/revisions": {
+      "get": {
+        "description": "Every revision of the expense, oldest first.",
+        "operationId": "list_revisions_v1_plans__plan_id__expenses__expense_id__revisions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Expense Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RevisionResponse"
+                  },
+                  "title": "Response List Revisions V1 Plans  Plan Id  Expenses  Expense Id  Revisions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Revisions",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/expenses/{expense_id}/void": {
+      "post": {
+        "description": "Reverse the expense and its refunds; it stays in history as ``voided``.",
+        "operationId": "void_expense_v1_plans__plan_id__expenses__expense_id__void_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "expense_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Expense Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Void Expense",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/v1/plans/{plan_id}/invites": {
       "get": {
         "operationId": "list_plan_invites_v1_plans__plan_id__invites_get",
@@ -9311,6 +11666,95 @@
         "summary": "Leave Plan",
         "tags": [
           "plans"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/ledger": {
+      "get": {
+        "description": "Balances per participant and currency (positive: should receive money).",
+        "operationId": "get_ledger_v1_plans__plan_id__ledger_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Ledger",
+        "tags": [
+          "finance"
         ]
       }
     },

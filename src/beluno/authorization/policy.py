@@ -104,11 +104,22 @@ class PlanAction(StrEnum):
     MANAGE_INVITES = "plan.invites.manage"
     VIEW_TRAVEL = "plan.travel.view"
     MANAGE_TRAVEL = "plan.travel.manage"
+    VIEW_FINANCE = "plan.finance.view"
+    CREATE_EXPENSE = "plan.expenses.create"
+    MANAGE_EXPENSES = "plan.expenses.manage"
+    RECORD_SETTLEMENT = "plan.settlements.record"
+    MANAGE_SETTLEMENTS = "plan.settlements.manage"
+    MANAGE_BUDGETS = "plan.budgets.manage"
+    CONTRIBUTE_FUND = "plan.fund.contribute"
+    MANAGE_FUND = "plan.fund.manage"
+    ADJUST_LEDGER = "plan.ledger.adjust"
 
 
 ALL_PLAN_ROLES = frozenset(PlanRole)
 PLAN_MANAGERS = frozenset({PlanRole.OWNER, PlanRole.ADMIN})
 PLAN_CONTRIBUTORS = frozenset({PlanRole.OWNER, PlanRole.ADMIN, PlanRole.MEMBER})
+# Guests can split costs: the money they spent or owe is theirs to record.
+FINANCE_CONTRIBUTORS = PLAN_CONTRIBUTORS | {PlanRole.GUEST}
 ALL_GROUP_ROLES = frozenset(GroupRole)
 GROUP_MANAGERS = frozenset({GroupRole.OWNER, GroupRole.ADMIN})
 
@@ -118,6 +129,8 @@ EDITABLE_PLAN_STATES = frozenset(
 )
 # Attendance answers only make sense before the plan has happened.
 RSVP_PLAN_STATES = frozenset({PlanState.DRAFT, PlanState.PLANNING, PlanState.ACTIVE})
+# People still pay each other back after the plan is over.
+SETTLEMENT_PLAN_STATES = EDITABLE_PLAN_STATES | {PlanState.COMPLETED}
 
 
 @dataclass(frozen=True)
@@ -153,6 +166,17 @@ PLAN_RULES: dict[PlanAction, Rule] = {
     PlanAction.MANAGE_INVITES: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES, registered_only=True),
     PlanAction.VIEW_TRAVEL: Rule(ALL_PLAN_ROLES, allowed_during_deletion=True),
     PlanAction.MANAGE_TRAVEL: Rule(PLAN_CONTRIBUTORS, EDITABLE_PLAN_STATES),
+    PlanAction.VIEW_FINANCE: Rule(ALL_PLAN_ROLES, allowed_during_deletion=True),
+    PlanAction.CREATE_EXPENSE: Rule(FINANCE_CONTRIBUTORS, EDITABLE_PLAN_STATES),
+    PlanAction.MANAGE_EXPENSES: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
+    PlanAction.RECORD_SETTLEMENT: Rule(FINANCE_CONTRIBUTORS, SETTLEMENT_PLAN_STATES),
+    PlanAction.MANAGE_SETTLEMENTS: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
+    PlanAction.MANAGE_BUDGETS: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
+    PlanAction.CONTRIBUTE_FUND: Rule(FINANCE_CONTRIBUTORS, EDITABLE_PLAN_STATES),
+    PlanAction.MANAGE_FUND: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
+    PlanAction.ADJUST_LEDGER: Rule(
+        frozenset({PlanRole.OWNER}), EDITABLE_PLAN_STATES, registered_only=True, step_up=True
+    ),
 }
 
 # Active group members who are not participants of a group-visible plan may read

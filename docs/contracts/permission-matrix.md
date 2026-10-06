@@ -49,6 +49,15 @@ The `guest` role belongs to guest identities, which never pass
 | plan.invites.manage | allow | allow | deny | deny | deny | deny |
 | plan.travel.view | allow | allow | allow | allow | allow | allow |
 | plan.travel.manage | allow | allow | allow | deny | deny | deny |
+| plan.finance.view | allow | allow | allow | allow | allow | deny |
+| plan.expenses.create | allow | allow | allow | deny | allow | deny |
+| plan.expenses.manage | allow | allow | deny | deny | deny | deny |
+| plan.settlements.record | allow | allow | allow | deny | allow | deny |
+| plan.settlements.manage | allow | allow | deny | deny | deny | deny |
+| plan.budgets.manage | allow | allow | deny | deny | deny | deny |
+| plan.fund.contribute | allow | allow | allow | deny | allow | deny |
+| plan.fund.manage | allow | allow | deny | deny | deny | deny |
+| plan.ledger.adjust | step-up | deny | deny | deny | deny | deny |
 <!-- plan-matrix:end -->
 
 State narrowing (applies on top of the table):
@@ -58,6 +67,19 @@ State narrowing (applies on top of the table):
   requires `draft`, `planning`, or `active`. `completed`, `archived`, and
   `cancelled` plans are read-only except state changes, duplication, and
   deletion.
+- Finance writes (expenses, budgets, fund, adjustments) require `draft`,
+  `planning`, `active`, or `settling`; settlements and waivers also accept
+  `completed`, because people pay each other back after the plan is over.
+- Row rules on top of the table: an expense is revised, voided, or refunded by
+  its creator (who must still hold `plan.expenses.create`) or by anyone with
+  `plan.expenses.manage`. A settlement is recorded by one of its two parties or
+  by a manager; the creditor confirms or disputes it (managers act for
+  placeholder creditors); its recorder or a manager reverses it. A waiver is
+  recorded by the creditor (managers for placeholder creditors). Participants
+  contribute to the fund for themselves; contributions for others,
+  withdrawals, and fund settings need `plan.fund.manage`.
+- Finance is private to the plan's active participants: group members reading
+  a group-visible plan do not see expenses, balances, or settlements.
 - While deletion is scheduled only reads, leaving, and `plan.delete`
   (restore) are allowed.
 - `pending_approval`, `left`, `removed`, and `merged` participants have no

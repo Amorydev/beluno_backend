@@ -16,6 +16,8 @@ from pydantic import BaseModel
 from sqlalchemy import Select, select
 from sqlalchemy.orm import InstrumentedAttribute
 
+from beluno.api import finance_projection
+from beluno.api.finance_projection import FINANCE_TYPES
 from beluno.api.presenters import (
     group_response,
     invite_response,
@@ -65,7 +67,14 @@ Pager = Callable[
 SNAPSHOT_ORDER: dict[str, tuple[str, ...]] = {
     "user": ("user", "session", "plan_series", "group_access", "plan_access"),
     "group": ("group", "group_membership", "group_invite", "plan_series"),
-    "plan": ("plan", "plan_participant", "travel_details", "travel_segment", "plan_invite"),
+    "plan": (
+        "plan",
+        "plan_participant",
+        "travel_details",
+        "travel_segment",
+        "plan_invite",
+        *FINANCE_TYPES,
+    ),
 }
 
 VISIBLE_TYPES: dict[tuple[str, AccessLevel], frozenset[str]] = {
@@ -75,7 +84,7 @@ VISIBLE_TYPES: dict[tuple[str, AccessLevel], frozenset[str]] = {
     ("group", AccessLevel.INVITED): frozenset({"group", "group_membership"}),
     ("plan", AccessLevel.MANAGER): frozenset(SNAPSHOT_ORDER["plan"]),
     ("plan", AccessLevel.MEMBER): frozenset(
-        {"plan", "plan_participant", "travel_details", "travel_segment"}
+        {"plan", "plan_participant", "travel_details", "travel_segment", *FINANCE_TYPES}
     ),
     ("plan", AccessLevel.READER): frozenset(
         {"plan", "plan_participant", "travel_details", "travel_segment"}
@@ -274,6 +283,8 @@ LOADERS: dict[str, Loader] = {
     "travel_details": _load_travel_details,
     "travel_segment": _load_segment,
     "plan_invite": _load_plan_invite,
+    "ledger": finance_projection.load_ledger,
+    "expense": finance_projection.load_expense,
 }
 
 
@@ -428,6 +439,8 @@ PAGERS: dict[str, Pager] = {
     "travel_details": _page_travel_details,
     "travel_segment": _page_segments,
     "plan_invite": _page_plan_invites,
+    "ledger": finance_projection.page_ledger,
+    "expense": finance_projection.page_expenses,
 }
 
 

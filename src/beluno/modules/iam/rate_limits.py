@@ -39,6 +39,7 @@ MEMBERSHIP_CHANGES_PER_USER = RateLimit("membership_change:user", 120, 3_600)
 SERIES_CREATION_PER_USER = RateLimit("series_creation:user", 20, 3_600)
 DUPLICATION_PER_USER = RateLimit("plan_duplication:user", 30, 3_600)
 SYNC_PUSH_PER_USER = RateLimit("sync_push:user", 120, 600)
+FINANCE_WRITES_PER_PLAN = RateLimit("finance_write:user_plan", 120, 60)
 
 INCREMENT_SQL = text(
     """
