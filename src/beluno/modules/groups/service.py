@@ -32,7 +32,7 @@ from beluno.db.ids import new_id
 from beluno.db.models.groups import Group, GroupMembership
 from beluno.db.models.iam import User
 from beluno.modules.context import CommandContext
-from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
+from beluno.modules.sync_audit.recorder import ChangeScope, record_change, record_mutation
 
 # Memberships that still count as being in the group (joined or awaiting an answer).
 LIVE_STATES = (MembershipState.ACTIVE.value, MembershipState.INVITED.value)
@@ -447,3 +447,32 @@ async def record_group_membership(
             "state": membership.state,
         },
     )
+    await record_change(
+        ctx,
+        entity_type="group_access",
+        entity_id=membership.group_id,
+        entity_version=membership.version,
+        scope=ChangeScope.USER,
+        scope_id=membership.user_id,
+    )
+
+
+async def refresh_member_name(ctx: CommandContext, user: User) -> None:
+    """Re-emit the user's live membership rows so cached member names stay current."""
+
+    memberships = (
+        await ctx.session.execute(
+            select(GroupMembership).where(
+                GroupMembership.user_id == user.id, GroupMembership.state.in_(LIVE_STATES)
+            )
+        )
+    ).scalars()
+    for membership in memberships:
+        await record_change(
+            ctx,
+            entity_type="group_membership",
+            entity_id=membership.user_id,
+            entity_version=membership.version,
+            scope=ChangeScope.GROUP,
+            scope_id=membership.group_id,
+        )

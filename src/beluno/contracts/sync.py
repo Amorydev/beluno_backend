@@ -195,3 +195,27 @@ class PushResult(BaseModel):
 
 class PushResponse(BaseModel):
     results: list[PushResult]
+
+
+class PlanAccessSignal(BaseModel):
+    """User-scope signal: the caller's own participation in a plan changed.
+
+    A state other than ``active`` means the plan scope is no longer theirs to sync
+    (unless the handshake directory still lists it, e.g. as a group reader).
+    """
+
+    plan_id: UUID
+    participant_id: UUID
+    role: Literal["owner", "admin", "member", "viewer", "guest"]
+    access_state: Literal["pending_approval", "active", "left", "removed", "merged"]
+    rsvp_status: Literal["invited", "going", "maybe", "declined"]
+    version: int
+
+
+class GroupAccessSignal(BaseModel):
+    """User-scope signal: the caller's own membership in a group changed."""
+
+    group_id: UUID
+    role: Literal["owner", "admin", "member"]
+    state: Literal["invited", "active", "left", "removed"]
+    version: int

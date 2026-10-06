@@ -65,12 +65,13 @@ async def test_replay_returns_the_stored_outcome_without_a_second_mutation(
     assert admin.fetch(
         "SELECT command, idempotency_key, response_status, source FROM sync_audit.operations"
     ) == [("plan.create", "create-1", 201, "http")]
+    # plan.created, the owner participant, and the owner's own plan_access signal
     assert (
         admin.scalar(
             "SELECT count(*) FROM sync_audit.change_log WHERE operation_id = "
             "(SELECT id FROM sync_audit.operations)"
         )
-        == 2
+        == 3
     )
 
     # A later update with a key: the replay carries the same body and ETag as the original.

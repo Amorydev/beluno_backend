@@ -8,6 +8,7 @@ from beluno.api.commands.groups import required_version
 from beluno.api.presenters import profile_response
 from beluno.contracts.iam import ProfileUpdateRequest, UserProfileResponse
 from beluno.modules.context import CommandContext
+from beluno.modules.groups.service import refresh_member_name
 from beluno.modules.iam import users
 from beluno.sync.commands import Command, CommandCall, version_of
 
@@ -23,7 +24,10 @@ async def _update(
         clear_locale="locale" in fields and body.locale is None,
         clear_timezone="timezone" in fields and body.timezone is None,
     )
-    return profile_response(await users.update_profile(ctx, changes, required_version(call)))
+    user = await users.update_profile(ctx, changes, required_version(call))
+    if changes.display_name is not None:
+        await refresh_member_name(ctx, user)
+    return profile_response(user)
 
 
 PROFILE_UPDATE = Command(

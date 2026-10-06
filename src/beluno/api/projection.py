@@ -30,6 +30,7 @@ from beluno.api.presenters import (
 from beluno.authorization.access import find_user_participant
 from beluno.authorization.policy import AccessState
 from beluno.contracts.iam import SessionResponse
+from beluno.contracts.sync import GroupAccessSignal, PlanAccessSignal
 from beluno.db.models.base import Base
 from beluno.db.models.groups import Group, GroupInvite, GroupMembership
 from beluno.db.models.iam import AuthSession, User
@@ -57,7 +58,7 @@ Pager = Callable[
 ]
 
 SNAPSHOT_ORDER: dict[str, tuple[str, ...]] = {
-    "user": ("user", "session", "plan_series"),
+    "user": ("user", "session", "plan_series", "group_access", "plan_access"),
     "group": ("group", "group_membership", "group_invite", "plan_series"),
     "plan": ("plan", "plan_participant", "travel_details", "travel_segment", "plan_invite"),
 }
@@ -130,7 +131,45 @@ async def _travel_view(ctx: CommandContext, details: TravelPlanDetails) -> BaseM
     return travel_response(TravelView(details=details, segments=list(segments)))
 
 
+def plan_access_signal(participant: PlanParticipant) -> PlanAccessSignal:
+    return PlanAccessSignal.model_validate(
+        {
+            "plan_id": participant.plan_id,
+            "participant_id": participant.id,
+            "role": participant.role,
+            "access_state": participant.access_state,
+            "rsvp_status": participant.rsvp_status,
+            "version": participant.version,
+        }
+    )
+
+
+def group_access_signal(membership: GroupMembership) -> GroupAccessSignal:
+    return GroupAccessSignal.model_validate(
+        {
+            "group_id": membership.group_id,
+            "role": membership.role,
+            "state": membership.state,
+            "version": membership.version,
+        }
+    )
+
+
 # --- single-entity loaders (change feed) -------------------------------------------
+
+
+async def _load_plan_access(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID
+) -> Loaded:
+    participant = await find_user_participant(ctx, id, ctx.require_actor().user_id)
+    return plan_access_signal(participant) if participant else None
+
+
+async def _load_group_access(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID
+) -> Loaded:
+    membership = await ctx.session.get(GroupMembership, (id, ctx.require_actor().user_id))
+    return group_access_signal(membership) if membership else None
 
 
 async def _load_user(ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID) -> Loaded:
@@ -226,6 +265,8 @@ async def _load_plan_invite(
 
 
 LOADERS: dict[str, Loader] = {
+    "plan_access": _load_plan_access,
+    "group_access": _load_group_access,
     "user": _load_user,
     "session": _load_session,
     "plan_series": _load_series,
@@ -241,6 +282,25 @@ LOADERS: dict[str, Loader] = {
 
 
 # --- snapshot pagers ---------------------------------------------------------------
+
+
+async def _page_plan_access(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(PlanParticipant).where(
+        PlanParticipant.user_id == scope.scope_id,
+        PlanParticipant.access_state != AccessState.MERGED.value,
+    )
+    rows = await _page(ctx, statement, PlanParticipant.plan_id, after, limit)
+    return [SnapshotRow(row.plan_id, row.version, plan_access_signal(row)) for row in rows]
+
+
+async def _page_group_access(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(GroupMembership).where(GroupMembership.user_id == scope.scope_id)
+    rows = await _page(ctx, statement, GroupMembership.group_id, after, limit)
+    return [SnapshotRow(row.group_id, row.version, group_access_signal(row)) for row in rows]
 
 
 async def _page_user(
@@ -359,6 +419,8 @@ async def _page_plan_invites(
 
 
 PAGERS: dict[str, Pager] = {
+    "plan_access": _page_plan_access,
+    "group_access": _page_group_access,
     "user": _page_user,
     "session": _page_sessions,
     "plan_series": _page_series,
