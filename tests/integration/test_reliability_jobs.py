@@ -83,7 +83,7 @@ async def test_compaction_job_removes_old_changes_and_raises_floors(
         == 0
     )
     assert await tasks.compact_sync_changes.func(0) == 0
-    # A cursor at the old head still works; the client bootstraps otherwise.
+    # The scope still bootstraps after compaction removed its history.
     pulled = await api.post(
         "/v1/sync/pull",
         json={"scopes": [{"scope": f"plan:{plan['id']}", "cursor": None}]},

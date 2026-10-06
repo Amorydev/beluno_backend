@@ -32,7 +32,7 @@ submitted values.
 | `PRECONDITION_REQUIRED` | 428 | Update requires an `If-Match` header |
 | `RATE_LIMITED` | 429 | Abuse limit reached; honour `Retry-After` |
 | `FEATURE_DISABLED` | 503 | Entry point or command disabled by an operational kill switch |
-| `RETRY_LATER` | 503 (push item only) | Transient database conflict after bounded retries; resend unchanged |
+| `RETRY_LATER` | 503 | Transient database conflict after bounded retries; nothing changed, resend unchanged after `Retry-After` |
 
 Sync pull never reports a stale cursor as an HTTP error: the per-scope status
 `resync_required` replaces the earlier `410 FULL_RESYNC_REQUIRED` design, and

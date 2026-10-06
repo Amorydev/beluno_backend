@@ -157,7 +157,7 @@ async def pull(body: PullRequest, runtime: RuntimeDep, actor: ActorDep) -> PullR
     scopes = [ScopeKey.parse(item.scope) for item in body.scopes]
     if len(set(scopes)) != len(scopes):
         raise validation_error("scopes must not repeat")
-    page_size = body.page_size or runtime.settings.sync_pull_page_size
+    page_size = min(body.page_size or runtime.settings.sync_pull_page_size, MAX_PULL_PAGE_SIZE)
     codec = cursor_codec(runtime)
     pages = []
     async with open_context(runtime, actor) as ctx:

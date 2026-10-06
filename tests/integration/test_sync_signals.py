@@ -146,3 +146,41 @@ async def test_renaming_yourself_refreshes_member_rows_in_your_groups(
     ]
     assert changes[0]["data"]["display_name"] == "Renamed Member"
     assert changes[0]["version"] == 1
+
+
+async def test_a_member_who_leaves_and_rejoins_is_revived_by_a_newer_version(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
+) -> None:
+    owner = await sign_in(api, identity_provider, name="Owner")
+    member = await sign_in(api, identity_provider, name="Member")
+    group = (
+        await api.post(
+            "/v1/groups",
+            json={"name": "Crew", "default_currency": "USD", "default_timezone": "UTC"},
+            headers=owner.headers,
+        )
+    ).json()
+    link = await api.post(f"/v1/groups/{group['id']}/invites", json={}, headers=owner.headers)
+    token = link.json()["token"]
+    assert (
+        await api.post("/v1/invites/redeem", json={"token": token}, headers=member.headers)
+    ).status_code == 200
+    scope = f"group:{group['id']}"
+    _, cursor = await drain(api, owner, scope, None)
+
+    left = await api.delete(
+        f"/v1/groups/{group['id']}/members/{member.user_id}", headers=member.headers
+    )
+    assert left.status_code == 204
+    gone, cursor = await drain(api, owner, scope, cursor)
+    assert [(item["operation"], item["version"]) for item in gone] == [("delete", 2)]
+
+    rejoined = await api.post("/v1/invites/redeem", json={"token": token}, headers=member.headers)
+    assert rejoined.status_code == 200
+    back, _ = await drain(api, owner, scope, cursor)
+    memberships = [item for item in back if item["entity_type"] == "group_membership"]
+    # Same entity ID, higher version: the tombstone (2) must not suppress this upsert (3).
+    assert [(item["entity_id"], item["operation"], item["version"]) for item in memberships] == [
+        (member.user_id, "upsert", 3)
+    ]
+    assert memberships[0]["data"]["state"] == "active"

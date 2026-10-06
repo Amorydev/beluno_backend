@@ -16,7 +16,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
-from sqlalchemy.exc import DBAPIError
 
 from beluno.auth import AuthenticatedActor
 from beluno.contracts.errors import BelunoError, validation_error
@@ -30,7 +29,8 @@ from beluno.contracts.sync import (
 from beluno.db.models.sync_audit import OperationRecord
 from beluno.modules.context import open_context
 from beluno.sync.commands import Command, CommandCall
-from beluno.sync.executor import CommandRunner, is_retryable
+from beluno.sync.executor import CommandRunner
+from beluno.sync.idempotency import key_reused
 
 ORDERING_FIELDS = ("plan_id", "group_id", "series_id")
 TRANSIENT_STATUSES = frozenset({429, 503})
@@ -54,10 +54,15 @@ async def push_batch(
     if len(set(ids)) != len(ids):
         raise validation_error("operation_id values must be unique within a batch")
     external = {dep for op in operations for dep in op.depends_on} - set(ids)
-    applied = await _applied_before(runner, actor, external)
+    stored = await _stored_commands(runner, actor, external | set(ids))
+    applied = {operation_id for operation_id in external if operation_id in stored}
     blocked: set[str] = set()
     results: list[PushResult] = []
     for operation in operations:
+        earlier = stored.get(operation.operation_id)
+        if earlier is not None and earlier != operation.command:
+            results.append(_failed(operation, key_reused()))
+            continue
         key = ordering_key(operation)
         if key in blocked:
             results.append(
@@ -79,22 +84,22 @@ async def push_batch(
     return results
 
 
-async def _applied_before(
+async def _stored_commands(
     runner: CommandRunner, actor: AuthenticatedActor, operation_ids: Iterable[UUID]
-) -> set[UUID]:
-    """Dependencies on earlier batches are satisfied by a stored operation record."""
+) -> dict[UUID, str]:
+    """The command each known operation ID was applied with (earlier batches included)."""
 
     keys = [str(operation_id) for operation_id in operation_ids]
     if not keys:
-        return set()
+        return {}
     async with open_context(runner.runtime, actor) as ctx:
         rows = await ctx.session.execute(
-            select(OperationRecord.idempotency_key).where(
+            select(OperationRecord.idempotency_key, OperationRecord.command).where(
                 OperationRecord.actor_user_id == actor.user_id,
                 OperationRecord.idempotency_key.in_(keys),
             )
         )
-    return {UUID(key) for key in rows.scalars()}
+    return {UUID(key): command for key, command in rows.all()}
 
 
 async def _execute(
@@ -119,22 +124,6 @@ async def _execute(
         if error.status == 401:
             raise
         return _failed(operation, error)
-    except DBAPIError as error:
-        if not is_retryable(error):
-            raise
-        problem = PushProblem(
-            status=503,
-            code="RETRY_LATER",
-            detail="The operation hit a transient database conflict; retry it unchanged",
-        )
-        return PushResult(
-            operation_id=operation.operation_id,
-            outcome="retry",
-            status=503,
-            version=None,
-            body=None,
-            problem=problem,
-        )
     body = result.body.model_dump(mode="json") if isinstance(result.body, BaseModel) else None
     return PushResult(
         operation_id=operation.operation_id,

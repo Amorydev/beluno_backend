@@ -111,7 +111,8 @@ class Settings(BaseSettings):
     sync_operation_retention_days: int = Field(default=180, ge=1, le=3_650)
     sync_push_max_operations: int = Field(default=100, ge=1, le=1_000)
     sync_push_max_bytes: int = Field(default=1_048_576, ge=4_096, le=10_485_760)
-    sync_pull_page_size: int = Field(default=200, ge=10, le=1_000)
+    # Bounded by the pull contract's maximum page size (500) plus the lookahead row.
+    sync_pull_page_size: int = Field(default=200, ge=10, le=500)
 
     @field_validator(
         "api_database_url",

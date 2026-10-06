@@ -29,6 +29,12 @@ READ_CHANGES = text(
     "SELECT scope_seq, entity_type, entity_id, entity_version, operation, changed_at "
     "FROM sync_audit.read_changes(:scope_type, :scope_id, :after, :upto, :limit)"
 )
+READ_FLOOR = text(
+    "SELECT floor_seq FROM sync_audit.scope_heads "
+    "WHERE scope_type = :scope_type AND scope_id = :scope_id"
+)
+# The SQL gate never returns more rows than this; a page plus its lookahead row must fit.
+READ_CHANGES_CAP = 1001
 
 
 class Hidden:
@@ -199,6 +205,8 @@ async def _changes_page(
     page_size: int,
 ) -> ScopePage:
     scope = cursor.scope
+    if page_size + 1 > READ_CHANGES_CAP:
+        raise ValueError("page size exceeds the change-log read gate")
     watermark = cursor.watermark if cursor.watermark is not None else head_seq
     rows = (
         await ctx.session.execute(
@@ -212,6 +220,15 @@ async def _changes_page(
             },
         )
     ).all()
+    # Compaction may have raised the floor past this cursor while the page was read;
+    # rows it removed cannot be delivered, so the client must bootstrap again.
+    floor_now = (
+        await ctx.session.execute(
+            READ_FLOOR, {"scope_type": scope.scope_type.value, "scope_id": scope.scope_id}
+        )
+    ).scalar_one_or_none()
+    if floor_now is not None and cursor.seq < floor_now:
+        return ScopePage(scope, "resync_required", head=head_seq)
     has_more = len(rows) > page_size
     rows = rows[:page_size]
     # Collapse repeated entities: the latest sequence decides the position and state.

@@ -578,3 +578,55 @@ async def test_unknown_future_entity_types_are_skipped(
         )
     page = await pull_once(api, owner, scope, cursor)
     assert page["changes"] == [] and page["has_more"] is False and page["head"] == 3
+
+
+async def test_the_maximum_page_size_never_skips_changes(
+    api: httpx.AsyncClient,
+    identity_provider: IdentityProviderStub,
+    live_settings: Settings,
+) -> None:
+    import json
+
+    import psycopg
+
+    owner = await sign_in(api, identity_provider, name="Owner")
+    plan = await make_plan(api, owner)
+    scope = f"plan:{plan['id']}"
+    _, cursor, _ = await drain(api, owner, scope, None)
+    dsn = live_settings.api_database_dsn
+    assert dsn is not None
+    filler = [
+        {
+            "changed_at": "2026-10-06T00:00:00Z",
+            "scope_type": "plan",
+            "scope_id": plan["id"],
+            "entity_type": "poll",
+            "entity_id": str(uuid4()),
+            "entity_version": 1,
+            "operation": "upsert",
+        }
+        for _ in range(600)
+    ]
+    with (
+        psycopg.connect(dsn.replace("postgresql+psycopg://", "postgresql://", 1)) as connection,
+        connection.transaction(),
+    ):
+        connection.execute("SELECT sync_audit.append_changes(%s::jsonb)", [json.dumps(filler)])
+    renamed = await api.patch(
+        f"/v1/plans/{plan['id']}",
+        json={"title": "After the filler"},
+        headers={**owner.headers, "If-Match": '"1"'},
+    )
+    assert renamed.status_code == 200
+
+    first = await pull_once(api, owner, scope, cursor, page_size=500)
+    assert first["has_more"] is True and first["changes"] == []
+    second = await pull_once(api, owner, scope, first["cursor"], page_size=500)
+    assert second["has_more"] is False
+    assert [(item["entity_type"], item["seq"]) for item in second["changes"]] == [("plan", 603)]
+    oversized = await api.post(
+        "/v1/sync/pull",
+        json={"scopes": [{"scope": scope, "cursor": cursor}], "page_size": 501},
+        headers=owner.headers,
+    )
+    assert oversized.status_code == 422

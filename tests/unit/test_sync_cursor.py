@@ -63,3 +63,13 @@ def test_directory_cursor_round_trip_and_validation() -> None:
     assert decode_directory_cursor(encode_directory_cursor(scope)) == scope
     with pytest.raises(Exception, match="invalid"):
         decode_directory_cursor("bm90LWEtc2NvcGU")
+
+
+def test_binary_and_truncated_cursor_bodies_are_rejected() -> None:
+    import base64
+
+    codec = CursorCodec(HASHER)
+    for raw in (b"\xff" * 40, b"\xff\xfe" + b"\x00" * 16, b"\x80", b"A" * 16):
+        token = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+        with pytest.raises(CursorError):
+            codec.decode(token, user_id=uuid4())

@@ -8,14 +8,21 @@ from fastapi import APIRouter, Response, status
 
 from beluno.api.commands import profile as commands
 from beluno.api.dependencies import ActorDep, RunnerDep, RuntimeDep
-from beluno.api.http import IdempotencyKey, IfMatch, command_call, finish, set_etag
+from beluno.api.http import (
+    IdempotencyKey,
+    IfMatch,
+    command_call,
+    finish,
+    finish_empty,
+    set_etag,
+)
 from beluno.api.presenters import profile_response
 from beluno.api.problems import problem_responses
-from beluno.contracts.errors import not_found
 from beluno.contracts.iam import ProfileUpdateRequest, SessionResponse, UserProfileResponse
 from beluno.modules.context import open_context
 from beluno.modules.iam import users
-from beluno.modules.iam.sessions import find_session, list_live_sessions, revoke_session
+from beluno.modules.iam.sessions import list_live_sessions
+from beluno.sync.commands import EmptyPayload
 
 router = APIRouter(prefix="/v1/me", tags=["me"])
 
@@ -75,12 +82,13 @@ async def list_sessions(runtime: RuntimeDep, actor: ActorDep) -> list[SessionRes
     status_code=status.HTTP_204_NO_CONTENT,
     responses=problem_responses(401, 404, 503),
 )
-async def revoke_device_session(session_id: UUID, runtime: RuntimeDep, actor: ActorDep) -> Response:
+async def revoke_device_session(
+    session_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    idempotency_key: IdempotencyKey = None,
+) -> Response:
     """Sign a device out remotely; its refresh and access tokens stop working immediately."""
 
-    async with open_context(runtime, actor) as ctx:
-        target = await find_session(ctx, session_id)
-        if target is None or target.user_id != ctx.require_actor().user_id:
-            raise not_found()
-        await revoke_session(ctx, target, reason="user_revoked")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    call = command_call(idempotency_key, session_id=session_id)
+    return finish_empty(await runner.run(actor, commands.SESSION_REVOKE, call, EmptyPayload()))

@@ -50,6 +50,7 @@ class Device:
     user: SignedIn
     outbox: list[dict[str, Any]] = field(default_factory=list)
     view: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    tombstones: dict[tuple[str, str], int] = field(default_factory=dict)
     cursor: str | None = None
     counter: int = 0
 
@@ -64,6 +65,9 @@ class Device:
             key = (item["entity_type"], item["entity_id"])
             if item["operation"] == "delete":
                 self.view.pop(key, None)
+                self.tombstones[key] = max(self.tombstones.get(key, 0), item["version"])
+                continue
+            if item["version"] <= self.tombstones.get(key, 0):
                 continue
             current = self.view.get(key)
             if current is None or item["version"] >= current["version"]:
@@ -172,7 +176,10 @@ class Scenario:
         elif command == "travel.segment.add":
             device.apply([self.item("travel_segment", body["id"], body)])
         elif command == "travel.segment.delete":
-            device.view.pop(("travel_segment", operation["target"]["segment_id"]), None)
+            key = ("travel_segment", operation["target"]["segment_id"])
+            deleted = device.view.pop(key, None)
+            if deleted is not None:
+                device.tombstones[key] = max(device.tombstones.get(key, 0), deleted["version"])
 
     @staticmethod
     def item(entity_type: str, entity_id: str, data: dict[str, Any]) -> dict[str, Any]:

@@ -434,3 +434,36 @@ async def test_disabled_command_is_a_transient_push_failure(
     await database.close()
     assert outcomes(results) == ["retry", "skipped"]
     assert results[0]["problem"]["code"] == "FEATURE_DISABLED"
+
+
+async def test_an_operation_id_cannot_name_two_commands(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
+) -> None:
+    owner = await sign_in(api, identity_provider, name="Owner")
+    plan = await make_plan(api, owner)
+    shared = new_id()
+    rsvp = op(
+        "plan.rsvp",
+        operation_id=shared,
+        target={"plan_id": plan["id"]},
+        payload={"status": "going"},
+    )
+    assert outcomes(await push(api, owner, [rsvp])) == ["applied"]
+
+    reused = await push(
+        api,
+        owner,
+        [
+            op(
+                "plan.update",
+                operation_id=shared,
+                target={"plan_id": plan["id"]},
+                expected_version=1,
+                payload={"title": "Reused id"},
+            )
+        ],
+    )
+    assert outcomes(reused) == ["conflict"]
+    assert reused[0]["problem"]["code"] == "IDEMPOTENCY_KEY_REUSED"
+    assert outcomes(await push(api, owner, [rsvp])) == ["replayed"]
+    assert admin.scalar("SELECT title FROM plans.plans") == "Dinner"

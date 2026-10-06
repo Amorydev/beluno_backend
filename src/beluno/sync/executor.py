@@ -54,6 +54,18 @@ def is_retryable(error: BaseException) -> bool:
     return getattr(origin, "sqlstate", None) in RETRYABLE_SQLSTATES
 
 
+def retry_later() -> BelunoError:
+    """The transaction kept conflicting; the write did not commit and may be resent."""
+
+    return BelunoError(
+        status=503,
+        code="RETRY_LATER",
+        title="The request hit a transient database conflict",
+        detail="Nothing was changed; retry the same request unchanged",
+        headers={"Retry-After": "1"},
+    )
+
+
 class CommandRunner:
     def __init__(self, runtime: Runtime, registry: CommandRegistry) -> None:
         self.runtime = runtime
@@ -82,8 +94,10 @@ class CommandRunner:
                     result = await self._attempt(actor, command, call, payload)
                     break
                 except Exception as error:
-                    if not is_retryable(error) or attempt >= MAX_ATTEMPTS:
+                    if not is_retryable(error):
                         raise
+                    if attempt >= MAX_ATTEMPTS:
+                        raise retry_later() from error
                 meters.command_retries.add(1, attributes(command=command.name))
                 await asyncio.sleep(random.uniform(0, RETRY_BACKOFF_SECONDS * attempt))
                 attempt += 1

@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "ChangeItem": {
-        "description": "One entity state to apply. ``seq`` is null for snapshot rows.\n\n``data`` is the entity's public representation (the same contract the REST\nresource returns) and is null for ``delete``. Apply an upsert only when\n``version`` is at least the locally stored version; a delete always wins.",
+        "description": "One entity state to apply. ``seq`` is null for snapshot rows.\n\n``data`` is the entity's public representation (the same contract the REST\nresource returns) and is null for ``delete``. Apply an upsert only when\n``version`` is at least the locally stored version. A delete carries the\nversion at which the row disappeared and beats every upsert with a version\nnot greater than it; an upsert with a greater version revives the entity\n(a membership that was left and joined again).",
         "properties": {
           "changed_at": {
             "anyOf": [
@@ -7141,6 +7141,27 @@
               "format": "uuid",
               "title": "Session Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
             }
           }
         ],

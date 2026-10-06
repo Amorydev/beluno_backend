@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict
 
 from beluno.auth import AuthenticatedActor
 from beluno.config import Settings
-from beluno.contracts.errors import validation_error
+from beluno.contracts.errors import BelunoError, validation_error
 from beluno.db.ids import new_id
 from beluno.modules.context import CommandContext, Runtime
 from beluno.modules.iam import rate_limits
@@ -432,9 +432,11 @@ async def test_retries_stop_after_the_bounded_attempts(
     runner = CommandRunner(
         runtime, CommandRegistry([probe_command(handler)], present_conflict=_unused_presenter)
     )
-    with pytest.raises(psycopg.errors.SerializationFailure):
+    with pytest.raises(BelunoError) as exhausted:
         await runner.run(actor, probe_command(handler), CommandCall(), ProbePayload(label="x"))
     assert len(attempts) == MAX_ATTEMPTS
+    assert exhausted.value.status == 503 and exhausted.value.code == "RETRY_LATER"
+    assert exhausted.value.headers == {"Retry-After": "1"}
 
 
 async def test_domain_errors_are_never_retried(

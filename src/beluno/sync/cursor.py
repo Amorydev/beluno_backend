@@ -82,7 +82,11 @@ class CursorCodec:
         except ValueError as error:
             raise CursorError("cursor is not decodable") from error
         body, signature = raw[:-SIGNATURE_BYTES], raw[-SIGNATURE_BYTES:]
-        if len(body) == 0 or not hmac.compare_digest(signature, self._sign(body)):
+        try:
+            expected = self._sign(body)
+        except UnicodeDecodeError as error:
+            raise CursorError("cursor body is not text") from error
+        if len(body) == 0 or not hmac.compare_digest(signature, expected):
             raise CursorError("cursor signature is invalid")
         try:
             payload = json.loads(body)

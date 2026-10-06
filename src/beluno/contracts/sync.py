@@ -110,7 +110,10 @@ class ChangeItem(BaseModel):
 
     ``data`` is the entity's public representation (the same contract the REST
     resource returns) and is null for ``delete``. Apply an upsert only when
-    ``version`` is at least the locally stored version; a delete always wins.
+    ``version`` is at least the locally stored version. A delete carries the
+    version at which the row disappeared and beats every upsert with a version
+    not greater than it; an upsert with a greater version revives the entity
+    (a membership that was left and joined again).
     """
 
     seq: int | None

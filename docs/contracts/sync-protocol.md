@@ -116,9 +116,12 @@ Per-scope response: `status`, `cursor`, `has_more`, `head`, `changes`.
 Client apply rule: apply the whole page and store its cursor in one local
 transaction; keep the old cursor if applying fails (replaying a page is safe:
 the same sequences return with data at least as new). Apply an `upsert` only
-when its `version` is greater than or equal to the local version; a `delete`
-always wins, and a deleted entity is never recreated under its old ID. Keep
-pending local edits; conflicts surface when they are pushed.
+when its `version` is greater than or equal to the local version. A `delete`
+carries the version at which the row disappeared: keep it as a tombstone, drop
+upserts whose `version` is not greater than it, and let an upsert with a
+greater version revive the entity (`group_membership` rows are revived when a
+person who left joins again; sessions and segments never are). Keep pending
+local edits; conflicts surface when they are pushed.
 
 Cursors are opaque, HMAC-signed tokens bound to the user, scope, generation,
 access level, and position. Never edit or share them.

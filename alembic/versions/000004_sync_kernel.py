@@ -199,7 +199,7 @@ BEGIN
         WHERE c.scope_type = p_scope_type AND c.scope_id = p_scope_id
           AND c.scope_seq > p_after AND c.scope_seq <= p_upto
         ORDER BY c.scope_seq
-        LIMIT least(greatest(p_limit, 0), 1000);
+        LIMIT least(greatest(p_limit, 0), 1001);
 END;
 $$;
 
