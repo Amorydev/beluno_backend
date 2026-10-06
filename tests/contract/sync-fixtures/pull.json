@@ -1,0 +1,26 @@
+{
+  "request": {
+    "protocol_version": 1,
+    "scopes": [
+      {"scope": "plan:01a10000-0000-7000-8000-000000000002", "cursor": null},
+      {"scope": "plan:01a10000-0000-7000-8000-000000000003", "cursor": "eyJ2IjoxfQ.signature"}
+    ],
+    "page_size": 100
+  },
+  "response": {
+    "scopes": [
+      {
+        "scope": "plan:01a10000-0000-7000-8000-000000000002",
+        "status": "ok",
+        "cursor": "eyJ2IjoxfQ.signature",
+        "has_more": false,
+        "head": 12,
+        "changes": [
+          {"seq": null, "entity_type": "plan", "entity_id": "01a10000-0000-7000-8000-000000000002", "operation": "upsert", "version": 4, "changed_at": null, "data": {"id": "01a10000-0000-7000-8000-000000000002", "title": "Dinner", "version": 4}},
+          {"seq": 12, "entity_type": "travel_segment", "entity_id": "01a10000-0000-7000-8000-000000000009", "operation": "delete", "version": 2, "changed_at": "2026-10-06T08:00:00Z", "data": null}
+        ]
+      },
+      {"scope": "plan:01a10000-0000-7000-8000-000000000003", "status": "resync_required", "cursor": null, "has_more": false, "head": 40, "changes": []}
+    ]
+  }
+}

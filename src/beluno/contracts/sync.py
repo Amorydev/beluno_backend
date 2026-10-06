@@ -219,3 +219,36 @@ class GroupAccessSignal(BaseModel):
     role: Literal["owner", "admin", "member"]
     state: Literal["invited", "active", "left", "removed"]
     version: int
+
+
+class PlanEntity(BaseModel):
+    """The ``plan`` entity in the feed: ``PlanResponse`` without the caller-specific
+    ``my_participant`` snapshot, which the ``plan_participant`` entity carries instead."""
+
+    id: UUID
+    group_id: UUID | None
+    series_id: UUID | None
+    occurrence_key: str | None
+    is_series_exception: bool
+    title: str
+    kind: str
+    state: str
+    timing: dict[str, Any]
+    base_currency: str
+    visibility: str
+    description: str | None
+    location_label: str | None
+    deletion_scheduled_at: datetime | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class TravelDetailsEntity(BaseModel):
+    """The ``travel_details`` entity: ``TravelResponse`` without the segments, which
+    are ``travel_segment`` entities of their own."""
+
+    plan_id: UUID
+    destination_summary: str | None
+    notes: str | None
+    version: int

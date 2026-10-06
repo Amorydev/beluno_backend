@@ -20,7 +20,7 @@ from beluno.db.bootstrap import bootstrap_job_schema, run_migrations
 from beluno.db.session import Database
 from beluno.modules.context import Runtime
 from beluno.modules.iam.external_identity import ExternalIdentityVerifier
-from beluno.testkit.database import AdminDatabase
+from beluno.testkit.database import TRUNCATE_ALL_SQL, AdminDatabase
 from beluno.testkit.environment import (
     RUNTIME_PASSWORDS,
     IntegrationEnvironment,
@@ -71,19 +71,6 @@ async def degraded_client() -> AsyncIterator[httpx.AsyncClient]:
 # otherwise Testcontainers when Docker is available, otherwise skips. Each test
 # session gets a fresh database with reviewed migrations, the job schema, and
 # least-privilege runtime roles; tables are truncated before each test.
-
-TRUNCATE_SQL = """
-TRUNCATE
-    sync_audit.audit_events, sync_audit.change_log, sync_audit.scope_heads,
-    sync_audit.operations,
-    plans.travel_segments, plans.travel_plan_details, plans.plan_invites, groups.group_invites,
-    plans.plan_participants, plans.plans, plans.plan_series,
-    groups.group_memberships, groups.groups,
-    iam.rate_limit_counters, iam.email_challenges, iam.refresh_tokens, iam.sessions,
-    iam.user_identities, iam.users,
-    jobs.procrastinate_events, jobs.procrastinate_jobs
-CASCADE
-"""
 
 
 def _docker_is_available() -> bool:
@@ -184,7 +171,7 @@ def integration_environment(admin_cluster_dsn: str) -> Iterator[IntegrationEnvir
 @pytest.fixture
 def environment(integration_environment: IntegrationEnvironment) -> IntegrationEnvironment:
     with psycopg.connect(integration_environment.admin_dsn, autocommit=True) as connection:
-        connection.execute(TRUNCATE_SQL)
+        connection.execute(TRUNCATE_ALL_SQL)
     return integration_environment
 
 

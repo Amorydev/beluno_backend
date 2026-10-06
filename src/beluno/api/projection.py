@@ -30,7 +30,12 @@ from beluno.api.presenters import (
 from beluno.authorization.access import find_user_participant
 from beluno.authorization.policy import AccessState
 from beluno.contracts.iam import SessionResponse
-from beluno.contracts.sync import GroupAccessSignal, PlanAccessSignal
+from beluno.contracts.sync import (
+    GroupAccessSignal,
+    PlanAccessSignal,
+    PlanEntity,
+    TravelDetailsEntity,
+)
 from beluno.db.models.base import Base
 from beluno.db.models.groups import Group, GroupInvite, GroupMembership
 from beluno.db.models.iam import AuthSession, User
@@ -105,14 +110,6 @@ async def _page(
     return list(rows.scalars())
 
 
-def _segments(plan_id: UUID) -> Select[TravelSegment]:
-    return (
-        select(TravelSegment)
-        .where(TravelSegment.plan_id == plan_id, TravelSegment.deleted_at.is_(None))
-        .order_by(TravelSegment.sort_order, TravelSegment.id)
-    )
-
-
 async def _member(ctx: CommandContext, membership: GroupMembership) -> BaseModel:
     user = await ctx.session.get(User, membership.user_id)
     name = user.display_name if user else FALLBACK_DISPLAY_NAME
@@ -120,15 +117,14 @@ async def _member(ctx: CommandContext, membership: GroupMembership) -> BaseModel
 
 
 async def _plan_view(ctx: CommandContext, plan: Plan) -> BaseModel:
-    participant = await find_user_participant(ctx, plan.id, ctx.require_actor().user_id)
-    if participant is not None and participant.access_state != AccessState.ACTIVE.value:
-        participant = None
-    return plan_response(PlanView(plan=plan, participant=participant))
+    # Entities never embed other entities: the caller's participant row is its own item.
+    rendered = plan_response(PlanView(plan=plan, participant=None))
+    return PlanEntity.model_validate(rendered.model_dump(exclude={"my_participant"}))
 
 
 async def _travel_view(ctx: CommandContext, details: TravelPlanDetails) -> BaseModel:
-    segments = (await ctx.session.execute(_segments(details.plan_id))).scalars()
-    return travel_response(TravelView(details=details, segments=list(segments)))
+    rendered = travel_response(TravelView(details=details, segments=[]))
+    return TravelDetailsEntity.model_validate(rendered.model_dump(exclude={"segments"}))
 
 
 def plan_access_signal(participant: PlanParticipant) -> PlanAccessSignal:

@@ -197,11 +197,21 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
     ]
     plan_item = snapshot[0]
     assert plan_item["data"]["title"] == "Dinner" and plan_item["version"] == 1
-    assert plan_item["data"]["my_participant"]["role"] == "owner"
+    # Entities never embed other entities: no my_participant here, no segments below.
+    assert "my_participant" not in plan_item["data"]
+    assert (
+        snapshot[1]["data"]["role"] == "owner" and snapshot[1]["data"]["user_id"] == owner.user_id
+    )
     invite_item = snapshot[-1]
     assert invite_item["entity_id"] == invite.json()["id"]
     assert "token" not in invite_item["data"]
-    assert snapshot[3]["data"]["segments"][0]["id"] == segment.json()["id"]
+    assert snapshot[3]["data"] == {
+        "plan_id": plan["id"],
+        "destination_summary": None,
+        "notes": "bring cake",
+        "version": 1,
+    }
+    assert snapshot[4]["entity_id"] == segment.json()["id"]
 
     # Nothing new: an empty page with the same position.
     quiet = await pull_once(api, owner, scope, cursor)
