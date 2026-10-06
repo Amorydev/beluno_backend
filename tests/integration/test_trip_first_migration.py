@@ -101,6 +101,25 @@ def test_upgrade_drops_groups_series_and_travel_but_keeps_plans(
         )
         == 0
     )
+    removed = r"groups\.|plan_series|series_id|travel_|visibility|group_id|'group'"
+    assert (
+        admin.fetch(
+            "SELECT n.nspname || '.' || p.proname FROM pg_proc p "
+            "JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname IN ('iam', 'plans', 'people', 'sync_audit', 'finance') "
+            "AND p.prosrc ~ %s",
+            removed,
+        )
+        == []
+    )
+    assert (
+        admin.fetch(
+            "SELECT schemaname || '.' || policyname FROM pg_policies "
+            "WHERE coalesce(qual, '') || coalesce(with_check, '') ~ %s",
+            removed,
+        )
+        == []
+    )
     assert sorted(admin.fetch("SELECT id::text FROM plans.plans")) == sorted(
         [(ids["trip"],), (ids["occurrence"],)]
     )
