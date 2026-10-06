@@ -37,6 +37,13 @@ Forward action:
   so a consolidation conversion must post exactly its lines and its reversal
   must mirror it; a new deferred trigger checks each consolidation has its one
   conversion and its lines.
+* A changeable base currency: append-only ``finance.base_currency_changes``
+  (numbered per plan, with the frozen old-to-new rate), a
+  ``base_change_count`` on the ledger head, and the ``base_change_number`` each
+  expense revision and cost commitment was valued at, so base values are read
+  through the change chain. Original amounts and postings never change.
+  ``finance.guard_budget`` now lets a budget's currency change (limits are
+  re-denominated); existing rows read as number 0.
 
 Lock/scan risk: ``ALTER TABLE`` takes ACCESS EXCLUSIVE on
 ``finance.expense_revisions``, ``finance.plan_ledger_heads``, and
@@ -573,6 +580,59 @@ REVOKE EXECUTE ON FUNCTION finance.guard_consolidation(), finance.verify_consoli
     finance.check_consolidation() FROM PUBLIC;
 """
 
+BASE_CHANGE_SQL = """
+ALTER TABLE finance.plan_ledger_heads
+    ADD COLUMN base_change_count integer NOT NULL DEFAULT 0 CHECK (base_change_count >= 0);
+ALTER TABLE finance.plan_ledger_heads ALTER COLUMN base_change_count DROP DEFAULT;
+ALTER TABLE finance.expense_revisions
+    ADD COLUMN base_change_number integer NOT NULL DEFAULT 0 CHECK (base_change_number >= 0);
+ALTER TABLE finance.expense_revisions ALTER COLUMN base_change_number DROP DEFAULT;
+ALTER TABLE finance.cost_commitments
+    ADD COLUMN base_change_number integer NOT NULL DEFAULT 0 CHECK (base_change_number >= 0);
+ALTER TABLE finance.cost_commitments ALTER COLUMN base_change_number DROP DEFAULT;
+
+CREATE TABLE finance.base_currency_changes (
+    plan_id uuid NOT NULL REFERENCES finance.plan_ledger_heads (plan_id),
+    change_number integer NOT NULL CHECK (change_number > 0),
+    from_currency char(3) NOT NULL REFERENCES finance.currencies (code),
+    to_currency char(3) NOT NULL REFERENCES finance.currencies (code),
+    fx_snapshot_id uuid NOT NULL,
+    ledger_seq bigint NOT NULL CHECK (ledger_seq >= 0),
+    created_by_user_id uuid NOT NULL REFERENCES iam.users (id),
+    created_at timestamptz NOT NULL,
+    PRIMARY KEY (plan_id, change_number),
+    FOREIGN KEY (plan_id, fx_snapshot_id) REFERENCES finance.fx_snapshots (plan_id, id),
+    CHECK (from_currency <> to_currency)
+);
+CREATE TRIGGER base_currency_changes_append_only
+    BEFORE UPDATE OR DELETE ON finance.base_currency_changes
+    FOR EACH ROW EXECUTE FUNCTION finance.reject_history_change();
+ALTER TABLE finance.base_currency_changes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY base_currency_changes_select ON finance.base_currency_changes FOR SELECT
+    TO api_runtime USING (plans.actor_is_active_participant(plan_id));
+CREATE POLICY base_currency_changes_insert ON finance.base_currency_changes FOR INSERT
+    TO api_runtime WITH CHECK (plans.actor_is_active_participant(plan_id));
+GRANT SELECT, INSERT ON finance.base_currency_changes TO api_runtime;
+
+-- Budget limits are re-denominated when the base currency changes, so their
+-- currency may now change too; scope and identity stay fixed.
+CREATE OR REPLACE FUNCTION finance.guard_budget() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.id, NEW.plan_id, NEW.scope, NEW.category, NEW.participant_id,
+        NEW.created_by_user_id, NEW.created_at)
+       IS DISTINCT FROM
+       (OLD.id, OLD.plan_id, OLD.scope, OLD.category, OLD.participant_id,
+        OLD.created_by_user_id, OLD.created_at)
+       OR OLD.deleted_at IS NOT NULL OR NEW.version <> OLD.version + 1 THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+"""
+
 
 def upgrade() -> None:
     op.execute(REVISIONS_SQL)
@@ -582,6 +642,7 @@ def upgrade() -> None:
     op.execute(MARKET_RATES_SQL)
     op.execute(CONSOLIDATION_TABLES_SQL)
     op.execute(CONSOLIDATION_INVARIANTS_SQL)
+    op.execute(BASE_CHANGE_SQL)
 
 
 def downgrade() -> None:

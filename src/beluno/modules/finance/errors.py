@@ -68,14 +68,6 @@ def fund_insufficient() -> BelunoError:
     )
 
 
-def base_currency_locked() -> BelunoError:
-    return conflict(
-        "BASE_CURRENCY_LOCKED",
-        "Base currency can no longer change",
-        "The plan already has financial records in its base currency",
-    )
-
-
 def not_available_for_hangout() -> BelunoError:
     return conflict(
         "NOT_AVAILABLE_FOR_HANGOUT",

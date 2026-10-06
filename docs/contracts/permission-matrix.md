@@ -59,6 +59,7 @@ The `guest` role belongs to guest identities, which never pass
 | plan.ledger.configure | allow | allow | deny | deny | deny | deny |
 | plan.ledger.confirm | allow | allow | allow | allow | allow | deny |
 | plan.ledger.consolidate | allow | allow | deny | deny | deny | deny |
+| plan.base_currency.change | allow | allow | deny | deny | deny | deny |
 <!-- plan-matrix:end -->
 
 State narrowing (applies on top of the table):

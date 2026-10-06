@@ -2,8 +2,9 @@
 
 Spend is computed on read from canonical rows: the current revision of every
 live expense, minus its live refunds, converted with the revision's own
-snapshot. Spend in another currency without a snapshot is reported as
-``unconverted`` and never added silently. Each cost source counts in exactly one
+snapshot and then through every later base-currency change. Spend in another
+currency without a snapshot is reported as ``unconverted`` and never added
+silently. Each cost source counts in exactly one
 tier: an expense (actual), else a committed commitment, else an estimate, so a
 booking and the expense that paid for it are never counted twice.
 """
@@ -26,7 +27,6 @@ from beluno.db.ids import new_id
 from beluno.db.models.finance import (
     Budget,
     CostCommitment,
-    Currency,
     Expense,
     ExpensePayer,
     ExpenseRefund,
@@ -39,7 +39,8 @@ from beluno.db.models.finance import (
 )
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
-from beluno.modules.finance.fx import RateSource, convert
+from beluno.modules.finance.base_currency import base_chain
+from beluno.modules.finance.fx import RateSource
 from beluno.modules.finance.ledger import Ledger, open_ledger
 from beluno.modules.finance.money import check_amount
 from beluno.modules.finance.states import BudgetTier, CommitmentState, commitment_tier
@@ -181,7 +182,7 @@ async def get_budgets(ctx: CommandContext, plan_id: UUID) -> BudgetOverview:
     access = await load_plan(ctx, plan_id)
     require_plan(access, PlanAction.VIEW_FINANCE)
     base_currency = access.plan.base_currency
-    currencies = {row.code: row for row in (await ctx.session.execute(select(Currency))).scalars()}
+    chain = await base_chain(ctx, plan_id, base_currency)
     merged = {
         row.id: row.merged_into_participant_id
         for row in (
@@ -220,22 +221,22 @@ async def get_budgets(ctx: CommandContext, plan_id: UUID) -> BudgetOverview:
         def to_base(
             amount: int, revision: ExpenseRevision = revision, rate: FxSnapshot | None = rate
         ) -> int | None:
-            if revision.currency == base_currency:
-                return amount
-            if rate is None:
-                return None
-            return convert(
+            return chain.value(
                 amount,
-                from_exponent=currencies[revision.currency].exponent,
-                to_exponent=currencies[base_currency].exponent,
-                rate=rate.rate,
+                revision.currency,
+                origin=revision.base_currency,
+                number=revision.base_change_number,
+                rate=rate.rate if rate else None,
             )
 
         base_net = to_base(net)
         if base_net is None:
             overview.unconverted[(BudgetTier.ACTUAL, revision.currency)] += net
             continue
-        if rate is not None and rate.source == RateSource.ESTIMATED.value:
+        if revision.currency != base_currency and (
+            (rate is not None and rate.source == RateSource.ESTIMATED.value)
+            or chain.estimated_after(revision.base_change_number)
+        ):
             overview.estimated_rates = True
         overview.total.add(BudgetTier.ACTUAL, base_net)
         overview.categories[revision.category].add(BudgetTier.ACTUAL, base_net)
@@ -246,13 +247,24 @@ async def get_budgets(ctx: CommandContext, plan_id: UUID) -> BudgetOverview:
         tier = commitment_tier(CommitmentState(commitment.state))
         if tier is None:
             continue
-        if commitment.base_amount_minor is None:
+        number = commitment.base_change_number
+        base_amount = chain.value(
+            commitment.amount_minor,
+            commitment.currency,
+            origin=chain.origin(number),
+            number=number,
+            rate=rate.rate if rate else None,
+        )
+        if base_amount is None:
             overview.unconverted[(tier, commitment.currency)] += commitment.amount_minor
             continue
-        if rate is not None and rate.source == RateSource.ESTIMATED.value:
+        if commitment.currency != base_currency and (
+            (rate is not None and rate.source == RateSource.ESTIMATED.value)
+            or chain.estimated_after(number)
+        ):
             overview.estimated_rates = True
-        overview.total.add(tier, commitment.base_amount_minor)
-        overview.categories[commitment.category].add(tier, commitment.base_amount_minor)
+        overview.total.add(tier, base_amount)
+        overview.categories[commitment.category].add(tier, base_amount)
     budgets = await ctx.session.execute(
         select(Budget)
         .where(Budget.plan_id == plan_id, Budget.deleted_at.is_(None))

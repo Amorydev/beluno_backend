@@ -311,6 +311,9 @@ class RevisionResponse(BaseModel):
     split: Split
     split_algorithm: str
     shares: list[ShareResponse]
+    base_change_number: int = Field(
+        description="Base-currency changes before this revision; later changes apply to base"
+    )
     personal: bool = Field(
         description="One person paid and is the only one sharing it; it moves no balance"
     )
@@ -356,6 +359,30 @@ class LedgerConfirmationResponse(BaseModel):
     confirmed_at: datetime
 
 
+class BaseCurrencyChangeResponse(BaseModel):
+    """Values recorded before ``number`` convert at ``rate`` (to_currency per from_currency)."""
+
+    number: int
+    from_currency: str
+    to_currency: str
+    rate: str
+    rate_source: Literal["manual", "estimated"]
+    rate_as_of: datetime
+    ledger_seq: int
+    changed_at: datetime
+
+
+class BaseCurrencyRequest(BaseModel):
+    """Move the plan to another base currency; a rate is needed once it has money in it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    currency: CurrencyCode
+    rate: RateRequest | None = Field(
+        default=None, description="Units of the new base for one unit of the current base"
+    )
+
+
 class LedgerResponse(BaseModel):
     """The plan's balances per participant and currency, never netted across currencies."""
 
@@ -375,6 +402,9 @@ class LedgerResponse(BaseModel):
     )
     confirmations: list[LedgerConfirmationResponse] = Field(
         description="Who confirmed the ledger at the current ledger_seq; any new entry clears it"
+    )
+    base_changes: list[BaseCurrencyChangeResponse] = Field(
+        description="Base-currency changes, oldest first: the chain base values are read through"
     )
     version: int
 
@@ -740,6 +770,7 @@ class CommitmentResponse(BaseModel):
     currency: str
     amount_minor: int
     base: BaseAmountResponse
+    base_change_number: int
     expense_id: UUID | None
     created_by_user_id: UUID
     version: int

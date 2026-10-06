@@ -10,6 +10,7 @@ from beluno.contracts.finance import (
     AdjustmentRequest,
     AdjustmentSplit,
     BaseAmountResponse,
+    BaseCurrencyChangeResponse,
     BudgetOverviewResponse,
     BudgetResponse,
     CommitmentCreateRequest,
@@ -272,6 +273,7 @@ def revision_response(view: RevisionView) -> RevisionResponse:
                 ShareResponse(participant_id=split.participant_id, owed_minor=split.owed_minor)
                 for split in view.splits
             ],
+            "base_change_number": revision.base_change_number,
             "personal": is_personal(view),
             "base": base,
             "commitment_id": revision.commitment_id,
@@ -355,6 +357,21 @@ def ledger_response(snapshot: LedgerSnapshot) -> LedgerResponse:
                     participant_id=row.participant_id, confirmed_at=row.confirmed_at
                 )
                 for row in snapshot.confirmations
+            ],
+            "base_changes": [
+                BaseCurrencyChangeResponse.model_validate(
+                    {
+                        "number": change.change_number,
+                        "from_currency": change.from_currency,
+                        "to_currency": change.to_currency,
+                        "rate": rate_text(rate.rate),
+                        "rate_source": rate.source,
+                        "rate_as_of": rate.as_of,
+                        "ledger_seq": change.ledger_seq,
+                        "changed_at": change.created_at,
+                    }
+                )
+                for change, rate in snapshot.base_changes
             ],
             "version": head.version if head else 0,
         }
@@ -651,6 +668,7 @@ def commitment_response(view: CommitmentView) -> CommitmentResponse:
             "base": base_amount(
                 commitment.currency, view.base_currency, commitment.base_amount_minor, view.rate
             ),
+            "base_change_number": commitment.base_change_number,
             "expense_id": commitment.expense_id,
             "created_by_user_id": commitment.created_by_user_id,
             "version": commitment.version,

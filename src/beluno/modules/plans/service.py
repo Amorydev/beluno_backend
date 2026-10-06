@@ -28,8 +28,6 @@ from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanParticipant
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.currencies import require_supported_currency
-from beluno.modules.finance.errors import base_currency_locked
-from beluno.modules.finance.ledger import ledger_exists
 from beluno.modules.plans.changes import bump, record_participant_change, record_plan_change
 from beluno.modules.plans.participants import (
     AVATAR_COLORS,
@@ -79,7 +77,6 @@ class PlanChanges:
     title: str | None = None
     activity: str | None = UNSET
     timing: Timing | None = None
-    base_currency: str | None = None
     destinations: tuple[dict[str, Any], ...] | None = None
     pass_color: str | None = None
     expected_size: int | None = UNSET
@@ -284,12 +281,6 @@ async def update_plan(
         plan.expected_size = changes.expected_size
     if changes.timing is not None:
         apply_timing(plan, changes.timing)
-    if changes.base_currency is not None and changes.base_currency != plan.base_currency:
-        await require_supported_currency(ctx, changes.base_currency)
-        # Budgets and base-currency snapshots are denominated in it from then on.
-        if await ledger_exists(ctx, plan.id):
-            raise base_currency_locked()
-        plan.base_currency = changes.base_currency
     if changes.description is not UNSET:
         plan.description = changes.description
     if changes.location_label is not UNSET:

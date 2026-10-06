@@ -538,6 +538,7 @@ async def _append_revision(
         base_currency=base_currency,
         base_amount_minor=base_amount,
         base_fx_snapshot_id=snapshot.id if snapshot else None,
+        base_change_number=ledger.head.base_change_count,
         commitment_id=draft.commitment_id,
         source=draft.origin.source,
         client_created_at=draft.origin.client_created_at,

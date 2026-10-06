@@ -10,6 +10,7 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from beluno.contracts.errors import BelunoError
+from beluno.modules.finance.base_currency import BaseChain, ChainStep
 from beluno.modules.finance.fx import convert, implied_rate, parse_rate
 from beluno.modules.finance.money import MAX_AMOUNT_MINOR, check_amount
 from beluno.modules.finance.postings import (
@@ -278,6 +279,25 @@ def test_consolidation_shares_the_converted_total_on_each_side() -> None:
     assert consolidation_amounts({}, 0) == {}
     with pytest.raises(ValueError):
         consolidation_amounts({a: 1, b: -2}, 5)
+
+
+def test_base_values_follow_each_later_base_change() -> None:
+    chain = BaseChain(
+        current="USD",
+        steps=(
+            ChainStep(1, "USD", "EUR", Decimal("0.9"), estimated=False),
+            ChainStep(2, "EUR", "USD", Decimal("1.1"), estimated=True),
+        ),
+        exponents={"USD": 2, "EUR": 2, "JPY": 0},
+    )
+    # Amounts already in today's base count as they are.
+    assert chain.value(1_000, "USD", origin="USD", number=0, rate=None) == 1_000
+    # Yen valued in USD before both changes: snapshot, then 0.9, then 1.1.
+    assert chain.value(3_000, "JPY", origin="USD", number=0, rate=Decimal("0.0067")) == 1_990
+    assert chain.value(500, "EUR", origin="EUR", number=1, rate=None) == 550
+    assert chain.value(3_000, "JPY", origin="USD", number=0, rate=None) is None
+    assert (chain.origin(0), chain.origin(1), chain.origin(2)) == ("USD", "EUR", "USD")
+    assert (chain.estimated_after(0), chain.estimated_after(2)) == (True, False)
 
 
 def test_ledger_status_and_commitment_tiers() -> None:

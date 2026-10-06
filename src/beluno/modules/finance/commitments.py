@@ -29,6 +29,7 @@ from beluno.db.ids import new_id
 from beluno.db.models.finance import CostCommitment, Expense, FxSnapshot
 from beluno.db.models.plans import Plan
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.base_currency import base_currency_at
 from beluno.modules.finance.fx import RateSource, convert, parse_rate
 from beluno.modules.finance.ledger import Ledger, ledger_for, open_ledger
 from beluno.modules.finance.money import check_amount
@@ -82,7 +83,9 @@ async def commitment_view(ctx: CommandContext, commitment: CostCommitment) -> Co
     )
     plan = await ctx.session.get(Plan, commitment.plan_id)
     assert plan is not None
-    return CommitmentView(commitment=commitment, rate=rate, base_currency=plan.base_currency)
+    # The base amount is in the base currency of the time it was valued.
+    base = await base_currency_at(ctx, plan.id, commitment.base_change_number, plan.base_currency)
+    return CommitmentView(commitment=commitment, rate=rate, base_currency=base)
 
 
 # --- manual commitments (REST) --------------------------------------------------------
@@ -290,6 +293,7 @@ async def _apply(ledger: Ledger, commitment: CostCommitment, draft: CommitmentDr
     commitment.amount_minor = draft.amount_minor
     commitment.base_fx_snapshot_id = snapshot_id
     commitment.base_amount_minor = base_amount
+    commitment.base_change_number = ledger.head.base_change_count
 
 
 async def _bump(ledger: Ledger, commitment: CostCommitment, action: str) -> None:

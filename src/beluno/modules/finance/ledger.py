@@ -392,6 +392,7 @@ async def lock_head(ctx: CommandContext, plan_id: UUID) -> LedgerHead:
         disputed_settlements=0,
         count_personal_spend=True,
         settle_tolerance_minor=0,
+        base_change_count=0,
         version=1,
         created_at=ctx.now,
         updated_at=ctx.now,
@@ -413,12 +414,3 @@ async def lock_head(ctx: CommandContext, plan_id: UUID) -> LedgerHead:
         scope_id=plan_id,
     )
     return head
-
-
-async def ledger_exists(ctx: CommandContext, plan_id: UUID) -> bool:
-    """Whether the plan has any finance data (its base currency is then fixed)."""
-
-    found = await ctx.session.execute(
-        select(LedgerHead.plan_id).where(LedgerHead.plan_id == plan_id)
-    )
-    return found.scalar_one_or_none() is not None

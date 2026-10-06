@@ -11,8 +11,10 @@ from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import PlanAction
 from beluno.db.models.finance import (
     AccountBalance,
+    BaseCurrencyChange,
     Expense,
     ExpenseRevision,
+    FxSnapshot,
     LedgerAccount,
     LedgerConfirmation,
     LedgerHead,
@@ -36,6 +38,8 @@ class LedgerSnapshot:
     accounts: list[AccountView]
     # Who confirmed the ledger at its current sequence (stale ones are left out).
     confirmations: list[LedgerConfirmation]
+    # Every base-currency change, oldest first, with its frozen rate.
+    base_changes: list[tuple[BaseCurrencyChange, FxSnapshot]]
 
 
 async def get_ledger(ctx: CommandContext, plan_id: UUID) -> LedgerSnapshot:
@@ -75,7 +79,20 @@ async def ledger_snapshot(ctx: CommandContext, plan_id: UUID) -> LedgerSnapshot:
         head=head,
         accounts=[AccountView(account, balance) for account, balance in rows.all()],
         confirmations=confirmations,
+        base_changes=await list_base_changes(ctx, plan_id),
     )
+
+
+async def list_base_changes(
+    ctx: CommandContext, plan_id: UUID
+) -> list[tuple[BaseCurrencyChange, FxSnapshot]]:
+    rows = await ctx.session.execute(
+        select(BaseCurrencyChange, FxSnapshot)
+        .join(FxSnapshot, FxSnapshot.id == BaseCurrencyChange.fx_snapshot_id)
+        .where(BaseCurrencyChange.plan_id == plan_id)
+        .order_by(BaseCurrencyChange.change_number)
+    )
+    return [(change, snapshot) for change, snapshot in rows.all()]
 
 
 @dataclass(frozen=True)

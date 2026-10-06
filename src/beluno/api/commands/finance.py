@@ -23,8 +23,10 @@ from beluno.api.finance_presenters import (
     transaction_response,
     waiver_draft,
 )
+from beluno.api.presenters import plan_response
 from beluno.contracts.finance import (
     AdjustmentRequest,
+    BaseCurrencyRequest,
     BudgetCreateRequest,
     BudgetResponse,
     BudgetUpdateRequest,
@@ -51,8 +53,10 @@ from beluno.contracts.finance import (
     TransactionResponse,
     WaiverRequest,
 )
+from beluno.contracts.plans import PlanResponse
 from beluno.modules.context import CommandContext
 from beluno.modules.finance import (
+    base_currency,
     budgets,
     commitments,
     consolidation,
@@ -284,6 +288,20 @@ async def _reverse_consolidation(
         ctx, call.id("plan_id"), call.id("consolidation_id"), required_version(call)
     )
     return consolidation_response(view)
+
+
+async def _change_base_currency(
+    ctx: CommandContext, call: CommandCall, body: BaseCurrencyRequest
+) -> PlanResponse:
+    rate = (
+        RateInput(rate=body.rate.rate, source=RateSource(body.rate.source), as_of=body.rate.as_of)
+        if body.rate
+        else None
+    )
+    view = await base_currency.change_base_currency(
+        ctx, call.id("plan_id"), required_version(call), body.currency, rate
+    )
+    return plan_response(view)
 
 
 EXPENSE_CREATE = Command(
@@ -558,6 +576,19 @@ LEDGER_REVERSE_CONSOLIDATION = Command(
     rate_limit_target="plan_id",
 )
 
+PLAN_CHANGE_BASE_CURRENCY = Command(
+    name="plan.change_base_currency",
+    payload_model=BaseCurrencyRequest,
+    response_model=PlanResponse,
+    handler=_change_base_currency,
+    target_fields=("plan_id",),
+    versioned=True,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
 COMMANDS: list[Command[Any, Any]] = [
     EXPENSE_CREATE,
     EXPENSE_REVISE,
@@ -582,4 +613,5 @@ COMMANDS: list[Command[Any, Any]] = [
     LEDGER_CONFIRM,
     LEDGER_CONSOLIDATE,
     LEDGER_REVERSE_CONSOLIDATION,
+    PLAN_CHANGE_BASE_CURRENCY,
 ]

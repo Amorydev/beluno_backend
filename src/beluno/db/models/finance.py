@@ -48,6 +48,8 @@ class LedgerHead(Base):
     # balance below which a person counts as settled.
     count_personal_spend: Mapped[bool]
     settle_tolerance_minor: Mapped[int] = mapped_column(BigInteger)
+    # How many times the plan's base currency changed while it had finance data.
+    base_change_count: Mapped[int]
     version: Mapped[int]
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
@@ -125,6 +127,8 @@ class CostCommitment(Base):
     amount_minor: Mapped[int] = mapped_column(BigInteger)
     base_amount_minor: Mapped[int | None] = mapped_column(BigInteger)
     base_fx_snapshot_id: Mapped[UUID | None]
+    # The base-currency change count its base amount was valued at.
+    base_change_number: Mapped[int]
     expense_id: Mapped[UUID | None]
     created_by_user_id: Mapped[UUID]
     version: Mapped[int]
@@ -171,6 +175,7 @@ class ExpenseRevision(Base):
     base_currency: Mapped[str] = mapped_column(CHAR(3))
     base_amount_minor: Mapped[int | None] = mapped_column(BigInteger)
     base_fx_snapshot_id: Mapped[UUID | None]
+    base_change_number: Mapped[int]
     commitment_id: Mapped[UUID | None]
     source: Mapped[str] = mapped_column(Text)
     client_created_at: Mapped[datetime | None]
@@ -410,3 +415,19 @@ class ConsolidationLine(Base):
     plan_id: Mapped[UUID]
     amount_minor: Mapped[int] = mapped_column(BigInteger)
     base_amount_minor: Mapped[int] = mapped_column(BigInteger)
+
+
+class BaseCurrencyChange(Base):
+    """The plan's base currency moved at a frozen rate (append-only, numbered from 1)."""
+
+    __tablename__ = "base_currency_changes"
+    __table_args__ = SCHEMA
+
+    plan_id: Mapped[UUID] = mapped_column(primary_key=True)
+    change_number: Mapped[int] = mapped_column(primary_key=True)
+    from_currency: Mapped[str] = mapped_column(CHAR(3))
+    to_currency: Mapped[str] = mapped_column(CHAR(3))
+    fx_snapshot_id: Mapped[UUID]
+    ledger_seq: Mapped[int] = mapped_column(BigInteger)
+    created_by_user_id: Mapped[UUID]
+    created_at: Mapped[datetime]

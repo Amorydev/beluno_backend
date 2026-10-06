@@ -104,8 +104,9 @@ class Entry:
         accounts = {person: str(new_id()) for person in people}
         connection.execute(
             "INSERT INTO finance.plan_ledger_heads (plan_id, ledger_seq, status, "
-            "disputed_settlements, count_personal_spend, settle_tolerance_minor, version, "
-            "created_at, updated_at) VALUES (%s, %s, 'open', 0, true, 0, 1, now(), now())",
+            "disputed_settlements, count_personal_spend, settle_tolerance_minor, "
+            "base_change_count, version, created_at, updated_at) "
+            "VALUES (%s, %s, 'open', 0, true, 0, 0, 1, now(), now())",
             (self.plan_id, self.head_seq),
         )
         for person, account in accounts.items():
@@ -124,8 +125,9 @@ class Entry:
             "INSERT INTO finance.expense_revisions (id, plan_id, expense_id, revision_number, "
             "amount_minor, currency, description, category, occurred_on, split_method, "
             "split_algorithm, split_input, base_currency, base_amount_minor, source, "
-            "created_by_user_id, created_at) VALUES (%s, %s, %s, 1, %s, 'USD', 'Dinner', "
-            "'food', '2026-10-06', 'exact', 'lr-v1', '{}', 'USD', %s, 'http', %s, now())",
+            "base_change_number, created_by_user_id, created_at) VALUES (%s, %s, %s, 1, %s, "
+            "'USD', 'Dinner', 'food', '2026-10-06', 'exact', 'lr-v1', '{}', 'USD', %s, 'http', "
+            "0, %s, now())",
             (revision, self.plan_id, expense, self.amount, self.amount, self.actor),
         )
         connection.execute(
@@ -190,7 +192,7 @@ def test_finance_tables_are_rls_protected_and_never_deletable(admin: AdminDataba
         "SELECT c.relname, c.relrowsecurity, pg_get_userbyid(c.relowner) FROM pg_class c "
         "WHERE c.relnamespace = 'finance'::regnamespace AND c.relkind = 'r'"
     )
-    assert len(tables) == 24
+    assert len(tables) == 25
     assert all(rls and owner == "migrator" for _, rls, owner in tables), tables
     for role in ("api_runtime", "worker_runtime"):
         deletable = admin.fetch(

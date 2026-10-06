@@ -208,6 +208,88 @@
         "title": "BaseAmountResponse",
         "type": "object"
       },
+      "BaseCurrencyChangeResponse": {
+        "description": "Values recorded before ``number`` convert at ``rate`` (to_currency per from_currency).",
+        "properties": {
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "from_currency": {
+            "title": "From Currency",
+            "type": "string"
+          },
+          "ledger_seq": {
+            "title": "Ledger Seq",
+            "type": "integer"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "rate": {
+            "title": "Rate",
+            "type": "string"
+          },
+          "rate_as_of": {
+            "format": "date-time",
+            "title": "Rate As Of",
+            "type": "string"
+          },
+          "rate_source": {
+            "enum": [
+              "manual",
+              "estimated"
+            ],
+            "title": "Rate Source",
+            "type": "string"
+          },
+          "to_currency": {
+            "title": "To Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "from_currency",
+          "to_currency",
+          "rate",
+          "rate_source",
+          "rate_as_of",
+          "ledger_seq",
+          "changed_at"
+        ],
+        "title": "BaseCurrencyChangeResponse",
+        "type": "object"
+      },
+      "BaseCurrencyRequest": {
+        "additionalProperties": false,
+        "description": "Move the plan to another base currency; a rate is needed once it has money in it.",
+        "properties": {
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Units of the new base for one unit of the current base"
+          }
+        },
+        "required": [
+          "currency"
+        ],
+        "title": "BaseCurrencyRequest",
+        "type": "object"
+      },
       "BudgetCreateRequest": {
         "additionalProperties": false,
         "description": "A limit in the plan's base currency; ``daily`` applies to every day.",
@@ -750,6 +832,10 @@
           "base": {
             "$ref": "#/components/schemas/BaseAmountResponse"
           },
+          "base_change_number": {
+            "title": "Base Change Number",
+            "type": "integer"
+          },
           "category": {
             "enum": [
               "food",
@@ -857,6 +943,7 @@
           "currency",
           "amount_minor",
           "base",
+          "base_change_number",
           "expense_id",
           "created_by_user_id",
           "version",
@@ -3287,6 +3374,14 @@
             "title": "Balances",
             "type": "array"
           },
+          "base_changes": {
+            "description": "Base-currency changes, oldest first: the chain base values are read through",
+            "items": {
+              "$ref": "#/components/schemas/BaseCurrencyChangeResponse"
+            },
+            "title": "Base Changes",
+            "type": "array"
+          },
           "confirmations": {
             "description": "Who confirmed the ledger at the current ledger_seq; any new entry clears it",
             "items": {
@@ -3350,6 +3445,7 @@
           "count_personal_spend",
           "settle_tolerance_minor",
           "confirmations",
+          "base_changes",
           "version"
         ],
         "title": "LedgerResponse",
@@ -4723,7 +4819,7 @@
       },
       "PlanUpdateRequest": {
         "additionalProperties": false,
-        "description": "Omitted fields stay unchanged; ``null`` clears description or location.",
+        "description": "Omitted fields stay unchanged; ``null`` clears description or location.\n\nThe base currency changes through ``POST /v1/plans/{plan_id}/base-currency``.",
         "properties": {
           "activity": {
             "anyOf": [
@@ -4745,18 +4841,6 @@
               }
             ],
             "title": "Activity"
-          },
-          "base_currency": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Z]{3}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Currency"
           },
           "description": {
             "anyOf": [
@@ -5849,6 +5933,11 @@
           "base": {
             "$ref": "#/components/schemas/BaseAmountResponse"
           },
+          "base_change_number": {
+            "description": "Base-currency changes before this revision; later changes apply to base",
+            "title": "Base Change Number",
+            "type": "integer"
+          },
           "category": {
             "enum": [
               "food",
@@ -6048,6 +6137,7 @@
           "split",
           "split_algorithm",
           "shares",
+          "base_change_number",
           "personal",
           "base",
           "commitment_id",
@@ -9801,6 +9891,182 @@
         "summary": "Update Plan",
         "tags": [
           "plans"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/base-currency": {
+      "post": {
+        "description": "Move the plan to another base currency (owner or admin, plan version in If-Match).\n\nOriginal amounts and postings never change; budgets and the settle tolerance are\nre-denominated at the rate, and base values read through the chain of changes.",
+        "operationId": "change_base_currency_v1_plans__plan_id__base_currency_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BaseCurrencyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change Base Currency",
+        "tags": [
+          "finance"
         ]
       }
     },

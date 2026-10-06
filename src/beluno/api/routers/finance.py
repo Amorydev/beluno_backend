@@ -48,6 +48,7 @@ from beluno.contracts.errors import validation_error
 from beluno.contracts.finance import (
     AdjustmentRequest,
     BalanceExplanation,
+    BaseCurrencyRequest,
     BudgetCreateRequest,
     BudgetOverviewResponse,
     BudgetResponse,
@@ -84,6 +85,7 @@ from beluno.contracts.finance import (
     TransactionResponse,
     WaiverRequest,
 )
+from beluno.contracts.plans import PlanResponse
 from beluno.modules.context import open_context
 from beluno.modules.finance import (
     budgets,
@@ -137,6 +139,26 @@ async def list_market_rates(
             for row in rows
         ],
     )
+
+
+@router.post("/base-currency", response_model=PlanResponse, responses=WRITE_ERRORS)
+async def change_base_currency(
+    plan_id: UUID,
+    body: BaseCurrencyRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> PlanResponse:
+    """Move the plan to another base currency (owner or admin, plan version in If-Match).
+
+    Original amounts and postings never change; budgets and the settle tolerance are
+    re-denominated at the rate, and base values read through the chain of changes.
+    """
+
+    call = command_call(idempotency_key, if_match=if_match, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.PLAN_CHANGE_BASE_CURRENCY, call, body))
 
 
 @router.get("/ledger", response_model=LedgerResponse, responses=READ_ERRORS)
