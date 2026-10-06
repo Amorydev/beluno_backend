@@ -18,11 +18,17 @@ Forward action:
   with that tolerance, like the API does.
 * New append-only ``finance.ledger_confirmations``: a participant confirmed the
   ledger at one ``ledger_seq`` (only the current sequence counts).
+* ``finance.fund_settings`` gains an optional per-member target
+  (``target_currency`` and ``target_minor``, both or neither).
+* New append-only ``finance.fund_counts``: the custodian or a manager counted
+  the kitty (``counted_minor``) against what the ledger expected
+  (``expected_minor``). Counts post nothing.
 
 Lock/scan risk: ``ALTER TABLE`` takes ACCESS EXCLUSIVE on
-``finance.expense_revisions`` and ``finance.plan_ledger_heads`` briefly. New
-columns are nullable or carry a constant default (catalog-only, no rewrite, no
-trigger runs); the default is dropped right after. Replacing the split-method check scans the table once.
+``finance.expense_revisions``, ``finance.plan_ledger_heads``, and
+``finance.fund_settings`` briefly. New columns are nullable or carry a constant
+default (catalog-only, no rewrite, no trigger runs); the default is dropped
+right after. Replacing the split-method check scans the table once.
 
 Validation:
     SELECT count(*) FROM finance.expense_revisions WHERE source IS NULL;          -- 0
@@ -32,6 +38,7 @@ Validation:
     WHERE count_personal_spend IS NULL OR settle_tolerance_minor <> 0;          -- 0
     SELECT relrowsecurity FROM pg_class
     WHERE oid = 'finance.ledger_confirmations'::regclass;                       -- t
+    SELECT relrowsecurity FROM pg_class WHERE oid = 'finance.fund_counts'::regclass; -- t
 
 Compatibility: additive for stored data. The API adds request and response
 fields; old clients that send none of them keep working.
@@ -194,11 +201,41 @@ END;
 $$;
 """
 
+KITTY_SQL = """
+ALTER TABLE finance.fund_settings
+    ADD COLUMN target_currency char(3) REFERENCES finance.currencies (code),
+    ADD COLUMN target_minor bigint CHECK (target_minor BETWEEN 1 AND 1000000000000),
+    ADD CONSTRAINT fund_settings_target_pair
+        CHECK ((target_currency IS NULL) = (target_minor IS NULL));
+
+CREATE TABLE finance.fund_counts (
+    id uuid PRIMARY KEY,
+    plan_id uuid NOT NULL REFERENCES finance.plan_ledger_heads (plan_id),
+    currency char(3) NOT NULL REFERENCES finance.currencies (code),
+    counted_minor bigint NOT NULL CHECK (counted_minor BETWEEN 0 AND 1000000000000),
+    expected_minor bigint NOT NULL CHECK (expected_minor BETWEEN 0 AND 1000000000000),
+    note text CHECK (char_length(note) BETWEEN 1 AND 500),
+    counted_by_user_id uuid NOT NULL REFERENCES iam.users (id),
+    created_at timestamptz NOT NULL,
+    UNIQUE (plan_id, id)
+);
+CREATE INDEX fund_counts_plan_idx ON finance.fund_counts (plan_id, currency, created_at);
+CREATE TRIGGER fund_counts_append_only BEFORE UPDATE OR DELETE ON finance.fund_counts
+    FOR EACH ROW EXECUTE FUNCTION finance.reject_history_change();
+ALTER TABLE finance.fund_counts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY fund_counts_select ON finance.fund_counts FOR SELECT
+    TO api_runtime USING (plans.actor_is_active_participant(plan_id));
+CREATE POLICY fund_counts_insert ON finance.fund_counts FOR INSERT
+    TO api_runtime WITH CHECK (plans.actor_is_active_participant(plan_id));
+GRANT SELECT, INSERT ON finance.fund_counts TO api_runtime;
+"""
+
 
 def upgrade() -> None:
     op.execute(REVISIONS_SQL)
     op.execute(SETTINGS_SQL)
     op.execute(MERGE_STATUS_SQL)
+    op.execute(KITTY_SQL)
 
 
 def downgrade() -> None:

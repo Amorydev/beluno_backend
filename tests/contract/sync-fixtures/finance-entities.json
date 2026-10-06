@@ -231,6 +231,7 @@
         "custodian_participant_id": "01a110e9-fc94-792d-b26c-4552e8365801",
         "note": "Envelope",
         "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+        "target": null,
         "updated_at": "2026-10-06T11:12:12.905963Z",
         "version": 1
       },
@@ -256,6 +257,25 @@
       },
       "entity_id": "01a110e9-fd4c-780d-adaa-95b7e9ddf77a",
       "entity_type": "fund_movement",
+      "operation": "upsert",
+      "seq": null,
+      "version": 1
+    },
+    {
+      "changed_at": null,
+      "data": {
+        "counted_by_user_id": "01a110e9-fbba-7a1b-88a9-a0a38a2a90fa",
+        "counted_minor": 4000,
+        "created_at": "2026-10-06T11:12:12.601766Z",
+        "currency": "USD",
+        "difference_minor": -1000,
+        "expected_minor": 5000,
+        "id": "01a110ea-0102-7d55-9a3c-1b5e8f2d4c11",
+        "note": "Envelope",
+        "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e"
+      },
+      "entity_id": "01a110ea-0102-7d55-9a3c-1b5e8f2d4c11",
+      "entity_type": "fund_count",
       "operation": "upsert",
       "seq": null,
       "version": 1

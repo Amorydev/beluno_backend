@@ -16,6 +16,7 @@ from beluno.contracts.finance import (
     BudgetResponse,
     CommitmentResponse,
     ExpenseResponse,
+    FundCountResponse,
     FundMovementResponse,
     FundSettingsResponse,
     LedgerResponse,
@@ -66,6 +67,7 @@ FINANCE_ENTITIES: dict[str, type[BaseModel]] = {
     "cost_commitment": CommitmentResponse,
     "fund": FundSettingsResponse,
     "fund_movement": FundMovementResponse,
+    "fund_count": FundCountResponse,
 }
 
 

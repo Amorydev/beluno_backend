@@ -29,7 +29,6 @@ from beluno.db.models.finance import (
     ExpenseRefund,
     ExpenseRevision,
     ExpenseSplit,
-    FundSettings,
     FxSnapshot,
     LedgerTransaction,
     RefundShare,
@@ -38,6 +37,7 @@ from beluno.db.models.iam import AuthSession
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.commitments import link_expense, release_expense
 from beluno.modules.finance.errors import refund_exceeds_amount, split_invalid
+from beluno.modules.finance.funds import require_custodian_or_manager
 from beluno.modules.finance.fx import convert, parse_rate
 from beluno.modules.finance.ledger import Ledger, open_ledger
 from beluno.modules.finance.money import check_amount
@@ -580,13 +580,9 @@ async def _require_fund_spender(ledger: Ledger) -> None:
     """Spending pooled money is a fund manager's or the custodian's call, like a withdrawal."""
 
     ledger.require_trip()
-    if decide_plan(PlanAction.MANAGE_FUND, ledger.access.subject) is Decision.ALLOW:
-        return
-    settings = await ledger.ctx.session.get(FundSettings, ledger.plan_id)
-    own = ledger.access.participant
-    if settings is not None and own is not None and settings.custodian_participant_id == own.id:
-        return
-    raise forbidden("Only the fund's custodian or a plan manager can pay from the fund")
+    await require_custodian_or_manager(
+        ledger, "Only the fund's custodian or a plan manager can pay from the fund"
+    )
 
 
 async def _base_amount(

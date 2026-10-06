@@ -678,20 +678,60 @@ FUND_NOTICE = (
 )
 
 
+class FundTarget(BaseModel):
+    """What every member is asked to put in."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    currency: CurrencyCode
+    amount_minor: StrictInt
+
+
 class FundSettingsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     custodian_participant_id: UUID | None = None
     note: Note | None = None
+    target: FundTarget | None = None
 
 
 class FundSettingsResponse(BaseModel):
     plan_id: UUID
     custodian_participant_id: UUID | None
     note: str | None
+    target: FundTarget | None
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class FundCountRequest(BaseModel):
+    """Cash counted in the kitty; the server records what the ledger expected."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    currency: CurrencyCode
+    counted_minor: StrictInt = Field(ge=0)
+    note: Note | None = None
+
+
+class FundCountResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    currency: str
+    counted_minor: int
+    expected_minor: int
+    difference_minor: int = Field(description="Counted minus expected; 0 means it matches")
+    note: str | None
+    counted_by_user_id: UUID
+    created_at: datetime
+
+
+class MemberContribution(BaseModel):
+    participant_id: UUID
+    currency: str
+    contributed_minor: int
 
 
 class FundMovementRequest(BaseModel):
@@ -721,6 +761,10 @@ class FundMovementResponse(BaseModel):
 class FundResponse(BaseModel):
     settings: FundSettingsResponse | None
     available: list[FundAvailabilityResponse]
+    contributions: list[MemberContribution] = Field(
+        description="What each participant put in, per currency, to compare with the target"
+    )
+    counts: list[FundCountResponse] = Field(description="The latest count in each currency")
     notice: str = Field(default=FUND_NOTICE)
 
 

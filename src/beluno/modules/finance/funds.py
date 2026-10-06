@@ -5,6 +5,10 @@ record that they pooled cash with a custodian, and the app only keeps the
 accounting. A contribution posts the contributor ``+x`` and the fund ``-x``; a
 withdrawal is the opposite; a fund-paid expense names the fund as payer. The
 money available is minus the fund balance and can never go below zero.
+
+The settings may ask every member for a target amount. A count records the
+cash the custodian found against what the ledger expects; it posts nothing (a
+shortage is fixed with a fund-paid expense, a surplus with a contribution).
 """
 
 from __future__ import annotations
@@ -13,7 +17,8 @@ from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.exc import IntegrityError
 
 from beluno.authorization.access import load_plan, require_plan
@@ -25,9 +30,9 @@ from beluno.contracts.errors import (
     version_conflict,
 )
 from beluno.db.ids import new_id
-from beluno.db.models.finance import FundMovement, FundSettings, LedgerTransaction
+from beluno.db.models.finance import FundCount, FundMovement, FundSettings, LedgerTransaction
 from beluno.modules.context import CommandContext
-from beluno.modules.finance.errors import entry_unbalanced, split_invalid
+from beluno.modules.finance.errors import amount_out_of_range, entry_unbalanced, split_invalid
 from beluno.modules.finance.ledger import LEDGER_ENTITY, Ledger, open_ledger
 from beluno.modules.finance.money import MAX_AMOUNT_MINOR, check_amount
 from beluno.modules.finance.postings import FUND, Party, adjustment_postings, transfer_postings
@@ -35,6 +40,7 @@ from beluno.modules.sync_audit.recorder import ChangeScope, record_audit, record
 
 FUND_ENTITY = "fund"
 MOVEMENT_ENTITY = "fund_movement"
+COUNT_ENTITY = "fund_count"
 CONTRIBUTION = "contribution"
 WITHDRAWAL = "withdrawal"
 
@@ -47,6 +53,27 @@ class MovementDraft:
     amount_minor: int
     note: str | None
     occurred_on: date
+
+
+@dataclass(frozen=True)
+class FundTarget:
+    currency: str
+    amount_minor: int
+
+
+@dataclass(frozen=True)
+class CountDraft:
+    count_id: UUID | None
+    currency: str
+    counted_minor: int
+    note: str | None
+
+
+@dataclass(frozen=True)
+class Contribution:
+    participant_id: UUID
+    currency: str
+    contributed_minor: int
 
 
 @dataclass(frozen=True)
@@ -63,6 +90,32 @@ async def get_settings(ctx: CommandContext, plan_id: UUID) -> FundSettings | Non
     access = await load_plan(ctx, plan_id)
     require_plan(access, PlanAction.VIEW_FINANCE)
     return await ctx.session.get(FundSettings, plan_id)
+
+
+async def contributions(ctx: CommandContext, plan_id: UUID) -> list[Contribution]:
+    """What each participant put in, per currency (withdrawals are not netted)."""
+
+    rows = await ctx.session.execute(
+        select(
+            FundMovement.participant_id, FundMovement.currency, func.sum(FundMovement.amount_minor)
+        )
+        .where(FundMovement.plan_id == plan_id, FundMovement.kind == CONTRIBUTION)
+        .group_by(FundMovement.participant_id, FundMovement.currency)
+        .order_by(FundMovement.currency, FundMovement.participant_id)
+    )
+    return [Contribution(pid, currency, int(total)) for pid, currency, total in rows.all()]
+
+
+async def latest_counts(ctx: CommandContext, plan_id: UUID) -> list[FundCount]:
+    """The most recent count in each currency."""
+
+    rows = await ctx.session.execute(
+        select(FundCount)
+        .where(FundCount.plan_id == plan_id)
+        .ext(distinct_on(FundCount.currency))
+        .order_by(FundCount.currency, FundCount.created_at.desc(), FundCount.id.desc())
+    )
+    return list(rows.scalars())
 
 
 async def list_movements(
@@ -87,6 +140,7 @@ async def put_settings(
     custodian_participant_id: UUID | None,
     note: str | None,
     expected_version: int | None,
+    target: FundTarget | None = None,
 ) -> FundSettings:
     """Create the fund settings (no version) or replace them (current version required)."""
 
@@ -94,6 +148,9 @@ async def put_settings(
     ledger.require_trip()
     if custodian_participant_id is not None:
         ledger.participant(custodian_participant_id)
+    if target is not None:
+        await ledger.currency(target.currency)
+        check_amount(target.amount_minor, field="target amount_minor")
     settings = (
         await ctx.session.execute(
             select(FundSettings)
@@ -107,6 +164,8 @@ async def put_settings(
             plan_id=plan_id,
             custodian_participant_id=custodian_participant_id,
             note=note,
+            target_currency=target.currency if target else None,
+            target_minor=target.amount_minor if target else None,
             version=1,
             created_at=ctx.now,
             updated_at=ctx.now,
@@ -119,6 +178,8 @@ async def put_settings(
             raise version_conflict(settings)
         settings.custodian_participant_id = custodian_participant_id
         settings.note = note
+        settings.target_currency = target.currency if target else None
+        settings.target_minor = target.amount_minor if target else None
         settings.version += 1
         settings.updated_at = ctx.now
     await ctx.session.flush()
@@ -164,6 +225,35 @@ async def withdraw(ctx: CommandContext, plan_id: UUID, draft: MovementDraft) -> 
     return movement
 
 
+async def count_fund(ctx: CommandContext, plan_id: UUID, draft: CountDraft) -> FundCount:
+    """The custodian or a manager records the cash counted in the kitty."""
+
+    ledger = await open_ledger(ctx, plan_id, PlanAction.CONTRIBUTE_FUND)
+    ledger.require_trip()
+    await require_custodian_or_manager(ledger, "Only the fund's custodian or a manager counts it")
+    await ledger.currency(draft.currency)
+    if not 0 <= draft.counted_minor <= MAX_AMOUNT_MINOR:
+        raise amount_out_of_range(f"counted_minor must be between 0 and {MAX_AMOUNT_MINOR}")
+    count = FundCount(
+        id=draft.count_id or new_id(),
+        plan_id=plan_id,
+        currency=draft.currency,
+        counted_minor=draft.counted_minor,
+        expected_minor=-ledger.balance_of(FUND, draft.currency),
+        note=draft.note,
+        counted_by_user_id=ctx.require_actor().user_id,
+        created_at=ctx.now,
+    )
+    try:
+        async with ctx.savepoint():
+            ctx.session.add(count)
+            await ctx.session.flush()
+    except IntegrityError as error:
+        raise conflict("ALREADY_EXISTS", "A resource with this id already exists") from error
+    await _record(ctx, plan_id, COUNT_ENTITY, count.id, 1, "finance.fund_counted")
+    return count
+
+
 async def adjust_ledger(
     ctx: CommandContext, plan_id: UUID, draft: AdjustmentDraft
 ) -> LedgerTransaction:
@@ -204,6 +294,18 @@ async def adjust_ledger(
 
 
 # --- helpers -------------------------------------------------------------------------
+
+
+async def require_custodian_or_manager(ledger: Ledger, message: str) -> None:
+    """Fund managers, or the participant the settings name as custodian."""
+
+    if decide_plan(PlanAction.MANAGE_FUND, ledger.access.subject) is Decision.ALLOW:
+        return
+    settings = await ledger.ctx.session.get(FundSettings, ledger.plan_id)
+    own = ledger.access.participant
+    if settings is not None and own is not None and settings.custodian_participant_id == own.id:
+        return
+    raise forbidden(message)
 
 
 async def _movement(ledger: Ledger, kind: str, draft: MovementDraft) -> FundMovement:

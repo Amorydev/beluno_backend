@@ -22,9 +22,11 @@ from beluno.contracts.finance import (
     ExpenseResponse,
     ExplanationEntry,
     FundAvailabilityResponse,
+    FundCountResponse,
     FundMovementRequest,
     FundMovementResponse,
     FundSettingsResponse,
+    FundTarget,
     LedgerBalanceResponse,
     LedgerConfirmationResponse,
     LedgerResponse,
@@ -53,6 +55,7 @@ from beluno.db.models.finance import (
     CostCommitment,
     Currency,
     Expense,
+    FundCount,
     FundMovement,
     FundSettings,
     FxSnapshot,
@@ -619,9 +622,28 @@ def fund_settings_response(settings: FundSettings) -> FundSettingsResponse:
         plan_id=settings.plan_id,
         custodian_participant_id=settings.custodian_participant_id,
         note=settings.note,
+        target=(
+            FundTarget(currency=settings.target_currency, amount_minor=settings.target_minor)
+            if settings.target_currency is not None and settings.target_minor is not None
+            else None
+        ),
         version=settings.version,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
+    )
+
+
+def fund_count_response(count: FundCount) -> FundCountResponse:
+    return FundCountResponse(
+        id=count.id,
+        plan_id=count.plan_id,
+        currency=count.currency,
+        counted_minor=count.counted_minor,
+        expected_minor=count.expected_minor,
+        difference_minor=count.counted_minor - count.expected_minor,
+        note=count.note,
+        counted_by_user_id=count.counted_by_user_id,
+        created_at=count.created_at,
     )
 
 

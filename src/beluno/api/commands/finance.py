@@ -11,6 +11,7 @@ from beluno.api.finance_presenters import (
     commitment_response,
     expense_draft,
     expense_response,
+    fund_count_response,
     fund_movement_response,
     fund_settings_response,
     ledger_response,
@@ -32,6 +33,8 @@ from beluno.contracts.finance import (
     ExpenseCreateRequest,
     ExpenseRequest,
     ExpenseResponse,
+    FundCountRequest,
+    FundCountResponse,
     FundMovementRequest,
     FundMovementResponse,
     FundSettingsRequest,
@@ -201,8 +204,22 @@ async def _put_fund(
         custodian_participant_id=body.custodian_participant_id,
         note=body.note,
         expected_version=call.expected_version,
+        target=(
+            funds.FundTarget(body.target.currency, body.target.amount_minor)
+            if body.target
+            else None
+        ),
     )
     return fund_settings_response(settings)
+
+
+async def _count_fund(
+    ctx: CommandContext, call: CommandCall, body: FundCountRequest
+) -> FundCountResponse:
+    draft = funds.CountDraft(
+        count_id=body.id, currency=body.currency, counted_minor=body.counted_minor, note=body.note
+    )
+    return fund_count_response(await funds.count_fund(ctx, call.id("plan_id"), draft))
 
 
 async def _contribute(
@@ -444,6 +461,17 @@ FUND_WITHDRAW = Command(
     rate_limit=FINANCE_WRITES_PER_PLAN,
     rate_limit_target="plan_id",
 )
+FUND_COUNT = Command(
+    name="fund.count",
+    payload_model=FundCountRequest,
+    response_model=FundCountResponse,
+    handler=_count_fund,
+    target_fields=("plan_id",),
+    status=201,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
 LEDGER_ADJUST = Command(
     name="ledger.adjust",
     payload_model=AdjustmentRequest,
@@ -497,6 +525,7 @@ COMMANDS: list[Command[Any, Any]] = [
     FUND_UPDATE,
     FUND_CONTRIBUTE,
     FUND_WITHDRAW,
+    FUND_COUNT,
     LEDGER_ADJUST,
     LEDGER_CONFIGURE,
     LEDGER_CONFIRM,

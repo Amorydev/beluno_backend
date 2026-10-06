@@ -14,6 +14,7 @@ from beluno.api.finance_presenters import (
     budget_response,
     commitment_response,
     expense_response,
+    fund_count_response,
     fund_movement_response,
     fund_settings_response,
     ledger_response,
@@ -23,6 +24,7 @@ from beluno.db.models.finance import (
     Budget,
     CostCommitment,
     Expense,
+    FundCount,
     FundMovement,
     FundSettings,
     Settlement,
@@ -43,6 +45,7 @@ FINANCE_TYPES = (
     "cost_commitment",
     "fund",
     "fund_movement",
+    "fund_count",
 )
 
 
@@ -186,3 +189,22 @@ async def page_fund_movements(
         statement = statement.where(FundMovement.id > after)
     rows = (await ctx.session.execute(statement.order_by(FundMovement.id).limit(limit))).scalars()
     return [SnapshotRow(row.id, 1, fund_movement_response(row)) for row in rows]
+
+
+async def load_fund_count(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID
+) -> BaseModel | None:
+    count = await ctx.session.get(FundCount, id)
+    if count is None or count.plan_id != scope.scope_id:
+        return None
+    return fund_count_response(count)
+
+
+async def page_fund_counts(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(FundCount).where(FundCount.plan_id == scope.scope_id)
+    if after is not None:
+        statement = statement.where(FundCount.id > after)
+    rows = (await ctx.session.execute(statement.order_by(FundCount.id).limit(limit))).scalars()
+    return [SnapshotRow(row.id, 1, fund_count_response(row)) for row in rows]

@@ -265,9 +265,28 @@ class FundSettings(Base):
     plan_id: Mapped[UUID] = mapped_column(primary_key=True)
     custodian_participant_id: Mapped[UUID | None]
     note: Mapped[str | None] = mapped_column(Text)
+    # What each member is asked to put in ("¥5,000 of ¥10,000").
+    target_currency: Mapped[str | None] = mapped_column(CHAR(3))
+    target_minor: Mapped[int | None] = mapped_column(BigInteger)
     version: Mapped[int]
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
+
+
+class FundCount(Base):
+    """Cash counted in the kitty against what the ledger expected; posts nothing."""
+
+    __tablename__ = "fund_counts"
+    __table_args__ = SCHEMA
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    plan_id: Mapped[UUID]
+    currency: Mapped[str] = mapped_column(CHAR(3))
+    counted_minor: Mapped[int] = mapped_column(BigInteger)
+    expected_minor: Mapped[int] = mapped_column(BigInteger)
+    note: Mapped[str | None] = mapped_column(Text)
+    counted_by_user_id: Mapped[UUID]
+    created_at: Mapped[datetime]
 
 
 class FundMovement(Base):

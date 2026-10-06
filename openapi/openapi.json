@@ -2190,6 +2190,117 @@
         "title": "FundAvailabilityResponse",
         "type": "object"
       },
+      "FundCountRequest": {
+        "additionalProperties": false,
+        "description": "Cash counted in the kitty; the server records what the ledger expected.",
+        "properties": {
+          "counted_minor": {
+            "minimum": 0.0,
+            "title": "Counted Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "currency",
+          "counted_minor"
+        ],
+        "title": "FundCountRequest",
+        "type": "object"
+      },
+      "FundCountResponse": {
+        "properties": {
+          "counted_by_user_id": {
+            "format": "uuid",
+            "title": "Counted By User Id",
+            "type": "string"
+          },
+          "counted_minor": {
+            "title": "Counted Minor",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "difference_minor": {
+            "description": "Counted minus expected; 0 means it matches",
+            "title": "Difference Minor",
+            "type": "integer"
+          },
+          "expected_minor": {
+            "title": "Expected Minor",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "plan_id",
+          "currency",
+          "counted_minor",
+          "expected_minor",
+          "difference_minor",
+          "note",
+          "counted_by_user_id",
+          "created_at"
+        ],
+        "title": "FundCountResponse",
+        "type": "object"
+      },
       "FundMovementRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2330,6 +2441,22 @@
             "title": "Available",
             "type": "array"
           },
+          "contributions": {
+            "description": "What each participant put in, per currency, to compare with the target",
+            "items": {
+              "$ref": "#/components/schemas/MemberContribution"
+            },
+            "title": "Contributions",
+            "type": "array"
+          },
+          "counts": {
+            "description": "The latest count in each currency",
+            "items": {
+              "$ref": "#/components/schemas/FundCountResponse"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
           "notice": {
             "default": "Beluno records what participants pooled with a custodian; it never holds, moves, or stores money.",
             "title": "Notice",
@@ -2348,7 +2475,9 @@
         },
         "required": [
           "settings",
-          "available"
+          "available",
+          "contributions",
+          "counts"
         ],
         "title": "FundResponse",
         "type": "object"
@@ -2379,6 +2508,16 @@
               }
             ],
             "title": "Note"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "FundSettingsRequest",
@@ -2419,6 +2558,16 @@
             "title": "Plan Id",
             "type": "string"
           },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -2433,11 +2582,33 @@
           "plan_id",
           "custodian_participant_id",
           "note",
+          "target",
           "version",
           "created_at",
           "updated_at"
         ],
         "title": "FundSettingsResponse",
+        "type": "object"
+      },
+      "FundTarget": {
+        "additionalProperties": false,
+        "description": "What every member is asked to put in.",
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "amount_minor"
+        ],
+        "title": "FundTarget",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2975,6 +3146,30 @@
           }
         },
         "title": "LedgerSettingsRequest",
+        "type": "object"
+      },
+      "MemberContribution": {
+        "properties": {
+          "contributed_minor": {
+            "title": "Contributed Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "currency",
+          "contributed_minor"
+        ],
+        "title": "MemberContribution",
         "type": "object"
       },
       "Page_ExpenseResponse_": {
@@ -11801,6 +11996,166 @@
           }
         ],
         "summary": "Contribute To Fund",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/fund/counts": {
+      "post": {
+        "description": "The custodian or a manager records the cash counted; nothing is posted.",
+        "operationId": "count_fund_v1_plans__plan_id__fund_counts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FundCountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundCountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Count Fund",
         "tags": [
           "finance"
         ]

@@ -18,6 +18,7 @@ from beluno.api.finance_presenters import (
     currency_response,
     expense_response,
     explanation_entry,
+    fund_count_response,
     fund_movement_response,
     fund_settings_response,
     ledger_response,
@@ -57,6 +58,8 @@ from beluno.contracts.finance import (
     ExpenseRequest,
     ExpenseResponse,
     FundAvailabilityResponse,
+    FundCountRequest,
+    FundCountResponse,
     FundMovementRequest,
     FundMovementResponse,
     FundResponse,
@@ -65,6 +68,7 @@ from beluno.contracts.finance import (
     LedgerConfirmRequest,
     LedgerResponse,
     LedgerSettingsRequest,
+    MemberContribution,
     RefundRequest,
     RevisionResponse,
     SettlementPreviewResponse,
@@ -611,12 +615,23 @@ async def get_fund(plan_id: UUID, runtime: RuntimeDep, actor: ActorDep) -> FundR
     async with open_context(runtime, actor) as ctx:
         settings = await funds.get_settings(ctx, plan_id)
         available = await views.fund_availability(ctx, plan_id)
+        contributions = await funds.contributions(ctx, plan_id)
+        counts = await funds.latest_counts(ctx, plan_id)
     return FundResponse(
         settings=fund_settings_response(settings) if settings else None,
         available=[
             FundAvailabilityResponse(currency=currency, available_minor=amount)
             for currency, amount in available
         ],
+        contributions=[
+            MemberContribution(
+                participant_id=row.participant_id,
+                currency=row.currency,
+                contributed_minor=row.contributed_minor,
+            )
+            for row in contributions
+        ],
+        counts=[fund_count_response(count) for count in counts],
     )
 
 
@@ -686,6 +701,26 @@ async def withdraw_from_fund(
 ) -> FundMovementResponse:
     call = command_call(idempotency_key, plan_id=plan_id)
     return finish(response, await runner.run(actor, commands.FUND_WITHDRAW, call, body))
+
+
+@router.post(
+    "/fund/counts",
+    status_code=status.HTTP_201_CREATED,
+    response_model=FundCountResponse,
+    responses=WRITE_ERRORS,
+)
+async def count_fund(
+    plan_id: UUID,
+    body: FundCountRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> FundCountResponse:
+    """The custodian or a manager records the cash counted; nothing is posted."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.FUND_COUNT, call, body))
 
 
 @router.post(
