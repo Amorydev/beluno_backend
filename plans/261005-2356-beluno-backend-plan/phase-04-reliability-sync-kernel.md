@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Reliability and Sync Kernel"
-status: pending
+status: in-progress
 priority: P1
 effort: "4 weeks (2 backend engineers + client-contract review)"
 dependencies: [3]
@@ -186,3 +186,34 @@ Phase 2 transaction/OpenAPI/testkit and Phase 3 mutation paths will be modified 
 ## Rollback and Exit Gate
 
 Protocol/database changes use additive generations. Keep the prior pull/push generation available through the published compatibility window; disable new command types with a kill switch rather than deleting accepted operations. Never truncate `change_log`, idempotency, or tombstones as rollback. Exit requires lost-response proof, convergence fault tests, 90-day/full-resync fixtures, atomic audit/outbox coverage, and production dashboards before Phases 5 and 6 start.
+
+## Execution Decisions (2026-10-06)
+
+Agreed with the user before implementation; they replace the `[UNVERIFIED]` paths above.
+
+- **Scopes and cursors.** Sync runs as independent streams per scope: `user:{id}`, `group:{id}`, `plan:{id}`, each with its own cursor. The handshake returns the directory of scopes the caller can see now, with each scope's head and generation; clients pull scopes whose head changed, bootstrap new scopes, and purge scopes that disappear (that is the revocation signal). The user scope carries the profile, sessions, personal series, and `plan_access`/`group_access` signals when the caller's own access changes.
+- **Sequencing.** `change_log.scope_seq` is contiguous per scope and assigned under a row lock on `sync_audit.scope_heads`. `record_mutation` buffers audit and change rows in the command context; `open_context` flushes them at the end of the transaction through the SECURITY DEFINER function `sync_audit.append_changes`, which locks heads in sorted order. Runtime roles lose direct INSERT on `change_log`. `server_seq` stays internal. Records inside a savepoint go through `ctx.savepoint()`, which drops them on rollback.
+- **Change payload.** Rows are pointers (entity type, id, version, operation). Pull reads current, authorization-filtered state, dedupes per entity inside a page, and emits `delete` for tombstones and for rows the caller may no longer see. A replayed page has the same changes and cursor; data may be newer; clients apply when `version >= local`.
+- **Cursor.** Opaque base64url token signed with HMAC-SHA256 (key derived from `BELUNO_TOKEN_HASH_KEY`, purpose `sync_cursor`), binding version, generation, user, scope, sequence, and watermark or snapshot progress. A bad signature, another user, another generation, a sequence below the floor, or a sequence above the head (restore) yields `resync_required`; a cursor for another scope is a 422.
+- **Endpoints.** `POST /v1/sync/handshake` (version window, limits, command catalog, retention, paginated directory; outside the window → 426), `POST /v1/sync/push` (≤100 operations, ≤1 MiB; `operation_id` is the idempotency key; one transaction and one result per operation), `POST /v1/sync/pull` (list of `{scope, cursor}`; a null cursor bootstraps a paginated snapshot that captures the head first and then continues as a change feed; per-scope status `ok`/`unavailable`/`resync_required`).
+- **Idempotency.** Optional `Idempotency-Key` header on every authenticated mutation (required would break the contract). Namespace `(actor, command, key)`; canonical request hash; a transaction-scoped advisory lock serializes duplicates, so a concurrent retry waits and replays. Only successful outcomes are stored (status, body, ETag), immutable and kept 180 days; replays carry `Idempotency-Replayed: true`; a different payload returns `409 IDEMPOTENCY_KEY_REUSED`. Credential-issuing endpoints are excluded: `/v1/auth/*`, invite preview/redeem, invite create/claim/rotate. Travel segments, series, and placeholder participants accept optional client-generated IDs.
+- **Conflicts.** Strict optimistic versions for every versioned entity, no server-side last-write-wins. `412 VERSION_CONFLICT` carries `current`, the canonical snapshot, on REST and push. RSVP, join, leave, accept, review, and remove are intent commands. Delete beats edit; recreation uses a new ID. Fractional ordering ships as a kernel library with property tests and is adopted by the itinerary later; travel segments keep integer `sort_order`.
+- **Retention.** Offline window 90 days; change log, tombstones, and operation records 180 days. A daily worker job deletes older change rows and raises the per-scope `floor_seq`; the SQL function refuses cutoffs newer than the offline window. Enabled from the start.
+- **Jobs.** The Procrastinate job table stays the transactional outbox (`defer_in_transaction`). Added: duplicate-safe enqueue, failed jobs as the dead-letter queue with audited list/retry tooling, and queue health metrics. No separate outbox table or dispatcher until a consumer needs fan-out. Realtime hints are out of scope.
+- **Push ordering.** Client order is preserved. A retryable failure (429, 503, exhausted deadlock retries) skips later operations of the same scope; a permanent failure skips only operations that depend on it. One rate-limit hit per batch plus the per-command limits REST applies (replays do not count). Kill switches: `sync_push_enabled`, `sync_pull_enabled`, `sync_disabled_commands`.
+- **Synced entities** follow REST permissions: plan scope (plan, participants with pending ones for managers only, travel details/segments, invites for managers without token data); group scope (group, memberships, the group's series, invites for managers); user scope as above. Group-visible plans are in the directory of active group members. A display-name change refreshes the member's rows in their groups.
+- **Measurement.** OpenTelemetry metrics (no-op without an exporter) plus a runbook for dashboards and alerts; provisioning dashboards stays with operations. Hypothesis multi-device model tests with fixed seeds and an injected clock; P95 sync-after-connect measured on local PostgreSQL and labelled as such.
+- **Housekeeping.** `tests/integration/test_phase3_edge_cases.py` becomes `test_access_edge_cases.py`; work happens on branch `feat/sync-kernel`.
+
+### Slices
+
+| Slice | Scope |
+|---|---|
+| S1 Kernel DB | migration `000004_sync_kernel` (scope heads, `scope_seq` backfill, operation records, append/read/compaction functions, RLS, grants), models, buffered recorder, savepoints, deadlock/serialization retry |
+| S2 Commands | command catalog and executor with idempotency, REST retrofit of every authenticated mutation, `412` with `current`, client-generated IDs |
+| S3 Read side | cursor codec, scope directory, handshake, pull (snapshot bootstrap and change pages, watermark, projections, tombstones, floor/generation checks) |
+| S4 Push | batch envelope, per-operation transactions and results, dependencies, per-scope ordering, version window, limits, rate limits, kill switches |
+| S5 Signals | `plan_access`/`group_access` signals, display-name refresh, fractional ordering library |
+| S6 Jobs | duplicate-safe enqueue, dead-letter tooling, queue health, compaction and operation purge jobs, metrics, runbook |
+| S7 Verification | multi-device model tests, 90-day offline/full-resync/upgrade fixtures, contract fixtures, performance measurement |
+| S8 Review | independent and adversarial review, fixes, docs/ADR/plan sync, PR |
