@@ -32,6 +32,7 @@ from beluno.db.ids import new_id
 from beluno.db.models.groups import Group, GroupMembership
 from beluno.db.models.iam import User
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.currencies import require_supported_currency
 from beluno.modules.sync_audit.recorder import ChangeScope, record_change, record_mutation
 
 # Memberships that still count as being in the group (joined or awaiting an answer).
@@ -74,6 +75,7 @@ async def create_group(
 ) -> GroupView:
     _require_registered(ctx)
     actor = ctx.require_actor()
+    await require_supported_currency(ctx, default_currency)
     group = Group(
         id=group_id or new_id(),
         name=name,
@@ -152,6 +154,7 @@ async def update_group(
     if changes.name is not None:
         group.name = changes.name
     if changes.default_currency is not None:
+        await require_supported_currency(ctx, changes.default_currency)
         group.default_currency = changes.default_currency
     if changes.default_timezone is not None:
         group.default_timezone = changes.default_timezone

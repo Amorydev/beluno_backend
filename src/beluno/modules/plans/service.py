@@ -43,6 +43,9 @@ from beluno.db.models.groups import Group, GroupMembership
 from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanParticipant
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.currencies import require_supported_currency
+from beluno.modules.finance.errors import base_currency_locked
+from beluno.modules.finance.ledger import ledger_exists
 from beluno.modules.plans.changes import bump, record_participant_change, record_plan_change
 from beluno.modules.plans.participants import Seed, add_seeded_participant, build_participant
 from beluno.modules.plans.timing import check_transition, require_aware
@@ -210,6 +213,9 @@ async def active_group_member_ids(ctx: CommandContext, group_id: UUID) -> list[U
 async def create_plan(ctx: CommandContext, draft: PlanDraft) -> PlanView:
     require_registered(ctx)
     group = await resolve_group(ctx, draft.group_id)
+    currency = draft.base_currency or (group.default_currency if group else None)
+    if currency is not None:
+        await require_supported_currency(ctx, currency)
     plan = new_plan(
         ctx,
         plan_id=draft.plan_id,
@@ -300,7 +306,11 @@ async def update_plan(
         plan.kind = changes.kind
     if changes.timing is not None:
         apply_timing(plan, changes.timing)
-    if changes.base_currency is not None:
+    if changes.base_currency is not None and changes.base_currency != plan.base_currency:
+        await require_supported_currency(ctx, changes.base_currency)
+        # Budgets and base-currency snapshots are denominated in it from then on.
+        if await ledger_exists(ctx, plan.id):
+            raise base_currency_locked()
         plan.base_currency = changes.base_currency
     if changes.visibility is not None:
         if changes.visibility is Visibility.GROUP and plan.group_id is None:

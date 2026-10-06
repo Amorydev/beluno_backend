@@ -12,7 +12,17 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
+from beluno.contracts.finance import (
+    BudgetResponse,
+    CommitmentResponse,
+    ExpenseResponse,
+    FundMovementResponse,
+    FundSettingsResponse,
+    LedgerResponse,
+    SettlementResponse,
+)
 from beluno.contracts.sync import (
+    ChangeItem,
     HandshakeRequest,
     HandshakeResponse,
     PullRequest,
@@ -46,3 +56,28 @@ def test_push_fixture_marks_dependency_skips() -> None:
     results = PushResponse.model_validate(document["response"]).results
     assert [result.outcome for result in results] == ["conflict", "skipped"]
     assert results[0].problem is not None and results[0].problem.current is not None
+
+
+FINANCE_ENTITIES: dict[str, type[BaseModel]] = {
+    "ledger": LedgerResponse,
+    "expense": ExpenseResponse,
+    "settlement": SettlementResponse,
+    "budget": BudgetResponse,
+    "cost_commitment": CommitmentResponse,
+    "fund": FundSettingsResponse,
+    "fund_movement": FundMovementResponse,
+}
+
+
+def test_finance_entity_fixtures_match_their_contracts() -> None:
+    document = json.loads((FIXTURES / "finance-entities.json").read_text(encoding="utf-8"))
+    seen = set()
+    for raw in document["items"]:
+        item = ChangeItem.model_validate(raw)
+        model = FINANCE_ENTITIES[item.entity_type]
+        entity = model.model_validate(item.data)
+        assert entity.model_dump(mode="json") == item.data
+        if "version" in item.data:
+            assert raw["version"] == item.data["version"]
+        seen.add(item.entity_type)
+    assert seen == set(FINANCE_ENTITIES)

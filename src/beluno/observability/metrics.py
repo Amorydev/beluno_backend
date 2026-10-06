@@ -1,4 +1,4 @@
-"""Reliability metrics: commands, sync traffic, change volume, and job queue health.
+"""Reliability metrics: commands, sync traffic, change volume, jobs, and ledger health.
 
 Instruments come from the OpenTelemetry meter provider configured at startup;
 without an exporter they are no-ops. Attribute values are low-cardinality
@@ -29,6 +29,9 @@ class Instruments:
     changes_appended: Counter
     changes_compacted: Counter
     operations_purged: Counter
+    ledger_lock_wait: Histogram
+    ledgers_reconciled: Counter
+    ledger_drift: Counter
 
 
 def _observe_queue(options: CallbackOptions) -> list[Observation]:
@@ -69,6 +72,19 @@ def _build(meter: Meter) -> Instruments:
         ),
         operations_purged=meter.create_counter(
             "beluno.sync.operations.purged", description="Expired operation records removed"
+        ),
+        ledger_lock_wait=meter.create_histogram(
+            "beluno.finance.ledger_lock.wait",
+            unit="ms",
+            description="Time a finance command waited for its plan's ledger head",
+        ),
+        ledgers_reconciled=meter.create_counter(
+            "beluno.finance.ledgers.reconciled",
+            description="Plan ledgers checked by reconciliation",
+        ),
+        ledger_drift=meter.create_counter(
+            "beluno.finance.ledger.drift",
+            description="Reconciliation findings by problem; any value above zero is an incident",
         ),
     )
 

@@ -48,7 +48,7 @@ Phases 2–4 are implemented in this repository (its root is the backend; no `ba
 | 2 | 1 | 3 weeks | [Platform Foundation](./phase-02-platform-foundation.md) | completed |
 | 3 | 2 | 4 weeks | [Identity, Groups and Plans](./phase-03-identity-groups-plans.md) | completed |
 | 4 | 3 | 4 weeks | [Reliability and Sync Kernel](./phase-04-reliability-sync-kernel.md) | completed |
-| 5 | 4 | 5 weeks | [Financial Ledger](./phase-05-finance-ledger.md) | pending |
+| 5 | 4 | 5 weeks | [Financial Ledger](./phase-05-finance-ledger.md) | completed |
 | 6 | 4 | 5 weeks, parallel with 5 | [Planning and Coordination](./phase-06-planning-coordination.md) | pending |
 | 7 | 5, 6 | 4 weeks | [Lifecycle and Integrations](./phase-07-lifecycle-integrations.md) | pending |
 | 8 | 5, 6, 7 | 4–6 weeks incl. soak | [Security, Quality and Release](./phase-08-security-quality-release.md) | pending |

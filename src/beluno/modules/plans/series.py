@@ -42,6 +42,7 @@ from beluno.db.models.groups import GroupMembership
 from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanParticipant, PlanSeries
 from beluno.modules.context import CommandContext, Runtime, open_context
+from beluno.modules.finance.currencies import require_supported_currency
 from beluno.modules.plans.changes import bump, record_participant_change, record_plan_change
 from beluno.modules.plans.participants import build_participant
 from beluno.modules.plans.recurrence import (
@@ -104,6 +105,7 @@ async def create_series(ctx: CommandContext, draft: SeriesDraft) -> SeriesResult
     currency = draft.base_currency or (group.default_currency if group else None)
     if currency is None:
         raise validation_error("base_currency is required for a series without a group")
+    await require_supported_currency(ctx, currency)
     visibility = draft.visibility or (Visibility.GROUP if group else Visibility.PARTICIPANTS)
     if visibility is Visibility.GROUP and group is None:
         raise validation_error("group visibility requires a group")

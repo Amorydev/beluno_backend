@@ -60,6 +60,17 @@ on push, stored outcomes replayed for repeats. Clients discover their scopes wit
 `docs/contracts/sync-protocol.md`. Operators use `scripts/jobs.py` for dead
 letters and `docs/runbooks/sync-operations.md` for metrics and retention.
 
+## Finance
+
+Each plan has an append-only ledger in minor units (`docs/adr/0003-financial-ledger.md`):
+expenses with immutable revisions, refunds, settlements and waivers, budgets,
+cost commitments, and a virtual fund that holds no real money. Endpoints live
+under `/v1/plans/{plan_id}/` (`expenses`, `settlements`, `waivers`, `ledger`,
+`budgets`, `commitments`, `fund`) plus `/v1/currencies`; sync carries them as
+plan-scope entities. Operators use `scripts/finance.py` and
+`docs/runbooks/finance-operations.md`; `BELUNO_FINANCE_WRITES_ENABLED=false`
+stops every financial write while reads stay available.
+
 ## Runtime
 
 The service has three concurrent processes (one database URL per process):

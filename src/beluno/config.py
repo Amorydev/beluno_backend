@@ -100,6 +100,8 @@ class Settings(BaseSettings):
     invites_enabled: bool = True
     guest_access_enabled: bool = True
     participant_claims_enabled: bool = True
+    # Kill switch for every financial write; reads and exports stay available.
+    finance_writes_enabled: bool = True
     sync_push_enabled: bool = True
     sync_pull_enabled: bool = True
     # Command names (for example ``plan.duplicate``) refused on REST and push alike.
