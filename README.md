@@ -51,6 +51,16 @@ To dry-run migrations and verify SQL:
 uv run alembic upgrade head --sql
 ```
 
+## Trips, hangouts, and crews
+
+The product is trip-first (`docs/adr/0008-trip-first-realignment.md`). A plan
+(`/v1/plans`) is a `trip` (destinations, pass colour, expected size) or a
+`hangout` (optional activity). Participants carry a default share, an avatar
+colour, and capabilities a manager can grant to members (`expenses.manage`,
+`budgets.manage`). People join through invite links (`/v1/invites`). Crews
+(`/v1/crews`) are private, saved lists of people a user plans with; a new plan
+can start from one.
+
 ## Sync and reliability
 
 Every mutation is a catalog command (`src/beluno/api/commands`) that REST and

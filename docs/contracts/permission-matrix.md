@@ -69,20 +69,20 @@ State narrowing (applies on top of the table):
   `completed`, because people pay each other back after the plan is over.
 - Row rules on top of the table: an expense is revised, voided, or refunded by
   its creator (who must still hold `plan.expenses.create`) or by anyone with
-  `plan.expenses.manage`; naming the fund as a payer also needs
-  `plan.fund.manage` or being the fund's custodian. A settlement is recorded by
-  one of its two parties or by a manager. The creditor (the participant the
-  money now belongs to after merges) confirms or disputes it with
-  `plan.settlements.answer`; managers answer for creditors who are placeholders
-  or no longer active, never for a settlement they owe themselves. Its recorder
-  or a manager reverses it, and the creditor may reverse one they never
-  confirmed. An account that claimed a guest account counts as the creator or
-  recorder of the records that guest made. A waiver is given by the creditor
+  `plan.expenses.manage` (owner, admin, or a member granted `expenses.manage`);
+  naming the fund as a payer also needs `plan.fund.manage` or being the fund's custodian. A
+  settlement is recorded by one of its two parties or by a manager. The creditor
+  (the participant the money now belongs to after merges) confirms or disputes it
+  with `plan.settlements.answer`; managers answer for creditors who are
+  placeholders or no longer active, never for a settlement they owe themselves.
+  Its recorder or a manager reverses it, and the creditor may reverse one they
+  never confirmed. An account that claimed a guest account counts as the creator
+  or recorder of the records that guest made. A waiver is given by the creditor
   (managers for placeholder or inactive creditors, never when they are the
-  debtor) and never exceeds what the debtor owes the group and the creditor is
-  owed. Participants contribute
-  to the fund for themselves; contributions for others, withdrawals, and fund
-  settings need `plan.fund.manage`.
+  debtor) and never exceeds what the debtor owes overall and what the
+  creditor is owed overall. Participants contribute to the fund for themselves;
+  contributions for others, withdrawals, and fund settings need `plan.fund.manage`
+  (owner or admin; no capability grants it).
 - Finance is private to the plan's active participants.
 - While deletion is scheduled only reads, leaving, and `plan.delete`
   (restore) are allowed.
@@ -115,8 +115,12 @@ RLS selects the rows a runtime role may touch; BEFORE triggers
 (`alembic/versions/000003_tenant_write_guards.py`) limit what an insider may
 change on them: tenant keys are immutable, only active owners/admins change
 other people's rows or the plan, only the owner moves ownership, a
-non-manager changes only their own row through the transitions the API offers,
-and an invite-token holder can only count one use.
+non-manager changes only their own row through the transitions the API offers
+and never its `default_share` or `capabilities` (a self-inserted row carries
+none), and an invite-token holder can only count one use. On `people.crews`,
+RLS limits every row to its owner and `people.crew_write_guard` keeps the ID,
+owner, and creation time immutable, makes a delete final, and admits a newly
+listed person only when they are in a plan the owner is active in.
 
 ## Background roles
 

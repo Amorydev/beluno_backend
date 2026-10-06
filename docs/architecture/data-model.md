@@ -21,15 +21,19 @@ The `iam` schema holds users, sessions, and refresh-token digests:
 
 Access tokens are 15-minute ES256 JWTs (/.well-known/jwks.json), signed with keys from `BELUNO_AUTH_SIGNING_KEYS`; every request re-checks session and account state in PostgreSQL.
 
-## Groups and Plans
+## Plans and Participants
 
-The `groups` and `plans` schemas model social structure:
+The `plans` schema models individual plans (trips or hangouts):
 
-- **groups**: reusable containers; members, owners, admins; deletion is scheduled, not immediate.
-- **group_invites**: reusable tokens with optional use limits; grant new members a role.
-- **plan_series**: recurring dinner, coffee, sport, trip, etc.; generates instances on a schedule.
-- **plans**: individual instances from series or standalone; support state machines (draft → planning → active → settling → completed).
-- **plan_participants**: stable historical identities for voting, money, and task ownership; guest claims link to users without rewriting history.
+- **plans**: trips (destination-based, up to 10 stops) or hangouts (activity-based, optional icon). Each has a type (fixed at creation), base currency, state machine (draft → planning → active → settling → completed), and optional expected size.
+- **plan_participants**: stable historical identities for votes, money, and RSVP; guest claims link to users without rewriting history. Members hold a default share (default 1.0×), a visible avatar color, and optional capabilities (`expenses.manage`, `budgets.manage`).
+- **plan_invites**: bearer tokens for joining or claiming a placeholder; optional email binding, use limit, and guest switch.
+
+## People and Crews
+
+The `people` schema holds each user's private, saved lists of people:
+
+- **crews**: a name and `member_user_ids` (1–50 users), owned by one user. A newly listed person must currently be active in a plan with the owner (`people.crew_write_guard` backs the API check). Owner-only under RLS; deletes are tombstones (`deleted_at`). Clients start new plans from a crew.
 
 ## Finance
 
@@ -54,7 +58,7 @@ All table rows have RLS policies (SECURITY DEFINER helper functions):
 
 - **RLS**: enforces tenant and participation boundaries; all writes pass through application authorization logic first.
 - **Write guards**: tenant-aware triggers (000003_tenant_write_guards.py) prevent bulk operations and orphaned changes.
-- **sync_audit.audit_events**: immutable log of user actions (created, modified, deleted), keyed by plan or group.
+- **sync_audit.audit_events**: immutable log of user actions (created, modified, deleted), keyed by plan.
 - **sync_audit.change_log**: pointer rows (`scope_type`, `scope_id`, `scope_seq`, entity, version, operation) with a contiguous per-scope sequence assigned by `sync_audit.append_changes` at commit; the source of cursor-based pull.
 - **sync_audit.scope_heads**: per-scope last sequence, compaction floor, and generation (bumped after a restore).
 - **sync_audit.operations**: stored outcomes of idempotent commands keyed by `(actor, command, idempotency_key)`, kept 180 days.

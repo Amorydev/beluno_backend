@@ -16,7 +16,6 @@ submitted values.
 | `INVITE_UNAVAILABLE` | 404 | Invite token is unknown, expired, revoked, or used up (never distinguished) |
 | `ACCOUNT_LINK_REQUIRED` | 409 | Identity's verified email belongs to an existing account; link it from that account |
 | `ALREADY_EXISTS` | 409 | A client-generated ID is already taken |
-| `ALREADY_MEMBER` | 409 | Person already belongs to the group |
 | `ALREADY_PARTICIPANT` | 409 | Person already participates in the plan |
 | `GUEST_NOT_ALLOWED` | 409 | Guests cannot be added this way; they join through an invite |
 | `IDENTITY_ALREADY_LINKED` | 409 | The external identity belongs to another account |
