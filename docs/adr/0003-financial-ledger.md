@@ -56,8 +56,20 @@ than overwriting history. Projections are rebuildable caches.
   triggers reject updates and deletes. Deferred constraint triggers check at
   commit that payers and splits add up, that postings sum to zero per currency,
   that expense postings equal `paid - owed`, and that reversals mirror their
-  source. Balances are a synchronous projection, checked daily by a reconciler
-  and repairable only by an audited rebuild that never edits postings.
+  source. Write guards on the mutable rows (expenses, settlements, budgets,
+  commitments, fund settings, ledger heads, balances) let only state columns
+  change, require the version to grow, and keep voided and reversed rows
+  terminal; unique indexes allow one ledger transaction per revision, refund,
+  settlement, waiver, conversion, and fund movement. Merges move balances only
+  through narrow SECURITY DEFINER gates. Balances are a synchronous projection,
+  checked daily by a reconciler (which also flags money left on merged
+  participants) and repairable only by an audited rebuild that never edits
+  postings.
+- **Settlements.** Postings are written when a payment is recorded; the
+  creditor (whoever the creditor's money now belongs to after merges, managers
+  for placeholder or departed creditors) confirms or disputes it and may
+  reverse one they never confirmed. A waiver forgives at most the debt that
+  exists between the two parties and is never given by the debtor.
 
 ## Consequences
 

@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "Financial Ledger"
-status: pending
+status: completed
 priority: P1
 effort: "5 weeks (2 backend engineers + fractional QA/security review)"
 dependencies: [4]
@@ -138,16 +138,16 @@ Phase 2 module/OpenAPI registration and Phase 4 command/change handlers will be 
 
 ## Todo
 
-- [ ] Ledger sign, account, revision, reversal, refund, and adjustment rules are approved.
-- [ ] Every supported split produces deterministic resolved minor-unit allocations.
-- [ ] Deferred triggers reject unbalanced payer, split, posting, and cross-plan/currency rows.
-- [ ] Duplicate, lost-ack, stale-version, and concurrent commands cannot duplicate or overwrite value.
-- [ ] FX snapshots preserve original truth and block silent cross-currency netting.
-- [ ] Settlements, reversals, disputes, and balance explanations are complete.
-- [ ] Commitment-to-actual transitions cannot double-count budget totals.
-- [ ] Virtual fund reconciles per currency and is explicitly non-custodial.
-- [ ] All projections rebuild from canonical postings and reconciliation alerts on any drift.
-- [ ] OpenAPI, sync events, audit, telemetry, and runbooks cover every financial command.
+- [x] Ledger sign, account, revision, reversal, refund, and adjustment rules are approved. (Execution Decisions below; `docs/adr/0003-financial-ledger.md` and `docs/architecture/data-model.md`; postings built in `src/beluno/modules/finance/postings.py`, `tests/unit/test_finance_money.py::test_expense_postings_are_paid_minus_owed`, `::test_reversal_moves_merged_parties_to_their_survivor`)
+- [x] Every supported split produces deterministic resolved minor-unit allocations. (`src/beluno/modules/finance/splits.py`, `lr-v1`; golden cases `test_one_yen_across_five_people_goes_to_the_first_captured`, `test_ten_dollars_one_cent_by_weights`, `test_itemized_bill_spreads_tax_and_tip_over_item_subtotals`; Hypothesis `test_every_method_resolves_to_the_exact_amount`, `test_largest_remainder_is_exact_and_within_one_unit_of_the_quota`)
+- [x] Deferred triggers reject unbalanced payer, split, posting, and cross-plan/currency rows. (migration `000005_financial_ledger`; `tests/security/test_finance_ledger_guards.py::test_deferred_invariants_abort_the_whole_transaction`, `::test_postings_cannot_cross_plans_or_currencies`, `::test_a_reversal_stays_with_the_entry_it_reverses`)
+- [x] Duplicate, lost-ack, stale-version, and concurrent commands cannot duplicate or overwrite value. (shared command runner; `test_finance_expenses.py::test_idempotent_create_replays_one_revision`, `::test_push_creates_and_conflicts_with_the_current_expense`, `test_finance_operations.py::test_concurrent_writers_serialize_on_the_ledger_head`, `test_finance_abuse_and_races.py::test_a_merge_racing_finance_writes_never_strands_money`; unique indexes allow one transaction per revision, refund, settlement, waiver, conversion, and fund movement)
+- [x] FX snapshots preserve original truth and block silent cross-currency netting. (`src/beluno/modules/finance/{fx,rates}.py`; `test_finance_settlements.py::test_paying_in_another_currency_converts_explicitly`, `test_finance_expenses.py::test_foreign_currency_uses_exponents_and_labelled_base_snapshots`, `test_finance_budgets.py::test_overview_converts_labels_and_never_adds_unconverted_spend`)
+- [x] Settlements, reversals, disputes, and balance explanations are complete. (`src/beluno/modules/finance/{settlements,views}.py`; `test_finance_settlements.py` lifecycle, answer, waiver, preview/explanation/journal and reopen cases; `test_finance_abuse_and_races.py::test_a_creditor_can_undo_a_payment_they_never_received`, `::test_every_creditor_can_be_answered_for`)
+- [x] Commitment-to-actual transitions cannot double-count budget totals. (`src/beluno/modules/finance/{commitments,budgets}.py`; `test_finance_budgets.py::test_a_commitment_and_its_expense_count_once`, `::test_revising_an_expense_moves_its_commitment`, `test_finance_abuse_and_races.py::test_a_linked_expense_revised_with_its_commitment_keeps_it`)
+- [x] Virtual fund reconciles per currency and is explicitly non-custodial. (`src/beluno/modules/finance/funds.py`, `FUND_NOTICE` in every fund response; `test_finance_fund.py::test_fund_paid_expense_and_its_void_keep_every_currency_balanced`, `::test_fund_settings_name_a_custodian_without_holding_money`, `test_finance_abuse_and_races.py::test_only_the_custodian_or_a_manager_spends_the_fund`)
+- [x] All projections rebuild from canonical postings and reconciliation alerts on any drift. (balances are the only stored projection; spend, budget, settlement, and fund summaries compute on read from canonical rows. `finance.reconcile_plan`, `finance.rebuild_balances`, job `finance.reconcile_ledgers`, `scripts/finance.py`; `test_finance_operations.py::test_reconciler_reports_drift_and_the_audited_rebuild_repairs_it`, `test_finance_ledger_guards.py::test_reconciliation_reports_drift_and_rebuild_repairs_it`, `beluno.finance.ledger.drift` metric)
+- [x] OpenAPI, sync events, audit, telemetry, and runbooks cover every financial command. (`openapi/openapi.json`, 18 finance commands in the catalog, seven plan-scope entities with fixtures in `tests/contract/sync-fixtures/finance-entities.json`, `test_finance_operations.py::test_every_finance_entity_flows_through_the_change_feed`, `docs/runbooks/finance-operations.md`)
 
 ## Test Scenario Matrix
 
@@ -168,13 +168,13 @@ Phase 2 module/OpenAPI registration and Phase 4 command/change handlers will be 
 
 ## Success Criteria
 
-- [ ] Property tests prove payer, owed, posting, plan/currency zero-sum, reversal, and rounding invariants across randomized cases.
-- [ ] Real-PostgreSQL tests prove atomic revision pairs, deferred triggers, RLS, idempotent replay, and deterministic concurrency.
-- [ ] Rebuilding empty projections yields byte/logically equivalent balances, spend, budget, settlement, and fund summaries.
-- [ ] Golden cases cover JPY/KWD/USD, multiple payers, all split methods, refunds, partial settlement, manual FX, and amount bounds.
-- [ ] No public command can mutate committed revisions/postings or perform unapproved cross-currency netting.
-- [ ] Reconciliation, drift, lock-wait, serialization, idempotency collision, and financial failure dashboards/alerts are operational.
-- [ ] Phase 6 can create cost commitments through the finance port without querying or writing finance tables directly.
+- [x] Property tests prove payer, owed, posting, plan/currency zero-sum, reversal, and rounding invariants across randomized cases. (Hypothesis in `tests/unit/test_finance_money.py`; reference-model test over the public API on PostgreSQL in `tests/sync/test_finance_ledger_model.py`, checking projection, journal, and reconciliation after every step)
+- [x] Real-PostgreSQL tests prove atomic revision pairs, deferred triggers, RLS, idempotent replay, and deterministic concurrency. (`tests/security/test_finance_ledger_guards.py`, `test_finance_expenses.py::test_revision_reverses_the_previous_one_and_keeps_history`, `test_finance_operations.py::test_a_command_that_fails_before_commit_leaves_nothing_behind`, `::test_concurrent_writers_serialize_on_the_ledger_head`, `test_finance_abuse_and_races.py`)
+- [x] Rebuilding empty projections yields byte/logically equivalent balances, spend, budget, settlement, and fund summaries. (`finance.shadow_balances` recomputes every balance from postings and the rebuild diff is empty after every model step; the other summaries have no stored projection. Rebuild on production-shaped data is part of the Phase 8 rehearsal)
+- [x] Golden cases cover JPY/KWD/USD, multiple payers, all split methods, refunds, partial settlement, manual FX, and amount bounds. (`tests/unit/test_finance_money.py` golden cases; `test_finance_expenses.py::test_split_methods_and_validation_codes`, `::test_refunds_follow_shares_and_voiding_reverses_everything`, `test_finance_settlements.py::test_settlement_lifecycle_moves_status_and_balances`)
+- [x] No public command can mutate committed revisions/postings or perform unapproved cross-currency netting. (append-only triggers for every role and write guards on mutable finance rows: `test_finance_ledger_guards.py::test_history_is_append_only_for_every_role`, `::test_mutable_rows_change_only_the_way_their_commands_do`; per-currency balances and explicit `conversion` entries)
+- [ ] Reconciliation, drift, lock-wait, serialization, idempotency collision, and financial failure dashboards/alerts are operational. (signals delivered: `beluno.finance.ledger_lock.wait`, `beluno.finance.ledgers.reconciled`, `beluno.finance.ledger.drift`, plus the shared command retry and failure metrics; alert thresholds are in `docs/runbooks/finance-operations.md`. Dashboard and alert provisioning moves to Phase 8 with the staging environment)
+- [x] Phase 6 can create cost commitments through the finance port without querying or writing finance tables directly. (`CostCommitmentPort` / `COST_COMMITMENTS` in `src/beluno/modules/finance/commitments.py`; `test_finance_budgets.py::test_other_modules_record_costs_through_the_port`)
 
 ## Risk Assessment
 
@@ -238,3 +238,18 @@ Agreed with the user before implementation (24 decisions); they replace the `[UN
 | S6 Fund | fund settings, contributions, withdrawals, fund-paid expenses, `ledger.adjust`, merge transfers in claim flows |
 | S7 Operations | reconciler job, repair script, metrics, kill switch, rate limit, concurrency/fault/property tests on PostgreSQL, contract fixtures, timing |
 | S8 Review | independent and adversarial review, fixes, docs/ADR/plan sync, PR |
+
+## Completion Notes (2026-10-06)
+
+- Delivered: migration `000005_financial_ledger` (157 ISO 4217 currencies, ledger heads, accounts, balance projection, expenses with immutable revisions, payers, splits and refunds, settlements and waivers, FX snapshots, budgets, cost commitments, fund settings and movements, transactions and postings; RLS, grants, append-only and write-guard triggers, deferred invariant triggers, merge and maintenance gates); `src/beluno/modules/finance/` (money kernel, single ledger writer, expenses, settlements, budgets, commitments port, fund, merges, views, maintenance); 18 finance commands with a kill switch and a per-plan rate limit; REST under `/v1/plans/{id}/…` and `/v1/currencies`; seven plan-scope sync entities; daily `finance.reconcile_ledgers` job and `scripts/finance.py`; finance metrics; runbook `docs/runbooks/finance-operations.md`; ADR 0003 expanded.
+- Verification: TEST_SUMMARY on real PostgreSQL 16 (unit, contract, integration, security, e2e, sync models), ruff/format/mypy strict clean, OpenAPI exported and compatible with `feat/sync-kernel`. The finance reference model (`tests/sync/test_finance_ledger_model.py`) drives random histories through the public API and checks balances, the journal, and reconciliation after every step.
+- Independent and adversarial reviews (both PASS_WITH_RISK → fixed):
+  - Merges: a claim racing a finance write could deadlock or leave money on the merged participant. Both claim flows now take the plan row through `finance.lock_plan_for_merge` (plan, then ledger head, then participant rows, the same order as every finance write) before locking participants; `test_a_merge_racing_finance_writes_never_strands_money`.
+  - Settlements: a manager who owed a placeholder could waive their own debt or confirm their own payment for the placeholder; waivers had no cap; a creditor could not undo a payment they never received; viewer, merged, and departed creditors could not be answered for. The creditor is now resolved through merges, managers act only when they are not the debtor, a waiver is capped by the debt between the two parties (`409 WAIVER_EXCEEDS_DEBT`), the creditor may reverse an unconfirmed settlement, and answering is its own action `plan.settlements.answer` that viewers hold. `overpaid` is computed before posting.
+  - Fund: any expense creator could pay from the fund; fund-paid expenses now need a manager or the custodian. Fund settings rejected stale versions but accepted a blind overwrite; now `428` without `If-Match`.
+  - Database: mutable finance rows could be rewritten freely by anyone holding the runtime role. Write guards now let only state columns change, require the version to grow, and keep voided and reversed rows terminal; unique indexes allow one settlement, waiver, and conversion transaction per settlement; a reversal must be filed under the entry it reverses; reconciliation reports `merged_balance`.
+  - Projections: the ledger stayed `settled` after every settlement was reversed (now `open`); a balance rebuild bumped no ledger version and published no change, so devices kept the drifted balance.
+  - Smaller: converted commitments could not be edited; commitment edits computed the base snapshot from half-applied fields; N+1 queries in expense lists and the budget overview; control characters (C0 except newline and tab, DEL) accepted in text; SQL parameters could reach database error logs (`hide_parameters`); unhandled errors returned a bare 500 (now an `INTERNAL_ERROR` problem that logs only the error type); fund adjustments recorded a second change row; dead code removed.
+- Accepted and documented risks: client-chosen IDs reveal existence through `409 ALREADY_EXISTS` (as in Phase 4); members may record expenses that put debt on others (approved decision: the creator or a manager corrects them); an insider holding the runtime role can still self-merge within the `000003` guards; accounts created by the merge gate get UUIDv4 IDs; merges and port calls ignore the finance kill switch because they keep money consistent; claim flows do not retry deadlocks (lock ordering removes the known cause; a rare invite-revoke versus merge ordering remains). Unhandled errors are still re-raised to the server log and Sentry with their message, which for PostgreSQL errors can include a failing row; scrubbing that is a platform follow-up.
+- Deviations from the Execution Decisions: the database now carries finance write guards and SECURITY DEFINER gates for merges and maintenance (not a finalize path; the application still writes every entry); creditors may reverse settlements they never confirmed; answering a settlement is a separate action; a ledger with zero balances and no live settlement is `open`; spending from the fund needs a manager or the custodian.
+- Left for later phases: dashboard and alert provisioning, ledger-head contention and load results on staging, and the exit-gate rehearsals (rebuild on production-shaped data, staged rollback, drift repair) in Phase 8; provider FX ingest, receipts and attachments, and finance exports in later integration work; Phase 6 callers of the commitment port; a final legal retention policy for financial history.

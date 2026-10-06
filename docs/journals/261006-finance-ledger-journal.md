@@ -14,6 +14,8 @@
 - Merged participants were the subtle case: reversing an old entry would have put money back on a merged placeholder. Reversals and refunds now resolve to the surviving participant, and the trigger compares after the same resolution.
 - RLS limits finance rows to active participants, so a merge running as a claimed guest cannot write the ledger. A narrow SECURITY DEFINER gate that only moves a merged row's full balances is safer than widening the policies.
 - A reference-model property test over the public API (expenses, revisions, voids, refunds, settlements, fund flows, merges) is cheap with the money kernel reused for expectations, and it checks the database projection, the journal, and reconciliation at once.
+- The reviews found the gaps between roles rather than inside the ledger: a manager who is also the debtor, a creditor who is a viewer or was merged away, a claim racing a write. Resolving the creditor through merges first and then asking "is this actor the debtor?" fixed a whole class of settlement abuse, and taking the plan row before participant rows in claim flows gave merges the same lock order as every finance write.
+- Mutable rows need database guards as much as canonical ones do: an append-only journal does not help if the settlement it explains can be rewritten in place.
 
 ## Decisions taken with the user
 
