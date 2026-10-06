@@ -80,9 +80,11 @@ State narrowing (applies on top of the table):
   `plan.settlements.answer`; managers answer for creditors who are placeholders
   or no longer active, never for a settlement they owe themselves. Its recorder
   or a manager reverses it, and the creditor may reverse one they never
-  confirmed. A waiver is given by the creditor (managers for placeholder or
-  inactive creditors, never when they are the debtor) and never exceeds what
-  the debtor owes the group and the creditor is owed. Participants contribute
+  confirmed. An account that claimed a guest account counts as the creator or
+  recorder of the records that guest made. A waiver is given by the creditor
+  (managers for placeholder or inactive creditors, never when they are the
+  debtor) and never exceeds what the debtor owes the group and the creditor is
+  owed. Participants contribute
   to the fund for themselves; contributions for others, withdrawals, and fund
   settings need `plan.fund.manage`.
 - Finance is private to the plan's active participants: group members reading
