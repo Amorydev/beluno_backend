@@ -136,7 +136,9 @@ async def test_fund_settings_name_a_custodian_without_holding_money(
     )
     assert created.status_code == 200 and created.headers["ETag"] == '"1"'
     blind = await api.put(trip.path("/fund"), json={}, headers=trip.owner.headers)
-    assert blind.status_code == 412
+    assert blind.status_code == 428
+    stale = await api.put(trip.path("/fund"), json={}, headers=if_match(7, trip.owner))
+    assert stale.status_code == 412 and stale.json()["current"]["version"] == 1
     replaced = await api.put(trip.path("/fund"), json={}, headers=if_match(1, trip.owner))
     assert replaced.json()["custodian_participant_id"] is None
     settings = (await api.get(trip.path("/fund"), headers=trip.owner.headers)).json()["settings"]

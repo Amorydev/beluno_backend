@@ -18,7 +18,12 @@ from sqlalchemy.exc import IntegrityError
 
 from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import Decision, PlanAction, decide_plan
-from beluno.contracts.errors import conflict, forbidden, version_conflict
+from beluno.contracts.errors import (
+    conflict,
+    forbidden,
+    precondition_required,
+    version_conflict,
+)
 from beluno.db.ids import new_id
 from beluno.db.models.finance import FundMovement, FundSettings, LedgerTransaction
 from beluno.modules.context import CommandContext
@@ -26,7 +31,7 @@ from beluno.modules.finance.errors import entry_unbalanced, split_invalid
 from beluno.modules.finance.ledger import LEDGER_ENTITY, Ledger, open_ledger
 from beluno.modules.finance.money import MAX_AMOUNT_MINOR, check_amount
 from beluno.modules.finance.postings import FUND, Party, adjustment_postings, transfer_postings
-from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
+from beluno.modules.sync_audit.recorder import ChangeScope, record_audit, record_mutation
 
 FUND_ENTITY = "fund"
 MOVEMENT_ENTITY = "fund_movement"
@@ -107,7 +112,9 @@ async def put_settings(
         )
         ctx.session.add(settings)
     else:
-        if expected_version is None or settings.version != expected_version:
+        if expected_version is None:
+            raise precondition_required()
+        if settings.version != expected_version:
             raise version_conflict(settings)
         settings.custodian_participant_id = custodian_participant_id
         settings.note = note
@@ -181,13 +188,13 @@ async def adjust_ledger(
         postings={draft.currency: adjustment_postings(draft.entries)},
     )
     await ledger.finish()
-    await _record(
+    # ``finish`` already published the ledger change; this only audits who adjusted.
+    await record_audit(
         ctx,
-        plan_id,
-        LEDGER_ENTITY,
-        plan_id,
-        ledger.head.version,
-        "finance.ledger_adjusted",
+        action="finance.ledger_adjusted",
+        entity_type=LEDGER_ENTITY,
+        entity_id=plan_id,
+        plan_id=plan_id,
         metadata={"ledger_seq": transaction.ledger_seq, "subtype": subtype},
     )
     return transaction

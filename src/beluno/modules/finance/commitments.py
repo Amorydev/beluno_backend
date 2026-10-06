@@ -256,17 +256,15 @@ async def _apply(ledger: Ledger, commitment: CostCommitment, draft: CommitmentDr
     check_amount(draft.amount_minor, field="amount_minor")
     currency = await ledger.currency(draft.currency)
     base_currency = ledger.access.plan.base_currency
-    commitment.category = draft.category
-    commitment.description = draft.description
-    commitment.currency = draft.currency
-    commitment.amount_minor = draft.amount_minor
-    commitment.base_fx_snapshot_id = None
-    commitment.base_amount_minor = None
+    snapshot_id: UUID | None = None
+    base_amount: int | None = None
     if draft.currency == base_currency:
-        commitment.base_amount_minor = draft.amount_minor
+        base_amount = draft.amount_minor
     elif draft.base_rate is not None:
         base = await ledger.currency(base_currency)
         rate = parse_rate(draft.base_rate.rate)
+        # Record the snapshot before touching the row: its flush must not write a
+        # half-changed commitment.
         snapshot = await record_rate(
             ledger,
             base=draft.currency,
@@ -275,13 +273,19 @@ async def _apply(ledger: Ledger, commitment: CostCommitment, draft: CommitmentDr
             source=RateSource(draft.base_rate.source),
             as_of=draft.base_rate.as_of,
         )
-        commitment.base_fx_snapshot_id = snapshot.id
-        commitment.base_amount_minor = convert(
+        snapshot_id = snapshot.id
+        base_amount = convert(
             draft.amount_minor,
             from_exponent=currency.exponent,
             to_exponent=base.exponent,
             rate=rate,
         )
+    commitment.category = draft.category
+    commitment.description = draft.description
+    commitment.currency = draft.currency
+    commitment.amount_minor = draft.amount_minor
+    commitment.base_fx_snapshot_id = snapshot_id
+    commitment.base_amount_minor = base_amount
 
 
 async def _bump(ledger: Ledger, commitment: CostCommitment, action: str) -> None:

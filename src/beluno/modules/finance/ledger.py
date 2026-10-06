@@ -40,7 +40,7 @@ from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.currencies import supported_currency
 from beluno.modules.finance.errors import fund_insufficient, participant_not_eligible
-from beluno.modules.finance.postings import FUND, Party, Postings, reversal_postings
+from beluno.modules.finance.postings import Party, Postings, reversal_postings
 from beluno.modules.finance.states import LedgerStatus, SettlementStatus, next_ledger_status
 from beluno.modules.sync_audit.recorder import ChangeScope, record_change
 from beluno.observability.metrics import instruments
@@ -241,9 +241,6 @@ class Ledger:
     def balance_of(self, party: Party, currency: str) -> int:
         account = self.accounts.get((party.participant_id, currency))
         return self.balances[account.id].balance_minor if account else 0
-
-    def fund_available(self, currency: str) -> int:
-        return -self.balance_of(FUND, currency)
 
     async def finish(self) -> None:
         """Check fund availability, move the ledger status, and record one ledger change."""

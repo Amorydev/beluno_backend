@@ -23,6 +23,7 @@ submitted values.
 | `INVALID_STATE_TRANSITION` | 409 | Action is not valid in the resource's current state |
 | `OWNER_TRANSFER_REQUIRED` | 409 | Owner must transfer ownership before leaving |
 | `PARTICIPANT_MERGE_REQUIRED` | 409 | Claim would merge with an existing participation; resend with consent |
+| `WAIVER_EXCEEDS_DEBT` | 409 | A waiver would forgive more than the debtor owes and the creditor is owed in that currency |
 | `REFUND_EXCEEDS_AMOUNT` | 409 | Refunds would exceed the expense's current amount (also when a revision goes below them) |
 | `FUND_INSUFFICIENT` | 409 | A fund-paid expense, withdrawal, or adjustment would overdraw the plan fund in that currency |
 | `BASE_CURRENCY_LOCKED` | 409 | The plan already has financial records in its base currency |
@@ -40,6 +41,7 @@ submitted values.
 | `CLIENT_UPGRADE_REQUIRED` | 426 | Sync protocol or command schema version is outside the supported window |
 | `PRECONDITION_REQUIRED` | 428 | Update requires an `If-Match` header |
 | `RATE_LIMITED` | 429 | Abuse limit reached; honour `Retry-After` |
+| `INTERNAL_ERROR` | 500 | Unexpected server failure; the response echoes nothing about the request beyond its request id |
 | `FEATURE_DISABLED` | 503 | Entry point or command disabled by an operational kill switch |
 | `RETRY_LATER` | 503 | Transient database conflict after bounded retries; nothing changed, resend unchanged after `Retry-After` |
 
@@ -49,4 +51,5 @@ Sync pull never reports a stale cursor as an HTTP error: the per-scope status
 
 Finance errors never echo amounts, descriptions, or notes. A deferred ledger
 invariant that fails at commit (a server defect, not a client error) aborts the
-whole transaction and surfaces as a 500; nothing is written.
+whole transaction and surfaces as `500 INTERNAL_ERROR`; nothing is written.
+Text fields reject control characters (NUL and friends) with `422`.

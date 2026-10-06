@@ -109,6 +109,7 @@ class PlanAction(StrEnum):
     MANAGE_EXPENSES = "plan.expenses.manage"
     RECORD_SETTLEMENT = "plan.settlements.record"
     MANAGE_SETTLEMENTS = "plan.settlements.manage"
+    ANSWER_SETTLEMENT = "plan.settlements.answer"
     MANAGE_BUDGETS = "plan.budgets.manage"
     CONTRIBUTE_FUND = "plan.fund.contribute"
     MANAGE_FUND = "plan.fund.manage"
@@ -171,6 +172,8 @@ PLAN_RULES: dict[PlanAction, Rule] = {
     PlanAction.MANAGE_EXPENSES: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
     PlanAction.RECORD_SETTLEMENT: Rule(FINANCE_CONTRIBUTORS, SETTLEMENT_PLAN_STATES),
     PlanAction.MANAGE_SETTLEMENTS: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
+    # Whoever was paid confirms or disputes it, whatever their role.
+    PlanAction.ANSWER_SETTLEMENT: Rule(ALL_PLAN_ROLES, SETTLEMENT_PLAN_STATES),
     PlanAction.MANAGE_BUDGETS: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
     PlanAction.CONTRIBUTE_FUND: Rule(FINANCE_CONTRIBUTORS, EDITABLE_PLAN_STATES),
     PlanAction.MANAGE_FUND: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),

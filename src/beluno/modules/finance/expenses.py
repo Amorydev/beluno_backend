@@ -17,6 +17,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import aliased
 
 from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import Decision, PlanAction, decide_plan
@@ -28,6 +29,7 @@ from beluno.db.models.finance import (
     ExpenseRefund,
     ExpenseRevision,
     ExpenseSplit,
+    FundSettings,
     FxSnapshot,
     LedgerTransaction,
     RefundShare,
@@ -130,7 +132,7 @@ async def list_expenses(
     if after is not None:
         statement = statement.where(Expense.id > after)
     rows = await ctx.session.execute(statement.order_by(Expense.id).limit(limit))
-    return [await expense_view(ctx, expense) for expense in rows.scalars()]
+    return await expense_views(ctx, list(rows.scalars()))
 
 
 async def list_revisions(
@@ -145,61 +147,126 @@ async def list_revisions(
         .where(ExpenseRevision.expense_id == expense_id)
         .order_by(ExpenseRevision.revision_number)
     )
-    return [await _revision_view(ctx, revision) for revision in rows.scalars()]
+    return await _revision_views(ctx, list(rows.scalars()))
 
 
 async def expense_view(ctx: CommandContext, expense: Expense) -> ExpenseView:
-    revision = await ctx.session.get(ExpenseRevision, expense.current_revision_id)
-    assert revision is not None
-    refunds = (
-        await ctx.session.execute(
-            select(ExpenseRefund)
-            .where(ExpenseRefund.expense_id == expense.id)
-            .order_by(ExpenseRefund.created_at, ExpenseRefund.id)
+    return (await expense_views(ctx, [expense]))[0]
+
+
+async def expense_views(ctx: CommandContext, expenses: Sequence[Expense]) -> list[ExpenseView]:
+    """Render many expenses with a fixed number of queries."""
+
+    if not expenses:
+        return []
+    revisions = {
+        row.id: row
+        for row in (
+            await ctx.session.execute(
+                select(ExpenseRevision).where(
+                    ExpenseRevision.id.in_([e.current_revision_id for e in expenses])
+                )
+            )
+        ).scalars()
+    }
+    current = {
+        view.revision.id: view for view in await _revision_views(ctx, list(revisions.values()))
+    }
+    refunds: dict[UUID, list[RefundView]] = {expense.id: [] for expense in expenses}
+    for view in await _refund_views(ctx, [expense.id for expense in expenses]):
+        refunds[view.refund.expense_id].append(view)
+    return [
+        ExpenseView(
+            expense=expense,
+            current=current[expense.current_revision_id],
+            refunds=refunds[expense.id],
         )
-    ).scalars()
-    return ExpenseView(
-        expense=expense,
-        current=await _revision_view(ctx, revision),
-        refunds=[await _refund_view(ctx, refund) for refund in refunds],
-    )
+        for expense in expenses
+    ]
 
 
-async def _revision_view(ctx: CommandContext, revision: ExpenseRevision) -> RevisionView:
-    payers = await ctx.session.execute(
-        select(ExpensePayer)
-        .where(ExpensePayer.revision_id == revision.id)
-        .order_by(ExpensePayer.position)
-    )
-    splits = await ctx.session.execute(
-        select(ExpenseSplit)
-        .where(ExpenseSplit.revision_id == revision.id)
-        .order_by(ExpenseSplit.position)
-    )
-    rate = (
-        await ctx.session.get(FxSnapshot, revision.base_fx_snapshot_id)
-        if revision.base_fx_snapshot_id
-        else None
-    )
-    return RevisionView(
-        revision=revision,
-        payers=list(payers.scalars()),
-        splits=list(splits.scalars()),
-        base_rate=rate,
-    )
+async def _revision_views(
+    ctx: CommandContext, revisions: Sequence[ExpenseRevision]
+) -> list[RevisionView]:
+    if not revisions:
+        return []
+    ids = [revision.id for revision in revisions]
+    payers: dict[UUID, list[ExpensePayer]] = {revision_id: [] for revision_id in ids}
+    for payer in (
+        await ctx.session.execute(
+            select(ExpensePayer)
+            .where(ExpensePayer.revision_id.in_(ids))
+            .order_by(ExpensePayer.revision_id, ExpensePayer.position)
+        )
+    ).scalars():
+        payers[payer.revision_id].append(payer)
+    splits: dict[UUID, list[ExpenseSplit]] = {revision_id: [] for revision_id in ids}
+    for split in (
+        await ctx.session.execute(
+            select(ExpenseSplit)
+            .where(ExpenseSplit.revision_id.in_(ids))
+            .order_by(ExpenseSplit.revision_id, ExpenseSplit.position)
+        )
+    ).scalars():
+        splits[split.revision_id].append(split)
+    snapshot_ids = [r.base_fx_snapshot_id for r in revisions if r.base_fx_snapshot_id]
+    snapshots: dict[UUID, FxSnapshot] = {}
+    if snapshot_ids:
+        snapshots = {
+            row.id: row
+            for row in (
+                await ctx.session.execute(select(FxSnapshot).where(FxSnapshot.id.in_(snapshot_ids)))
+            ).scalars()
+        }
+    return [
+        RevisionView(
+            revision=revision,
+            payers=payers[revision.id],
+            splits=splits[revision.id],
+            base_rate=snapshots.get(revision.base_fx_snapshot_id)
+            if revision.base_fx_snapshot_id
+            else None,
+        )
+        for revision in revisions
+    ]
 
 
-async def _refund_view(ctx: CommandContext, refund: ExpenseRefund) -> RefundView:
-    shares = await ctx.session.execute(
-        select(RefundShare)
-        .where(RefundShare.refund_id == refund.id)
-        .order_by(RefundShare.participant_id)
+async def _refund_views(ctx: CommandContext, expense_ids: Sequence[UUID]) -> list[RefundView]:
+    refunds = list(
+        (
+            await ctx.session.execute(
+                select(ExpenseRefund)
+                .where(ExpenseRefund.expense_id.in_(expense_ids))
+                .order_by(ExpenseRefund.created_at, ExpenseRefund.id)
+            )
+        ).scalars()
     )
-    return RefundView(
-        refund=refund,
-        shares=list(shares.scalars()),
-        reversed=await _refund_reversed(ctx, refund.id),
+    if not refunds:
+        return []
+    refund_ids = [refund.id for refund in refunds]
+    shares: dict[UUID, list[RefundShare]] = {refund_id: [] for refund_id in refund_ids}
+    for share in (
+        await ctx.session.execute(
+            select(RefundShare)
+            .where(RefundShare.refund_id.in_(refund_ids))
+            .order_by(RefundShare.refund_id, RefundShare.participant_id)
+        )
+    ).scalars():
+        shares[share.refund_id].append(share)
+    reversal = aliased(LedgerTransaction)
+    reversed_ids = set(
+        (
+            await ctx.session.execute(
+                select(LedgerTransaction.refund_id)
+                .join(reversal, reversal.reverses_transaction_id == LedgerTransaction.id)
+                .where(LedgerTransaction.refund_id.in_(refund_ids))
+            )
+        ).scalars()
     )
+    return [
+        RefundView(refund=refund, shares=shares[refund.id], reversed=refund.id in reversed_ids)
+        for refund in refunds
+    ]
 
 
 async def _refund_reversed(ctx: CommandContext, refund_id: UUID) -> bool:
@@ -255,7 +322,7 @@ async def revise_expense(
     expected_version: int,
 ) -> ExpenseView:
     ledger, expense = await _open_expense(ctx, plan_id, expense_id, expected_version)
-    current = await _revision_view(ctx, await _current_revision(ctx, expense))
+    current = (await _revision_views(ctx, [await _current_revision(ctx, expense)]))[0]
     refunds = await _live_refunds(ctx, expense.id)
     if refunds:
         if draft.currency != current.revision.currency:
@@ -320,7 +387,7 @@ async def refund_expense(
     expected_version: int,
 ) -> ExpenseView:
     ledger, expense = await _open_expense(ctx, plan_id, expense_id, expected_version)
-    current = await _revision_view(ctx, await _current_revision(ctx, expense))
+    current = (await _revision_views(ctx, [await _current_revision(ctx, expense)]))[0]
     revision = current.revision
     check_amount(draft.amount_minor, field="amount_minor")
     refunded = sum(refund.amount_minor for refund in await _live_refunds(ctx, expense.id))
@@ -425,6 +492,8 @@ async def _append_revision(
     for payer in payers:
         if payer.participant_id is not None:
             ledger.participant(payer.participant_id, keep=kept)
+        else:
+            await _require_fund_spender(ledger)
     for share in shares:
         ledger.participant(share.participant_id, keep=kept)
     base_currency = ledger.access.plan.base_currency
@@ -479,6 +548,18 @@ async def _append_revision(
         expense_id=expense.id,
         revision_id=revision_id,
     )
+
+
+async def _require_fund_spender(ledger: Ledger) -> None:
+    """Spending pooled money is a fund manager's or the custodian's call, like a withdrawal."""
+
+    if decide_plan(PlanAction.MANAGE_FUND, ledger.access.subject) is Decision.ALLOW:
+        return
+    settings = await ledger.ctx.session.get(FundSettings, ledger.plan_id)
+    own = ledger.access.participant
+    if settings is not None and own is not None and settings.custodian_participant_id == own.id:
+        return
+    raise forbidden("Only the fund's custodian or a plan manager can pay from the fund")
 
 
 async def _base_amount(

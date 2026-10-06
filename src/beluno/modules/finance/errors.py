@@ -74,3 +74,11 @@ def base_currency_locked() -> BelunoError:
         "Base currency can no longer change",
         "The plan already has financial records in its base currency",
     )
+
+
+def waiver_exceeds_debt() -> BelunoError:
+    return conflict(
+        "WAIVER_EXCEEDS_DEBT",
+        "A waiver cannot exceed the debt",
+        "Waive at most what the debtor owes and the creditor is owed in that currency",
+    )

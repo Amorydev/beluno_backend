@@ -30,7 +30,7 @@ from beluno.db.models.finance import (
 )
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.commitments import commitment_view
-from beluno.modules.finance.expenses import expense_view
+from beluno.modules.finance.expenses import expense_view, expense_views
 from beluno.modules.finance.settlements import settlement_view
 from beluno.modules.finance.views import ledger_snapshot
 from beluno.sync.pull import SnapshotRow
@@ -82,10 +82,10 @@ async def page_expenses(
     statement = select(Expense).where(Expense.plan_id == scope.scope_id)
     if after is not None:
         statement = statement.where(Expense.id > after)
-    rows = (await ctx.session.execute(statement.order_by(Expense.id).limit(limit))).scalars()
+    rows = list((await ctx.session.execute(statement.order_by(Expense.id).limit(limit))).scalars())
     return [
-        SnapshotRow(row.id, row.version, expense_response(await expense_view(ctx, row)))
-        for row in rows
+        SnapshotRow(view.expense.id, view.expense.version, expense_response(view))
+        for view in await expense_views(ctx, rows)
     ]
 
 

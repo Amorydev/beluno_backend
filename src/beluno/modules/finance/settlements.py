@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from beluno.authorization.access import load_plan, require_plan
-from beluno.authorization.policy import Decision, PlanAction, decide_plan
+from beluno.authorization.policy import AccessState, Decision, PlanAction, decide_plan
 from beluno.contracts.errors import (
     conflict,
     forbidden,
@@ -34,6 +34,7 @@ from beluno.db.ids import new_id
 from beluno.db.models.finance import FxSnapshot, LedgerTransaction, Settlement
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.errors import waiver_exceeds_debt
 from beluno.modules.finance.fx import RateSource, implied_rate
 from beluno.modules.finance.ledger import Ledger, open_ledger
 from beluno.modules.finance.money import check_amount
@@ -167,8 +168,10 @@ async def record_settlement(
     settlement.fx_snapshot_id = rate.id if rate else None
     settlement.method = draft.method
     settlement.fee_minor = draft.fee_minor
-    await _insert(ctx, settlement)
     payer, receiver = Party(debtor.id), Party(creditor.id)
+    # In the debt currency the payer always ends up +amount (directly or via conversion).
+    settlement.overpaid = ledger.balance_of(payer, draft.currency) + draft.amount_minor > 0
+    await _insert(ctx, settlement)
     if draft.paid_currency is not None and draft.paid_amount_minor is not None:
         paid_amount = draft.paid_amount_minor
         await ledger.append(
@@ -190,8 +193,6 @@ async def record_settlement(
             postings={draft.currency: transfer_postings(payer, receiver, draft.amount_minor)},
             settlement_id=settlement.id,
         )
-    settlement.overpaid = ledger.balance_of(payer, draft.currency) > 0
-    await ctx.session.flush()
     await ledger.finish()
     await _record(ctx, settlement, "finance.settlement_recorded")
     return await settlement_view(ctx, settlement)
@@ -205,9 +206,16 @@ async def waive_debt(ctx: CommandContext, plan_id: UUID, draft: WaiverDraft) -> 
     creditor = ledger.settling_party(draft.creditor_participant_id)
     if debtor.id == creditor.id:
         raise validation_error("a waiver needs two different participants")
-    _require_creditor(ledger, creditor, "Only the person who is owed can waive a debt")
+    _require_creditor(
+        ledger, creditor.id, debtor.id, "Only the person who is owed can waive a debt"
+    )
     check_amount(draft.amount_minor, field="amount_minor")
     await ledger.currency(draft.currency)
+    # A waiver forgives an existing debt; it can never create one.
+    owed = -ledger.balance_of(Party(debtor.id), draft.currency)
+    due = ledger.balance_of(Party(creditor.id), draft.currency)
+    if draft.amount_minor > min(owed, due):
+        raise waiver_exceeds_debt()
     settlement = _new_settlement(
         ctx,
         plan_id,
@@ -232,8 +240,6 @@ async def waive_debt(ctx: CommandContext, plan_id: UUID, draft: WaiverDraft) -> 
         },
         settlement_id=settlement.id,
     )
-    settlement.overpaid = ledger.balance_of(Party(debtor.id), draft.currency) > 0
-    await ctx.session.flush()
     await ledger.finish()
     await _record(ctx, settlement, "finance.debt_waived")
     return await settlement_view(ctx, settlement)
@@ -244,12 +250,16 @@ async def answer_settlement(
 ) -> SettlementView:
     """The creditor confirms receiving the money, or disputes it (an intent command)."""
 
-    ledger = await open_ledger(ctx, plan_id, PlanAction.RECORD_SETTLEMENT)
+    ledger = await open_ledger(ctx, plan_id, PlanAction.ANSWER_SETTLEMENT)
     settlement = await _locked(ctx, plan_id, settlement_id)
     if settlement.kind == WAIVER:
         raise invalid_state("A waiver needs no confirmation")
-    creditor = ledger.participants[settlement.to_participant_id]
-    _require_creditor(ledger, creditor, "Only the person who received the money can answer")
+    _require_creditor(
+        ledger,
+        settlement.to_participant_id,
+        settlement.from_participant_id,
+        "Only the person who received the money can answer",
+    )
     current = SettlementStatus(settlement.status)
     target = SettlementStatus.CONFIRMED if confirm else SettlementStatus.DISPUTED
     if current is target:
@@ -274,11 +284,19 @@ async def answer_settlement(
 async def reverse_settlement(
     ctx: CommandContext, plan_id: UUID, settlement_id: UUID, expected_version: int
 ) -> SettlementView:
-    ledger = await open_ledger(ctx, plan_id, PlanAction.RECORD_SETTLEMENT)
+    ledger = await open_ledger(ctx, plan_id, PlanAction.ANSWER_SETTLEMENT)
     settlement = await _locked(ctx, plan_id, settlement_id)
     actor = ctx.require_actor().user_id
-    if settlement.recorded_by_user_id != actor and not _manages_settlements(ledger):
-        raise forbidden("Only whoever recorded this settlement or a plan manager can reverse it")
+    unconfirmed_creditor = (
+        settlement.status != SettlementStatus.CONFIRMED.value
+        and _own_participant(ledger) == ledger.resolve(settlement.to_participant_id)
+    )
+    recorder_or_manager = settlement.recorded_by_user_id == actor or _manages_settlements(ledger)
+    if not (unconfirmed_creditor or (recorder_or_manager and _may_record(ledger))):
+        raise forbidden(
+            "Only whoever recorded this settlement, a plan manager, or a creditor who never "
+            "confirmed it can reverse it"
+        )
     if settlement.version != expected_version:
         raise version_conflict(settlement)
     current = SettlementStatus(settlement.status)
@@ -316,10 +334,27 @@ def _manages_settlements(ledger: Ledger) -> bool:
     return decision is Decision.ALLOW
 
 
-def _require_creditor(ledger: Ledger, creditor: PlanParticipant, message: str) -> None:
-    if _own_participant(ledger) == creditor.id:
+def _may_record(ledger: Ledger) -> bool:
+    decision = decide_plan(PlanAction.RECORD_SETTLEMENT, ledger.access.subject)
+    return decision is Decision.ALLOW
+
+
+def _require_creditor(ledger: Ledger, creditor_id: UUID, debtor_id: UUID, message: str) -> None:
+    """The creditor (after merges) answers; managers answer for creditors who cannot.
+
+    A manager may act for a placeholder or a creditor who is no longer an active
+    participant, but never on a settlement or waiver that the manager owes.
+    """
+
+    own = _own_participant(ledger)
+    creditor = ledger.participants[ledger.resolve(creditor_id)]
+    if own == creditor.id:
         return
-    if creditor.identity_kind == "placeholder" and _manages_settlements(ledger):
+    unable = creditor.identity_kind == "placeholder" or (
+        AccessState(creditor.access_state) is not AccessState.ACTIVE
+    )
+    owes_it = own is not None and own == ledger.resolve(debtor_id)
+    if unable and not owes_it and _manages_settlements(ledger):
         return
     raise forbidden(message)
 

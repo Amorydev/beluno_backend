@@ -565,7 +565,7 @@ class CommitmentUpdateRequest(BaseModel):
     description: Description
     currency: CurrencyCode
     amount_minor: StrictInt
-    state: Literal["estimated", "committed", "cancelled", "refunded"]
+    state: Literal["estimated", "committed", "converted_to_expense", "cancelled", "refunded"]
     base_rate: RateRequest | None = None
 
 

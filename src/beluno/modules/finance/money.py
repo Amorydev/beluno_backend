@@ -16,7 +16,6 @@ MAX_ITEMS = 100
 MAX_EXTRAS = 10
 MAX_WEIGHT = 10**6
 BASIS_POINTS_TOTAL = 10_000
-MAX_EXPONENT = 4
 
 
 def check_amount(value: int, *, field: str) -> int:

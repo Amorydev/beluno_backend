@@ -196,16 +196,15 @@ async def get_budgets(ctx: CommandContext, plan_id: UUID) -> BudgetOverview:
     )
     per_participant: dict[UUID, int] = defaultdict(int)
     per_day: dict[date, int] = defaultdict(int)
-    for revision, rate in await _live_revisions(ctx, plan_id):
-        refunds = await _live_refund_shares(ctx, revision.expense_id)
+    live = await _live_revisions(ctx, plan_id)
+    splits_by_revision = await _splits(ctx, [revision.id for revision, _ in live])
+    refunds_by_expense = await _live_refund_shares(ctx, [r.expense_id for r, _ in live])
+    for revision, rate in live:
+        refunds = refunds_by_expense.get(revision.expense_id, {})
         net = revision.amount_minor - sum(refunds.values())
         consumption: dict[UUID, int] = defaultdict(int)
-        for split in (
-            await ctx.session.execute(
-                select(ExpenseSplit).where(ExpenseSplit.revision_id == revision.id)
-            )
-        ).scalars():
-            consumption[_resolve(merged, split.participant_id)] += split.owed_minor
+        for participant_id, owed in splits_by_revision.get(revision.id, []):
+            consumption[_resolve(merged, participant_id)] += owed
         for participant_id, amount in refunds.items():
             consumption[_resolve(merged, participant_id)] -= amount
 
@@ -292,7 +291,30 @@ async def _live_revisions(
     return [(revision, rate) for revision, rate in rows.all()]
 
 
-async def _live_refund_shares(ctx: CommandContext, expense_id: UUID) -> dict[UUID, int]:
+async def _splits(
+    ctx: CommandContext, revision_ids: list[UUID]
+) -> dict[UUID, list[tuple[UUID, int]]]:
+    found: dict[UUID, list[tuple[UUID, int]]] = defaultdict(list)
+    if not revision_ids:
+        return found
+    rows = await ctx.session.execute(
+        select(ExpenseSplit.revision_id, ExpenseSplit.participant_id, ExpenseSplit.owed_minor)
+        .where(ExpenseSplit.revision_id.in_(revision_ids))
+        .order_by(ExpenseSplit.revision_id, ExpenseSplit.position)
+    )
+    for revision_id, participant_id, owed in rows.all():
+        found[revision_id].append((participant_id, owed))
+    return found
+
+
+async def _live_refund_shares(
+    ctx: CommandContext, expense_ids: list[UUID]
+) -> dict[UUID, dict[UUID, int]]:
+    """Per expense, the refund shares of refunds that were not reversed."""
+
+    found: dict[UUID, dict[UUID, int]] = defaultdict(lambda: defaultdict(int))
+    if not expense_ids:
+        return found
     reversal = aliased(LedgerTransaction)
     reversed_refunds = (
         select(LedgerTransaction.refund_id)
@@ -300,17 +322,16 @@ async def _live_refund_shares(ctx: CommandContext, expense_id: UUID) -> dict[UUI
         .where(LedgerTransaction.refund_id.is_not(None))
     )
     rows = await ctx.session.execute(
-        select(RefundShare.participant_id, RefundShare.amount_minor)
+        select(ExpenseRefund.expense_id, RefundShare.participant_id, RefundShare.amount_minor)
         .join(ExpenseRefund, ExpenseRefund.id == RefundShare.refund_id)
         .where(
-            ExpenseRefund.expense_id == expense_id,
+            ExpenseRefund.expense_id.in_(expense_ids),
             ExpenseRefund.id.not_in(reversed_refunds),
         )
     )
-    shares: dict[UUID, int] = defaultdict(int)
-    for participant_id, amount in rows.all():
-        shares[participant_id] += amount
-    return shares
+    for expense_id, participant_id, amount in rows.all():
+        found[expense_id][participant_id] += amount
+    return found
 
 
 async def _commitments(
