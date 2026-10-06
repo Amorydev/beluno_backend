@@ -586,3 +586,79 @@ class CommitmentResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+FUND_NOTICE = (
+    "Beluno records what participants pooled with a custodian; it never holds, moves, "
+    "or stores money."
+)
+
+
+class FundSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    custodian_participant_id: UUID | None = None
+    note: Note | None = None
+
+
+class FundSettingsResponse(BaseModel):
+    plan_id: UUID
+    custodian_participant_id: UUID | None
+    note: str | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class FundMovementRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    participant_id: UUID
+    currency: CurrencyCode
+    amount_minor: StrictInt
+    note: Note | None = None
+    occurred_on: date
+
+
+class FundMovementResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    kind: Literal["contribution", "withdrawal"]
+    participant_id: UUID
+    currency: str
+    amount_minor: int
+    note: str | None
+    occurred_on: date
+    created_by_user_id: UUID
+    created_at: datetime
+
+
+class FundResponse(BaseModel):
+    settings: FundSettingsResponse | None
+    available: list[FundAvailabilityResponse]
+    notice: str = Field(default=FUND_NOTICE)
+
+
+class AdjustmentEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    participant_id: UUID | None = None
+    fund: bool = False
+    amount_minor: StrictInt
+
+    @model_validator(mode="after")
+    def one_account(self) -> Self:
+        if self.fund == (self.participant_id is not None):
+            raise ValueError("name a participant_id or set fund to true")
+        return self
+
+
+class AdjustmentRequest(BaseModel):
+    """A privileged correction in one currency; entries must sum to zero."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    currency: CurrencyCode
+    memo: Note
+    entries: Annotated[list[AdjustmentEntry], Field(min_length=2, max_length=100)]

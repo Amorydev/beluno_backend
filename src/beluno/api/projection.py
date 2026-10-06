@@ -288,6 +288,8 @@ LOADERS: dict[str, Loader] = {
     "settlement": finance_projection.load_settlement,
     "budget": finance_projection.load_budget,
     "cost_commitment": finance_projection.load_commitment,
+    "fund": finance_projection.load_fund,
+    "fund_movement": finance_projection.load_fund_movement,
 }
 
 
@@ -447,6 +449,8 @@ PAGERS: dict[str, Pager] = {
     "settlement": finance_projection.page_settlements,
     "budget": finance_projection.page_budgets,
     "cost_commitment": finance_projection.page_commitments,
+    "fund": finance_projection.page_fund,
+    "fund_movement": finance_projection.page_fund_movements,
 }
 
 

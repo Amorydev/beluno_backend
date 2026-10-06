@@ -235,3 +235,29 @@ async def settlement_preview(
         )
         previews.append(CurrencyPreview(code, simplify_debts(balances, fund_available=fund)))
     return previews
+
+
+async def transaction_view(ctx: CommandContext, transaction: LedgerTransaction) -> TransactionView:
+    rows = await ctx.session.execute(
+        select(LedgerAccount.participant_id, LedgerPosting.currency, LedgerPosting.amount_minor)
+        .join(LedgerAccount, LedgerAccount.id == LedgerPosting.account_id)
+        .where(LedgerPosting.transaction_id == transaction.id)
+        .order_by(LedgerPosting.currency, LedgerAccount.participant_id.nulls_first())
+    )
+    return TransactionView(
+        transaction,
+        [
+            PostingView(participant_id, currency, amount)
+            for participant_id, currency, amount in rows
+        ],
+    )
+
+
+async def fund_availability(ctx: CommandContext, plan_id: UUID) -> list[tuple[str, int]]:
+    rows = await ctx.session.execute(
+        select(LedgerAccount.currency, AccountBalance.balance_minor)
+        .join(AccountBalance, AccountBalance.account_id == LedgerAccount.id)
+        .where(LedgerAccount.plan_id == plan_id, LedgerAccount.participant_id.is_(None))
+        .order_by(LedgerAccount.currency)
+    )
+    return [(currency, -balance) for currency, balance in rows]

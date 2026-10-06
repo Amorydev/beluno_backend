@@ -18,6 +18,8 @@ from beluno.api.finance_presenters import (
     currency_response,
     expense_response,
     explanation_entry,
+    fund_movement_response,
+    fund_settings_response,
     ledger_response,
     preview_response,
     revision_response,
@@ -41,6 +43,7 @@ from beluno.api.problems import problem_responses
 from beluno.contracts.common import Page
 from beluno.contracts.errors import validation_error
 from beluno.contracts.finance import (
+    AdjustmentRequest,
     BalanceExplanation,
     BudgetCreateRequest,
     BudgetOverviewResponse,
@@ -53,6 +56,12 @@ from beluno.contracts.finance import (
     ExpenseCreateRequest,
     ExpenseRequest,
     ExpenseResponse,
+    FundAvailabilityResponse,
+    FundMovementRequest,
+    FundMovementResponse,
+    FundResponse,
+    FundSettingsRequest,
+    FundSettingsResponse,
     LedgerResponse,
     RefundRequest,
     RevisionResponse,
@@ -60,6 +69,7 @@ from beluno.contracts.finance import (
     SettlementRequest,
     SettlementResponse,
     TransactionPage,
+    TransactionResponse,
     WaiverRequest,
 )
 from beluno.modules.context import open_context
@@ -68,6 +78,7 @@ from beluno.modules.finance import (
     commitments,
     currencies,
     expenses,
+    funds,
     settlements,
     views,
 )
@@ -556,3 +567,107 @@ async def update_commitment(
         idempotency_key, if_match=if_match, plan_id=plan_id, commitment_id=commitment_id
     )
     return finish(response, await runner.run(actor, commands.COMMITMENT_UPDATE, call, body))
+
+
+@router.get("/fund", response_model=FundResponse, responses=READ_ERRORS)
+async def get_fund(plan_id: UUID, runtime: RuntimeDep, actor: ActorDep) -> FundResponse:
+    """What participants pooled with a custodian; Beluno holds and moves no money."""
+
+    async with open_context(runtime, actor) as ctx:
+        settings = await funds.get_settings(ctx, plan_id)
+        available = await views.fund_availability(ctx, plan_id)
+    return FundResponse(
+        settings=fund_settings_response(settings) if settings else None,
+        available=[
+            FundAvailabilityResponse(currency=currency, available_minor=amount)
+            for currency, amount in available
+        ],
+    )
+
+
+@router.put("/fund", response_model=FundSettingsResponse, responses=WRITE_ERRORS)
+async def put_fund(
+    plan_id: UUID,
+    body: FundSettingsRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> FundSettingsResponse:
+    """Create the fund settings, or replace them with the current ``If-Match`` version."""
+
+    call = command_call(idempotency_key, if_match=if_match, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.FUND_UPDATE, call, body))
+
+
+@router.get("/fund/movements", response_model=Page[FundMovementResponse], responses=READ_ERRORS)
+async def list_fund_movements(
+    plan_id: UUID,
+    runtime: RuntimeDep,
+    actor: ActorDep,
+    cursor: CursorParam = None,
+    limit: LimitParam = DEFAULT_PAGE_SIZE,
+) -> Page[FundMovementResponse]:
+    async with open_context(runtime, actor) as ctx:
+        found = await funds.list_movements(ctx, plan_id, after=decode_cursor(cursor), limit=limit)
+    next_cursor = encode_cursor(found[-1].id) if len(found) == limit else None
+    return Page[FundMovementResponse](
+        items=[fund_movement_response(row) for row in found], next_cursor=next_cursor
+    )
+
+
+@router.post(
+    "/fund/contributions",
+    status_code=status.HTTP_201_CREATED,
+    response_model=FundMovementResponse,
+    responses=WRITE_ERRORS,
+)
+async def contribute_to_fund(
+    plan_id: UUID,
+    body: FundMovementRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> FundMovementResponse:
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.FUND_CONTRIBUTE, call, body))
+
+
+@router.post(
+    "/fund/withdrawals",
+    status_code=status.HTTP_201_CREATED,
+    response_model=FundMovementResponse,
+    responses=WRITE_ERRORS,
+)
+async def withdraw_from_fund(
+    plan_id: UUID,
+    body: FundMovementRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> FundMovementResponse:
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.FUND_WITHDRAW, call, body))
+
+
+@router.post(
+    "/ledger/adjustments",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TransactionResponse,
+    responses=WRITE_ERRORS,
+)
+async def adjust_ledger(
+    plan_id: UUID,
+    body: AdjustmentRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> TransactionResponse:
+    """A privileged correction (owner, recent sign-in); it is audited and never edits history."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.LEDGER_ADJUST, call, body))

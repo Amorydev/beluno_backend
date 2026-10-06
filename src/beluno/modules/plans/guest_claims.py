@@ -18,6 +18,7 @@ from beluno.authorization.policy import AccessState, PlanRole
 from beluno.contracts.errors import conflict
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.merges import transfer_merged_balances
 from beluno.modules.plans.changes import bump, record_participant_change
 
 
@@ -73,6 +74,8 @@ async def transfer_guest_participations(
         bump(row, ctx)
         await ctx.session.flush()
         await record_participant_change(ctx, row, action)
+        if row.access_state == AccessState.MERGED.value:
+            await transfer_merged_balances(ctx, row.plan_id, row.id)
 
 
 async def _target_rows_by_plan(

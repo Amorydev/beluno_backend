@@ -18,9 +18,11 @@ ISO 4217 (minor-unit exponents pinned here), and adds:
   waiver, and fund postings have exactly the shape their source row implies,
   and that reversals mirror their source (moved to surviving participants when
   a placeholder was merged);
-* RLS limiting every finance row to active participants of its plan, and
+* RLS limiting every finance row to active participants of its plan;
   SECURITY DEFINER maintenance gates for the worker (reconciliation, balance
-  rebuild).
+  rebuild); and ``transfer_merged_balances``, the narrow gate that moves a merged
+  participant's full balances to the survivor inside a claim transaction, where
+  the acting user may no longer be an active participant.
 
 Runtime roles get SELECT/INSERT on canonical tables and SELECT/INSERT/UPDATE only
 on the mutable heads, balances, expenses, settlements, budgets, commitments,
@@ -794,6 +796,101 @@ CREATE CONSTRAINT TRIGGER fund_movements_complete
 """
 )
 
+MERGE_SQL = """
+-- Moves every balance of a merged participant to the participant it was merged
+-- into, as one ``adjustment/merge_transfer`` entry. It runs inside the merge
+-- transaction (placeholder claims, guest account claims), where the acting user
+-- may no longer be an active participant, so it is a narrow definer gate: it moves
+-- exactly the full balances of a row that is already ``merged`` and nothing else.
+-- Returns the new ledger version, or NULL when there was nothing to move.
+CREATE FUNCTION finance.transfer_merged_balances(
+    p_plan_id uuid,
+    p_participant_id uuid,
+    p_transaction_id uuid,
+    p_actor_user_id uuid,
+    p_operation_id uuid,
+    p_now timestamptz
+) RETURNS integer
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    survivor uuid;
+    head finance.plan_ledger_heads%ROWTYPE;
+    item record;
+    survivor_account uuid;
+    settled boolean;
+BEGIN
+    SELECT finance.resolve_participant(p_plan_id, merged_into_participant_id) INTO survivor
+    FROM plans.plan_participants
+    WHERE plan_id = p_plan_id AND id = p_participant_id AND access_state = 'merged';
+    IF survivor IS NULL THEN
+        RAISE EXCEPTION 'participant is not merged' USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    SELECT * INTO head FROM finance.plan_ledger_heads WHERE plan_id = p_plan_id FOR UPDATE;
+    IF NOT FOUND OR NOT EXISTS (
+        SELECT 1 FROM finance.ledger_accounts AS a
+        JOIN finance.account_balances AS b ON b.account_id = a.id
+        WHERE a.plan_id = p_plan_id AND a.participant_id = p_participant_id
+          AND b.balance_minor <> 0
+    ) THEN
+        RETURN NULL;
+    END IF;
+    head.ledger_seq := head.ledger_seq + 1;
+    INSERT INTO finance.ledger_transactions (
+        id, plan_id, ledger_seq, kind, subtype, created_by_user_id, operation_id, created_at
+    ) VALUES (
+        p_transaction_id, p_plan_id, head.ledger_seq, 'adjustment', 'merge_transfer',
+        p_actor_user_id, p_operation_id, p_now
+    );
+    FOR item IN
+        SELECT a.id, a.currency, b.balance_minor
+        FROM finance.ledger_accounts AS a
+        JOIN finance.account_balances AS b ON b.account_id = a.id
+        WHERE a.plan_id = p_plan_id AND a.participant_id = p_participant_id
+          AND b.balance_minor <> 0
+        ORDER BY a.currency
+    LOOP
+        SELECT id INTO survivor_account FROM finance.ledger_accounts
+        WHERE plan_id = p_plan_id AND participant_id = survivor AND currency = item.currency;
+        IF survivor_account IS NULL THEN
+            survivor_account := gen_random_uuid();
+            INSERT INTO finance.ledger_accounts (id, plan_id, kind, participant_id, currency, created_at)
+            VALUES (survivor_account, p_plan_id, 'participant', survivor, item.currency, p_now);
+            INSERT INTO finance.account_balances (
+                account_id, plan_id, currency, balance_minor, last_ledger_seq, updated_at
+            ) VALUES (survivor_account, p_plan_id, item.currency, 0, 0, p_now);
+        END IF;
+        INSERT INTO finance.ledger_postings (transaction_id, account_id, plan_id, currency, amount_minor)
+        VALUES (p_transaction_id, item.id, p_plan_id, item.currency, -item.balance_minor),
+               (p_transaction_id, survivor_account, p_plan_id, item.currency, item.balance_minor);
+        UPDATE finance.account_balances
+        SET balance_minor = balance_minor - item.balance_minor,
+            last_ledger_seq = head.ledger_seq, updated_at = p_now
+        WHERE account_id = item.id;
+        UPDATE finance.account_balances
+        SET balance_minor = balance_minor + item.balance_minor,
+            last_ledger_seq = head.ledger_seq, updated_at = p_now
+        WHERE account_id = survivor_account;
+        survivor_account := NULL;
+    END LOOP;
+    settled := NOT EXISTS (
+        SELECT 1 FROM finance.ledger_accounts AS a
+        JOIN finance.account_balances AS b ON b.account_id = a.id
+        WHERE a.plan_id = p_plan_id AND a.kind = 'participant' AND b.balance_minor <> 0
+    ) AND EXISTS (
+        SELECT 1 FROM finance.settlements WHERE plan_id = p_plan_id AND status <> 'reversed'
+    );
+    UPDATE finance.plan_ledger_heads
+    SET ledger_seq = head.ledger_seq,
+        version = head.version + 1,
+        status = CASE WHEN settled THEN 'settled'
+                      WHEN head.status = 'open' THEN 'open' ELSE 'reopened' END,
+        updated_at = p_now
+    WHERE plan_id = p_plan_id;
+    RETURN head.version + 1;
+END;
+$$;
+"""
+
 MAINTENANCE_SQL = """
 CREATE FUNCTION finance.ledger_plan_ids(p_after uuid, p_limit integer) RETURNS SETOF uuid
     LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -938,6 +1035,9 @@ GRANT UPDATE ON {", ".join(f"finance.{t}" for t in MUTABLE_TABLES)} TO api_runti
 
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA finance FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION
+    finance.transfer_merged_balances(uuid, uuid, uuid, uuid, uuid, timestamptz)
+    TO api_runtime;
+GRANT EXECUTE ON FUNCTION
     finance.ledger_plan_ids(uuid, integer),
     finance.reconcile_plan(uuid),
     finance.rebuild_balances(uuid, boolean)
@@ -949,6 +1049,7 @@ def upgrade() -> None:
     op.execute(TABLES_SQL)
     op.execute(INVARIANTS_SQL)
     op.execute(TRIGGERS_SQL)
+    op.execute(MERGE_SQL)
     op.execute(MAINTENANCE_SQL)
     op.execute(RLS_SQL)
     op.execute(GRANTS_SQL)

@@ -7,6 +7,7 @@ from decimal import Decimal
 from pydantic import BaseModel, TypeAdapter
 
 from beluno.contracts.finance import (
+    AdjustmentRequest,
     BaseAmountResponse,
     BudgetOverviewResponse,
     BudgetResponse,
@@ -20,6 +21,9 @@ from beluno.contracts.finance import (
     ExpenseResponse,
     ExplanationEntry,
     FundAvailabilityResponse,
+    FundMovementRequest,
+    FundMovementResponse,
+    FundSettingsResponse,
     LedgerBalanceResponse,
     LedgerResponse,
     PaidAmountResponse,
@@ -47,6 +51,8 @@ from beluno.db.models.finance import (
     CostCommitment,
     Currency,
     Expense,
+    FundMovement,
+    FundSettings,
     FxSnapshot,
     Settlement,
 )
@@ -61,6 +67,7 @@ from beluno.modules.finance.expenses import (
     RevisionView,
     expense_view,
 )
+from beluno.modules.finance.funds import AdjustmentDraft, MovementDraft
 from beluno.modules.finance.fx import RateSource
 from beluno.modules.finance.postings import FUND, Party
 from beluno.modules.finance.rates import RateInput
@@ -320,6 +327,8 @@ async def present_finance_current(ctx: CommandContext, entity: object) -> BaseMo
         return settlement_response(await settlement_view(ctx, entity))
     if isinstance(entity, Budget):
         return budget_response(entity)
+    if isinstance(entity, FundSettings):
+        return fund_settings_response(entity)
     if isinstance(entity, CostCommitment):
         return commitment_response(await commitment_view(ctx, entity))
     return None
@@ -564,4 +573,57 @@ def commitment_response(view: CommitmentView) -> CommitmentResponse:
             "created_at": commitment.created_at,
             "updated_at": commitment.updated_at,
         }
+    )
+
+
+# --- fund and adjustments -----------------------------------------------------------
+
+
+def fund_settings_response(settings: FundSettings) -> FundSettingsResponse:
+    return FundSettingsResponse(
+        plan_id=settings.plan_id,
+        custodian_participant_id=settings.custodian_participant_id,
+        note=settings.note,
+        version=settings.version,
+        created_at=settings.created_at,
+        updated_at=settings.updated_at,
+    )
+
+
+def fund_movement_response(movement: FundMovement) -> FundMovementResponse:
+    return FundMovementResponse.model_validate(
+        {
+            "id": movement.id,
+            "plan_id": movement.plan_id,
+            "kind": movement.kind,
+            "participant_id": movement.participant_id,
+            "currency": movement.currency,
+            "amount_minor": movement.amount_minor,
+            "note": movement.note,
+            "occurred_on": movement.occurred_on,
+            "created_by_user_id": movement.created_by_user_id,
+            "created_at": movement.created_at,
+        }
+    )
+
+
+def movement_draft(body: FundMovementRequest) -> MovementDraft:
+    return MovementDraft(
+        movement_id=body.id,
+        participant_id=body.participant_id,
+        currency=body.currency,
+        amount_minor=body.amount_minor,
+        note=body.note,
+        occurred_on=body.occurred_on,
+    )
+
+
+def adjustment_draft(body: AdjustmentRequest) -> AdjustmentDraft:
+    return AdjustmentDraft(
+        currency=body.currency,
+        memo=body.memo,
+        entries=tuple(
+            (FUND if entry.fund else Party(entry.participant_id), entry.amount_minor)
+            for entry in body.entries
+        ),
     )

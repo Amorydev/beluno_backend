@@ -1,4 +1,4 @@
-"""Finance commands: expenses, refunds, settlements, waivers, budgets, and commitments."""
+"""Finance commands: expenses, settlements, budgets, commitments, the fund, adjustments."""
 
 from __future__ import annotations
 
@@ -6,17 +6,23 @@ from typing import Any
 
 from beluno.api.commands.groups import required_version
 from beluno.api.finance_presenters import (
+    adjustment_draft,
     budget_response,
     commitment_draft,
     commitment_response,
     expense_draft,
     expense_response,
+    fund_movement_response,
+    fund_settings_response,
+    movement_draft,
     refund_draft,
     settlement_draft,
     settlement_response,
+    transaction_response,
     waiver_draft,
 )
 from beluno.contracts.finance import (
+    AdjustmentRequest,
     BudgetCreateRequest,
     BudgetResponse,
     BudgetUpdateRequest,
@@ -26,13 +32,18 @@ from beluno.contracts.finance import (
     ExpenseCreateRequest,
     ExpenseRequest,
     ExpenseResponse,
+    FundMovementRequest,
+    FundMovementResponse,
+    FundSettingsRequest,
+    FundSettingsResponse,
     RefundRequest,
     SettlementRequest,
     SettlementResponse,
+    TransactionResponse,
     WaiverRequest,
 )
 from beluno.modules.context import CommandContext
-from beluno.modules.finance import budgets, commitments, expenses, settlements
+from beluno.modules.finance import budgets, commitments, expenses, funds, settlements, views
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
 from beluno.sync.commands import Command, CommandCall, EmptyPayload, version_of
 
@@ -155,6 +166,41 @@ async def _update_commitment(
         required_version(call),
     )
     return commitment_response(view)
+
+
+async def _put_fund(
+    ctx: CommandContext, call: CommandCall, body: FundSettingsRequest
+) -> FundSettingsResponse:
+    # Creation needs no version; replacing the settings requires the current one.
+    settings = await funds.put_settings(
+        ctx,
+        call.id("plan_id"),
+        custodian_participant_id=body.custodian_participant_id,
+        note=body.note,
+        expected_version=call.expected_version,
+    )
+    return fund_settings_response(settings)
+
+
+async def _contribute(
+    ctx: CommandContext, call: CommandCall, body: FundMovementRequest
+) -> FundMovementResponse:
+    movement = await funds.contribute(ctx, call.id("plan_id"), movement_draft(body))
+    return fund_movement_response(movement)
+
+
+async def _withdraw(
+    ctx: CommandContext, call: CommandCall, body: FundMovementRequest
+) -> FundMovementResponse:
+    movement = await funds.withdraw(ctx, call.id("plan_id"), movement_draft(body))
+    return fund_movement_response(movement)
+
+
+async def _adjust(
+    ctx: CommandContext, call: CommandCall, body: AdjustmentRequest
+) -> TransactionResponse:
+    transaction = await funds.adjust_ledger(ctx, call.id("plan_id"), adjustment_draft(body))
+    return transaction_response(await views.transaction_view(ctx, transaction))
 
 
 EXPENSE_CREATE = Command(
@@ -325,6 +371,51 @@ COMMITMENT_UPDATE = Command(
     rate_limit_target="plan_id",
 )
 
+FUND_UPDATE = Command(
+    name="fund.update",
+    payload_model=FundSettingsRequest,
+    response_model=FundSettingsResponse,
+    handler=_put_fund,
+    target_fields=("plan_id",),
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+FUND_CONTRIBUTE = Command(
+    name="fund.contribute",
+    payload_model=FundMovementRequest,
+    response_model=FundMovementResponse,
+    handler=_contribute,
+    target_fields=("plan_id",),
+    status=201,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+FUND_WITHDRAW = Command(
+    name="fund.withdraw",
+    payload_model=FundMovementRequest,
+    response_model=FundMovementResponse,
+    handler=_withdraw,
+    target_fields=("plan_id",),
+    status=201,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+LEDGER_ADJUST = Command(
+    name="ledger.adjust",
+    payload_model=AdjustmentRequest,
+    response_model=TransactionResponse,
+    handler=_adjust,
+    target_fields=("plan_id",),
+    status=201,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
 COMMANDS: list[Command[Any, Any]] = [
     EXPENSE_CREATE,
     EXPENSE_REVISE,
@@ -340,4 +431,8 @@ COMMANDS: list[Command[Any, Any]] = [
     BUDGET_DELETE,
     COMMITMENT_CREATE,
     COMMITMENT_UPDATE,
+    FUND_UPDATE,
+    FUND_CONTRIBUTE,
+    FUND_WITHDRAW,
+    LEDGER_ADJUST,
 ]
