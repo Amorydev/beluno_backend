@@ -302,7 +302,9 @@ async def ledger_for(ctx: CommandContext, access: PlanAccess) -> Ledger:
 
     Other modules reach the ledger only through finance ports, which call this
     after their own policy check (for example the planning module recording a
-    booking's cost commitment).
+    booking's cost commitment). Those callers must have locked the plan row
+    (``load_plan(..., for_update=True)``) so the lock order stays plan row, then
+    ledger head.
     """
 
     plan_id = access.plan.id
