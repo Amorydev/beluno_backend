@@ -185,7 +185,7 @@ async def insert_plan_with_owner(ctx: CommandContext, plan: Plan) -> PlanPartici
         role=PlanRole.OWNER,
     )
     try:
-        async with ctx.session.begin_nested():
+        async with ctx.savepoint():
             ctx.session.add(plan)
             await ctx.session.flush()
             ctx.session.add(owner)

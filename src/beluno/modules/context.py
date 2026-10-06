@@ -3,7 +3,8 @@
 ``open_context`` is the single entrypoint for domain work: it opens one
 transaction, sets the RLS actor, and re-validates the caller's session and
 account against PostgreSQL so a revoked device or disabled account loses access
-immediately even while its access token is still unexpired.
+immediately even while its access token is still unexpired. Audit and change
+records buffered by the command are written just before the transaction commits.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,6 +25,7 @@ from beluno.contracts.errors import authentication_failed, authentication_unavai
 from beluno.db.models.iam import AuthSession, User
 from beluno.db.roles import set_actor_context
 from beluno.db.session import Database
+from beluno.modules.sync_audit.recorder import flush_pending_records
 from beluno.observability.context import get_request_id
 from beluno.token_hashing import TokenHasher
 
@@ -61,6 +63,12 @@ class CommandContext:
     request_id: str | None
     # Background work done for a user without a session (e.g. series materialization).
     on_behalf_of: UUID | None = None
+    # Set when the command carries an idempotency key; change rows point back to it.
+    operation_id: UUID | None = None
+    # Audit and change rows recorded by this command, written just before commit.
+    pending_audit: list[dict[str, Any]] = field(default_factory=list)
+    pending_changes: list[dict[str, Any]] = field(default_factory=list)
+    savepoint_depth: int = 0
 
     @property
     def settings(self) -> Settings:
@@ -82,6 +90,27 @@ class CommandContext:
         """Switch the RLS actor inside this transaction (sign-in and claim flows)."""
 
         await set_actor_context(self.session, user_id)
+
+    @asynccontextmanager
+    async def savepoint(self) -> AsyncIterator[None]:
+        """A nested transaction whose rollback also drops the records made inside it.
+
+        Use this instead of ``session.begin_nested()`` around anything that may call
+        ``record_mutation``; records otherwise wait in memory until commit and would
+        outlive the rolled-back rows they describe.
+        """
+
+        audit_mark, change_mark = len(self.pending_audit), len(self.pending_changes)
+        self.savepoint_depth += 1
+        try:
+            async with self.session.begin_nested():
+                yield
+        except BaseException:
+            del self.pending_audit[audit_mark:]
+            del self.pending_changes[change_mark:]
+            raise
+        finally:
+            self.savepoint_depth -= 1
 
 
 async def load_current_actor(
@@ -124,10 +153,12 @@ async def open_context(
     now = runtime.clock()
     async with runtime.database.transaction(actor.user_id if actor else None) as session:
         current_actor = await load_current_actor(session, actor, now) if actor else None
-        yield CommandContext(
+        ctx = CommandContext(
             runtime=runtime,
             session=session,
             now=now,
             actor=current_actor,
             request_id=get_request_id(),
         )
+        yield ctx
+        await flush_pending_records(ctx)

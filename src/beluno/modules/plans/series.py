@@ -375,7 +375,7 @@ async def _insert_occurrence(
     try:
         # A savepoint keeps a concurrent duplicate from aborting the whole run. ON
         # CONFLICT is not usable here: RLS would require the new row to be readable.
-        async with ctx.session.begin_nested():
+        async with ctx.savepoint():
             await ctx.session.execute(statement)
     except IntegrityError:
         return None

@@ -100,7 +100,7 @@ async def create_group(
         updated_at=ctx.now,
     )
     try:
-        async with ctx.session.begin_nested():
+        async with ctx.savepoint():
             ctx.session.add(group)
             await ctx.session.flush()
             ctx.session.add(membership)
