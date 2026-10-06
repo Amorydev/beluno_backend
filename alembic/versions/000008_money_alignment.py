@@ -1,4 +1,4 @@
-"""Money alignment: expense time, the adjustment split, and readable revision history.
+"""Money alignment: expense details, money settings, the kitty, rates, consolidation, base changes.
 
 Revision ID: 000008_money_alignment
 Revises: 000007_trip_first_realignment
@@ -45,11 +45,15 @@ Forward action:
   ``finance.guard_budget`` now lets a budget's currency change (limits are
   re-denominated); existing rows read as number 0.
 
-Lock/scan risk: ``ALTER TABLE`` takes ACCESS EXCLUSIVE on
-``finance.expense_revisions``, ``finance.plan_ledger_heads``, and
-``finance.fund_settings`` briefly. New columns are nullable or carry a constant
+Lock/scan risk: ``ALTER TABLE`` takes ACCESS EXCLUSIVE briefly on
+``finance.expense_revisions``, ``finance.plan_ledger_heads``,
+``finance.fund_settings``, ``finance.cost_commitments``, and
+``finance.ledger_transactions``. New columns are nullable or carry a constant
 default (catalog-only, no rewrite, no trigger runs); the default is dropped
-right after. Replacing the split-method check scans the table once.
+right after. Replacing check constraints scans each table once. Replacing
+``finance.expected_postings`` and ``finance.verify_transaction`` takes effect
+for transactions committed after the migration; existing rows are not
+re-verified.
 
 Validation:
     SELECT count(*) FROM finance.expense_revisions WHERE source IS NULL;          -- 0
@@ -61,9 +65,15 @@ Validation:
     WHERE oid = 'finance.ledger_confirmations'::regclass;                       -- t
     SELECT relrowsecurity FROM pg_class WHERE oid = 'finance.fund_counts'::regclass; -- t
     SELECT has_table_privilege('api_runtime', 'finance.market_rates', 'INSERT');   -- f
+    SELECT count(*) FROM finance.ledger_transactions
+    WHERE kind = 'conversion' AND settlement_id IS NULL;                        -- 0
+    SELECT count(*) FROM finance.cost_commitments WHERE base_change_number <> 0;  -- 0
+    SELECT count(*) FROM finance.base_currency_changes;                          -- 0
 
-Compatibility: additive for stored data. The API adds request and response
-fields; old clients that send none of them keep working.
+Compatibility: additive for stored data (existing rows keep their meaning).
+The API adds request and response fields and endpoints; ``plan.update`` no
+longer accepts ``base_currency`` (use ``POST /v1/plans/{id}/base-currency``),
+accepted before launch. The API and worker must run this revision together.
 
 Rollback: forward-only. Restore the pre-migration backup if it fails in a shared
 environment.
