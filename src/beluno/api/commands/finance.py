@@ -13,6 +13,7 @@ from beluno.api.finance_presenters import (
     expense_response,
     fund_movement_response,
     fund_settings_response,
+    ledger_response,
     movement_draft,
     refund_draft,
     settlement_draft,
@@ -35,6 +36,9 @@ from beluno.contracts.finance import (
     FundMovementResponse,
     FundSettingsRequest,
     FundSettingsResponse,
+    LedgerConfirmRequest,
+    LedgerResponse,
+    LedgerSettingsRequest,
     RefundRequest,
     SettlementRequest,
     SettlementResponse,
@@ -42,7 +46,15 @@ from beluno.contracts.finance import (
     WaiverRequest,
 )
 from beluno.modules.context import CommandContext
-from beluno.modules.finance import budgets, commitments, expenses, funds, settlements, views
+from beluno.modules.finance import (
+    budgets,
+    commitments,
+    expenses,
+    funds,
+    ledger_settings,
+    settlements,
+    views,
+)
 from beluno.modules.finance.expenses import RevisionOrigin
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
 from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
@@ -212,6 +224,23 @@ async def _adjust(
 ) -> TransactionResponse:
     transaction = await funds.adjust_ledger(ctx, call.id("plan_id"), adjustment_draft(body))
     return transaction_response(await views.transaction_view(ctx, transaction))
+
+
+async def _configure_ledger(
+    ctx: CommandContext, call: CommandCall, body: LedgerSettingsRequest
+) -> LedgerResponse:
+    draft = ledger_settings.LedgerSettingsDraft(
+        count_personal_spend=body.count_personal_spend,
+        settle_tolerance_minor=body.settle_tolerance_minor,
+    )
+    return ledger_response(await ledger_settings.configure_ledger(ctx, call.id("plan_id"), draft))
+
+
+async def _confirm_ledger(
+    ctx: CommandContext, call: CommandCall, body: LedgerConfirmRequest
+) -> LedgerResponse:
+    snapshot = await ledger_settings.confirm_ledger(ctx, call.id("plan_id"), body.ledger_seq)
+    return ledger_response(snapshot)
 
 
 EXPENSE_CREATE = Command(
@@ -427,6 +456,29 @@ LEDGER_ADJUST = Command(
     rate_limit_target="plan_id",
 )
 
+LEDGER_CONFIGURE = Command(
+    name="ledger.configure",
+    payload_model=LedgerSettingsRequest,
+    response_model=LedgerResponse,
+    handler=_configure_ledger,
+    target_fields=("plan_id",),
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+LEDGER_CONFIRM = Command(
+    name="ledger.confirm",
+    payload_model=LedgerConfirmRequest,
+    response_model=LedgerResponse,
+    handler=_confirm_ledger,
+    target_fields=("plan_id",),
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
 COMMANDS: list[Command[Any, Any]] = [
     EXPENSE_CREATE,
     EXPENSE_REVISE,
@@ -446,4 +498,6 @@ COMMANDS: list[Command[Any, Any]] = [
     FUND_CONTRIBUTE,
     FUND_WITHDRAW,
     LEDGER_ADJUST,
+    LEDGER_CONFIGURE,
+    LEDGER_CONFIRM,
 ]

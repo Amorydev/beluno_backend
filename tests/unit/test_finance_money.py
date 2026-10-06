@@ -254,6 +254,17 @@ def test_debt_preview_is_deterministic_and_pays_out_the_fund() -> None:
         simplify_debts({a: 1, b: -2})
 
 
+def test_debt_preview_leaves_out_balances_within_the_tolerance() -> None:
+    a, b, c = PEOPLE[:3]
+    preview = simplify_debts({a: -103, b: 100, c: 3}, tolerance=5)
+    assert [
+        (t.from_participant_id, t.to_participant_id, t.amount_minor) for t in preview.transfers
+    ] == [(a, b, 100)]
+    assert simplify_debts({a: -3, b: 3}, tolerance=5).transfers == []
+    payout = simplify_debts({a: 10, b: 2}, fund_available=12, tolerance=5)
+    assert [(p.to_participant_id, p.amount_minor) for p in payout.fund_payouts] == [(a, 10)]
+
+
 def test_ledger_status_and_commitment_tiers() -> None:
     assert next_ledger_status(LedgerStatus.OPEN, balances_zero=True, has_live_settlement=False) is (
         LedgerStatus.OPEN

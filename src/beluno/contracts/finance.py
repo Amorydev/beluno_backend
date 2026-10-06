@@ -334,6 +334,11 @@ class FundAvailabilityResponse(BaseModel):
     available_minor: int
 
 
+class LedgerConfirmationResponse(BaseModel):
+    participant_id: UUID
+    confirmed_at: datetime
+
+
 class LedgerResponse(BaseModel):
     """The plan's balances per participant and currency, never netted across currencies."""
 
@@ -345,7 +350,41 @@ class LedgerResponse(BaseModel):
     fund: list[FundAvailabilityResponse] = Field(
         description="Money the participants recorded as pooled; Beluno holds and moves none"
     )
+    count_personal_spend: bool = Field(
+        description="Budgets count expenses whose only payer is their only sharer"
+    )
+    settle_tolerance_minor: int = Field(
+        description="Base-currency balances at or under this count as settled"
+    )
+    confirmations: list[LedgerConfirmationResponse] = Field(
+        description="Who confirmed the ledger at the current ledger_seq; any new entry clears it"
+    )
     version: int
+
+
+class LedgerSettingsRequest(BaseModel):
+    """Change only the settings sent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    count_personal_spend: bool | None = None
+    settle_tolerance_minor: StrictInt | None = Field(default=None, ge=0, le=10**10)
+
+    @model_validator(mode="after")
+    def something_changes(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("send at least one setting to change")
+        if any(getattr(self, name) is None for name in self.model_fields_set):
+            raise ValueError("settings cannot be null")
+        return self
+
+
+class LedgerConfirmRequest(BaseModel):
+    """Confirm the ledger exactly as you saw it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ledger_seq: StrictInt = Field(ge=0)
 
 
 SettlementMethod = Literal["cash", "bank_transfer", "card", "mobile_payment", "other"]

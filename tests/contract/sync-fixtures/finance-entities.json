@@ -24,6 +24,8 @@
             "participant_id": "01a110e9-fca6-7aaa-920f-c280d3ca2413"
           }
         ],
+        "confirmations": [],
+        "count_personal_spend": true,
         "disputed_settlements": 0,
         "fund": [
           {
@@ -33,6 +35,7 @@
         ],
         "ledger_seq": 4,
         "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+        "settle_tolerance_minor": 0,
         "status": "open",
         "version": 5
       },

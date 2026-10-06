@@ -56,6 +56,8 @@ The `guest` role belongs to guest identities, which never pass
 | plan.fund.contribute | allow | allow | allow | deny | allow | deny |
 | plan.fund.manage | allow | allow | deny | deny | deny | deny |
 | plan.ledger.adjust | step-up | deny | deny | deny | deny | deny |
+| plan.ledger.configure | allow | allow | deny | deny | deny | deny |
+| plan.ledger.confirm | allow | allow | allow | allow | allow | deny |
 <!-- plan-matrix:end -->
 
 State narrowing (applies on top of the table):

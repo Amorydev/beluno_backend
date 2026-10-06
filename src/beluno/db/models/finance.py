@@ -44,9 +44,26 @@ class LedgerHead(Base):
     ledger_seq: Mapped[int] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(Text)
     disputed_settlements: Mapped[int]
+    # Money settings: whether budgets count personal spend, and the base-currency
+    # balance below which a person counts as settled.
+    count_personal_spend: Mapped[bool]
+    settle_tolerance_minor: Mapped[int] = mapped_column(BigInteger)
     version: Mapped[int]
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
+
+
+class LedgerConfirmation(Base):
+    """A participant said the ledger looked right at one sequence (append-only)."""
+
+    __tablename__ = "ledger_confirmations"
+    __table_args__ = SCHEMA
+
+    plan_id: Mapped[UUID] = mapped_column(primary_key=True)
+    participant_id: Mapped[UUID] = mapped_column(primary_key=True)
+    ledger_seq: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    confirmed_by_user_id: Mapped[UUID]
+    confirmed_at: Mapped[datetime]
 
 
 class LedgerAccount(Base):

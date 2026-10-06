@@ -28,10 +28,12 @@ from beluno.db.models.finance import (
     CostCommitment,
     Currency,
     Expense,
+    ExpensePayer,
     ExpenseRefund,
     ExpenseRevision,
     ExpenseSplit,
     FxSnapshot,
+    LedgerHead,
     LedgerTransaction,
     RefundShare,
 )
@@ -197,14 +199,20 @@ async def get_budgets(ctx: CommandContext, plan_id: UUID) -> BudgetOverview:
     )
     per_participant: dict[UUID, int] = defaultdict(int)
     per_day: dict[date, int] = defaultdict(int)
+    head = await ctx.session.get(LedgerHead, plan_id)
+    count_personal = head.count_personal_spend if head is not None else True
     live = await _live_revisions(ctx, plan_id)
     splits_by_revision = await _splits(ctx, [revision.id for revision, _ in live])
+    payers_by_revision = await _payers(ctx, [revision.id for revision, _ in live])
     refunds_by_expense = await _live_refund_shares(ctx, [r.expense_id for r, _ in live])
     for revision, rate in live:
+        splits = splits_by_revision.get(revision.id, [])
+        if not count_personal and _personal(payers_by_revision.get(revision.id, []), splits):
+            continue
         refunds = refunds_by_expense.get(revision.expense_id, {})
         net = revision.amount_minor - sum(refunds.values())
         consumption: dict[UUID, int] = defaultdict(int)
-        for participant_id, owed in splits_by_revision.get(revision.id, []):
+        for participant_id, owed in splits:
             consumption[_resolve(merged, participant_id)] += owed
         for participant_id, amount in refunds.items():
             consumption[_resolve(merged, participant_id)] -= amount
@@ -306,6 +314,26 @@ async def _splits(
     for revision_id, participant_id, owed in rows.all():
         found[revision_id].append((participant_id, owed))
     return found
+
+
+async def _payers(ctx: CommandContext, revision_ids: list[UUID]) -> dict[UUID, list[UUID | None]]:
+    found: dict[UUID, list[UUID | None]] = defaultdict(list)
+    if not revision_ids:
+        return found
+    rows = await ctx.session.execute(
+        select(ExpensePayer.revision_id, ExpensePayer.participant_id)
+        .where(ExpensePayer.revision_id.in_(revision_ids))
+        .order_by(ExpensePayer.revision_id, ExpensePayer.position)
+    )
+    for revision_id, participant_id in rows.all():
+        found[revision_id].append(participant_id)
+    return found
+
+
+def _personal(payers: list[UUID | None], splits: list[tuple[UUID, int]]) -> bool:
+    """One participant paid and is the only one sharing it."""
+
+    return len(payers) == 1 and len(splits) == 1 and payers[0] == splits[0][0]
 
 
 async def _live_refund_shares(

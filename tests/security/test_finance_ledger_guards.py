@@ -104,8 +104,8 @@ class Entry:
         accounts = {person: str(new_id()) for person in people}
         connection.execute(
             "INSERT INTO finance.plan_ledger_heads (plan_id, ledger_seq, status, "
-            "disputed_settlements, version, created_at, updated_at) "
-            "VALUES (%s, %s, 'open', 0, 1, now(), now())",
+            "disputed_settlements, count_personal_spend, settle_tolerance_minor, version, "
+            "created_at, updated_at) VALUES (%s, %s, 'open', 0, true, 0, 1, now(), now())",
             (self.plan_id, self.head_seq),
         )
         for person, account in accounts.items():
@@ -190,7 +190,7 @@ def test_finance_tables_are_rls_protected_and_never_deletable(admin: AdminDataba
         "SELECT c.relname, c.relrowsecurity, pg_get_userbyid(c.relowner) FROM pg_class c "
         "WHERE c.relnamespace = 'finance'::regnamespace AND c.relkind = 'r'"
     )
-    assert len(tables) == 18
+    assert len(tables) == 19
     assert all(rls and owner == "migrator" for _, rls, owner in tables), tables
     for role in ("api_runtime", "worker_runtime"):
         deletable = admin.fetch(

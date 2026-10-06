@@ -264,6 +264,21 @@ class Ledger:
         for (participant_id, _currency), account in self.accounts.items():
             if participant_id is None and self.balances[account.id].balance_minor > 0:
                 raise fund_insufficient()
+        await self.update_status()
+        await self.touch()
+
+    def everyone_settled(self) -> bool:
+        """Every participant is at zero; base-currency balances within the tolerance count."""
+
+        base = self.access.plan.base_currency
+        tolerance = self.head.settle_tolerance_minor
+        return all(
+            abs(self.balances[account.id].balance_minor) <= (tolerance if currency == base else 0)
+            for (participant_id, currency), account in self.accounts.items()
+            if participant_id is not None
+        )
+
+    async def update_status(self) -> None:
         live_settlements = (
             await self.ctx.session.execute(
                 select(func.count())
@@ -274,17 +289,11 @@ class Ledger:
                 )
             )
         ).scalar_one()
-        balances_zero = all(
-            self.balances[account.id].balance_minor == 0
-            for (participant_id, _currency), account in self.accounts.items()
-            if participant_id is not None
-        )
         self.head.status = next_ledger_status(
             LedgerStatus(self.head.status),
-            balances_zero=balances_zero,
+            balances_zero=self.everyone_settled(),
             has_live_settlement=live_settlements > 0,
         ).value
-        await self.touch()
 
     async def touch(self) -> None:
         """Bump the ledger entity version (balances, status, or dispute count changed)."""
@@ -378,6 +387,8 @@ async def lock_head(ctx: CommandContext, plan_id: UUID) -> LedgerHead:
         ledger_seq=0,
         status=LedgerStatus.OPEN.value,
         disputed_settlements=0,
+        count_personal_spend=True,
+        settle_tolerance_minor=0,
         version=1,
         created_at=ctx.now,
         updated_at=ctx.now,

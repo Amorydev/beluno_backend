@@ -62,7 +62,9 @@ from beluno.contracts.finance import (
     FundResponse,
     FundSettingsRequest,
     FundSettingsResponse,
+    LedgerConfirmRequest,
     LedgerResponse,
+    LedgerSettingsRequest,
     RefundRequest,
     RevisionResponse,
     SettlementPreviewResponse,
@@ -234,6 +236,36 @@ def _seq_cursor(cursor: str | None) -> int | None:
     if not cursor.isdigit() or len(cursor) > 18:
         raise validation_error("cursor is invalid")
     return int(cursor)
+
+
+@router.patch("/ledger/settings", response_model=LedgerResponse, responses=WRITE_ERRORS)
+async def configure_ledger(
+    plan_id: UUID,
+    body: LedgerSettingsRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> LedgerResponse:
+    """Money settings (managers): count personal spend, and the settled-under tolerance."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.LEDGER_CONFIGURE, call, body))
+
+
+@router.post("/ledger/confirm", response_model=LedgerResponse, responses=WRITE_ERRORS)
+async def confirm_ledger(
+    plan_id: UUID,
+    body: LedgerConfirmRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> LedgerResponse:
+    """Say the ledger at ``ledger_seq`` looks right to you; any later entry makes it stale."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.LEDGER_CONFIRM, call, body))
 
 
 @router.get("/ledger/transactions", response_model=TransactionPage, responses=READ_ERRORS)

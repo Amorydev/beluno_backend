@@ -26,6 +26,7 @@ from beluno.contracts.finance import (
     FundMovementResponse,
     FundSettingsResponse,
     LedgerBalanceResponse,
+    LedgerConfirmationResponse,
     LedgerResponse,
     PaidAmountResponse,
     PayerResponse,
@@ -338,6 +339,14 @@ def ledger_response(snapshot: LedgerSnapshot) -> LedgerResponse:
                 )
                 for view in snapshot.accounts
                 if view.account.participant_id is None
+            ],
+            "count_personal_spend": head.count_personal_spend if head else True,
+            "settle_tolerance_minor": head.settle_tolerance_minor if head else 0,
+            "confirmations": [
+                LedgerConfirmationResponse(
+                    participant_id=row.participant_id, confirmed_at=row.confirmed_at
+                )
+                for row in snapshot.confirmations
             ],
             "version": head.version if head else 0,
         }
