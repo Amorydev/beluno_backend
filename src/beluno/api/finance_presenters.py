@@ -8,6 +8,11 @@ from pydantic import BaseModel, TypeAdapter
 
 from beluno.contracts.finance import (
     BaseAmountResponse,
+    BudgetOverviewResponse,
+    BudgetResponse,
+    CommitmentCreateRequest,
+    CommitmentResponse,
+    CommitmentUpdateRequest,
     CurrencyResponse,
     EqualSplit,
     ExactSplit,
@@ -30,18 +35,27 @@ from beluno.contracts.finance import (
     SettlementResponse,
     ShareResponse,
     SharesSplit,
+    SpendResponse,
     Split,
     SuggestedFundPayout,
     SuggestedTransfer,
     TransactionResponse,
     WaiverRequest,
 )
-from beluno.db.models.finance import Currency, Expense, Settlement
+from beluno.db.models.finance import (
+    Budget,
+    CostCommitment,
+    Currency,
+    Expense,
+    FxSnapshot,
+    Settlement,
+)
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.budgets import BudgetOverview, Spend
+from beluno.modules.finance.commitments import CommitmentDraft, CommitmentView, commitment_view
 from beluno.modules.finance.expenses import (
     ExpenseDraft,
     ExpenseView,
-    RateInput,
     RefundDraft,
     RefundView,
     RevisionView,
@@ -49,6 +63,7 @@ from beluno.modules.finance.expenses import (
 )
 from beluno.modules.finance.fx import RateSource
 from beluno.modules.finance.postings import FUND, Party
+from beluno.modules.finance.rates import RateInput
 from beluno.modules.finance.settlements import (
     SettlementDraft,
     SettlementView,
@@ -63,7 +78,7 @@ from beluno.modules.finance.splits import (
     SplitMethod,
     SplitSpec,
 )
-from beluno.modules.finance.states import LedgerStatus
+from beluno.modules.finance.states import CommitmentState, LedgerStatus
 from beluno.modules.finance.views import (
     CurrencyPreview,
     ExplanationLine,
@@ -142,6 +157,7 @@ def expense_draft(body: ExpenseRequest) -> ExpenseDraft:
             if body.base_rate
             else None
         ),
+        commitment_id=body.commitment_id,
     )
 
 
@@ -163,34 +179,37 @@ def refund_draft(body: RefundRequest) -> RefundDraft:
 # --- read models -> responses ------------------------------------------------------
 
 
-def revision_response(view: RevisionView) -> RevisionResponse:
-    revision = view.revision
-    if revision.currency == revision.base_currency:
-        base = BaseAmountResponse(
-            currency=revision.base_currency,
-            amount_minor=revision.base_amount_minor,
+def base_amount(
+    currency: str, base_currency: str, amount_minor: int | None, rate: FxSnapshot | None
+) -> BaseAmountResponse:
+    if currency == base_currency:
+        return BaseAmountResponse(
+            currency=base_currency,
+            amount_minor=amount_minor,
             rate=None,
             rate_source="identity",
             rate_as_of=None,
         )
-    elif view.base_rate is not None:
-        base = BaseAmountResponse.model_validate(
+    if rate is not None:
+        return BaseAmountResponse.model_validate(
             {
-                "currency": revision.base_currency,
-                "amount_minor": revision.base_amount_minor,
-                "rate": rate_text(view.base_rate.rate),
-                "rate_source": view.base_rate.source,
-                "rate_as_of": view.base_rate.as_of,
+                "currency": base_currency,
+                "amount_minor": amount_minor,
+                "rate": rate_text(rate.rate),
+                "rate_source": rate.source,
+                "rate_as_of": rate.as_of,
             }
         )
-    else:
-        base = BaseAmountResponse(
-            currency=revision.base_currency,
-            amount_minor=None,
-            rate=None,
-            rate_source=None,
-            rate_as_of=None,
-        )
+    return BaseAmountResponse(
+        currency=base_currency, amount_minor=None, rate=None, rate_source=None, rate_as_of=None
+    )
+
+
+def revision_response(view: RevisionView) -> RevisionResponse:
+    revision = view.revision
+    base = base_amount(
+        revision.currency, revision.base_currency, revision.base_amount_minor, view.base_rate
+    )
     return RevisionResponse.model_validate(
         {
             "id": revision.id,
@@ -216,6 +235,7 @@ def revision_response(view: RevisionView) -> RevisionResponse:
                 for split in view.splits
             ],
             "base": base,
+            "commitment_id": revision.commitment_id,
             "created_by_user_id": revision.created_by_user_id,
             "created_at": revision.created_at,
         }
@@ -298,6 +318,10 @@ async def present_finance_current(ctx: CommandContext, entity: object) -> BaseMo
         return expense_response(await expense_view(ctx, entity))
     if isinstance(entity, Settlement):
         return settlement_response(await settlement_view(ctx, entity))
+    if isinstance(entity, Budget):
+        return budget_response(entity)
+    if isinstance(entity, CostCommitment):
+        return commitment_response(await commitment_view(ctx, entity))
     return None
 
 
@@ -438,4 +462,106 @@ def preview_response(preview: CurrencyPreview) -> SettlementPreviewResponse:
             SuggestedFundPayout(to_participant_id=p.to_participant_id, amount_minor=p.amount_minor)
             for p in preview.preview.fund_payouts
         ],
+    )
+
+
+# --- budgets and commitments --------------------------------------------------------
+
+
+def budget_response(budget: Budget) -> BudgetResponse:
+    return BudgetResponse.model_validate(
+        {
+            "id": budget.id,
+            "plan_id": budget.plan_id,
+            "scope": budget.scope,
+            "category": budget.category,
+            "participant_id": budget.participant_id,
+            "currency": budget.currency,
+            "limit_minor": budget.limit_minor,
+            "version": budget.version,
+            "created_at": budget.created_at,
+            "updated_at": budget.updated_at,
+        }
+    )
+
+
+def spend_response(spend: Spend) -> SpendResponse:
+    return SpendResponse(
+        actual_minor=spend.actual,
+        committed_minor=spend.committed,
+        estimated_minor=spend.estimated,
+        projected_minor=spend.projected,
+    )
+
+
+def budget_overview_response(overview: BudgetOverview) -> BudgetOverviewResponse:
+    return BudgetOverviewResponse.model_validate(
+        {
+            "currency": overview.currency,
+            "total": spend_response(overview.total),
+            "categories": [
+                {"category": category, "spend": spend_response(spend)}
+                for category, spend in sorted(overview.categories.items())
+            ],
+            "unconverted": [
+                {"tier": tier.value, "currency": currency, "amount_minor": amount}
+                for (tier, currency), amount in sorted(overview.unconverted.items())
+            ],
+            "estimated_rates": overview.estimated_rates,
+            "budgets": [
+                {
+                    "budget": budget_response(usage.budget),
+                    "spend": spend_response(usage.spend),
+                    "remaining_minor": usage.budget.limit_minor - usage.spend.projected,
+                    "over_limit": usage.over_limit,
+                    "days": [{"date": day, "actual_minor": amount} for day, amount in usage.days],
+                }
+                for usage in overview.budgets
+            ],
+        }
+    )
+
+
+def commitment_draft(body: CommitmentCreateRequest | CommitmentUpdateRequest) -> CommitmentDraft:
+    return CommitmentDraft(
+        category=body.category,
+        description=body.description,
+        currency=body.currency,
+        amount_minor=body.amount_minor,
+        state=CommitmentState(body.state),
+        base_rate=(
+            RateInput(
+                rate=body.base_rate.rate,
+                source=RateSource(body.base_rate.source),
+                as_of=body.base_rate.as_of,
+            )
+            if body.base_rate
+            else None
+        ),
+    )
+
+
+def commitment_response(view: CommitmentView) -> CommitmentResponse:
+    commitment = view.commitment
+    return CommitmentResponse.model_validate(
+        {
+            "id": commitment.id,
+            "plan_id": commitment.plan_id,
+            "source_type": commitment.source_type,
+            "source_id": commitment.source_id,
+            "commitment_kind": commitment.commitment_kind,
+            "state": commitment.state,
+            "category": commitment.category,
+            "description": commitment.description,
+            "currency": commitment.currency,
+            "amount_minor": commitment.amount_minor,
+            "base": base_amount(
+                commitment.currency, view.base_currency, commitment.base_amount_minor, view.rate
+            ),
+            "expense_id": commitment.expense_id,
+            "created_by_user_id": commitment.created_by_user_id,
+            "version": commitment.version,
+            "created_at": commitment.created_at,
+            "updated_at": commitment.updated_at,
+        }
     )

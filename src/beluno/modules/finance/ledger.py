@@ -295,12 +295,26 @@ async def open_ledger(ctx: CommandContext, plan_id: UUID, action: PlanAction) ->
 
     access = await load_plan(ctx, plan_id, for_update=True)
     require_plan(access, action)
+    return await ledger_for(ctx, access)
+
+
+async def ledger_for(ctx: CommandContext, access: PlanAccess) -> Ledger:
+    """Take the ledger lock for a plan the caller already loaded and authorized.
+
+    Other modules reach the ledger only through finance ports, which call this
+    after their own policy check (for example the planning module recording a
+    booking's cost commitment).
+    """
+
+    plan_id = access.plan.id
     head = await lock_head(ctx, plan_id)
     participants = {
         row.id: row
         for row in (
             await ctx.session.execute(
-                select(PlanParticipant).where(PlanParticipant.plan_id == plan_id)
+                select(PlanParticipant)
+                .where(PlanParticipant.plan_id == plan_id)
+                .execution_options(populate_existing=True)
             )
         ).scalars()
     }

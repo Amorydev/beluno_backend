@@ -119,6 +119,292 @@
         "title": "BaseAmountResponse",
         "type": "object"
       },
+      "BudgetCreateRequest": {
+        "additionalProperties": false,
+        "description": "A limit in the plan's base currency; ``daily`` applies to every day.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "food",
+                  "lodging",
+                  "transport",
+                  "activities",
+                  "shopping",
+                  "groceries",
+                  "fees",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "limit_minor": {
+            "title": "Limit Minor",
+            "type": "integer"
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          },
+          "scope": {
+            "enum": [
+              "total",
+              "category",
+              "participant",
+              "daily"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "limit_minor"
+        ],
+        "title": "BudgetCreateRequest",
+        "type": "object"
+      },
+      "BudgetOverviewResponse": {
+        "properties": {
+          "budgets": {
+            "items": {
+              "$ref": "#/components/schemas/BudgetUsageResponse"
+            },
+            "title": "Budgets",
+            "type": "array"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategorySpend"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "estimated_rates": {
+            "description": "Some totals use offline estimated rates",
+            "title": "Estimated Rates",
+            "type": "boolean"
+          },
+          "total": {
+            "$ref": "#/components/schemas/SpendResponse"
+          },
+          "unconverted": {
+            "items": {
+              "$ref": "#/components/schemas/UnconvertedSpend"
+            },
+            "title": "Unconverted",
+            "type": "array"
+          }
+        },
+        "required": [
+          "currency",
+          "total",
+          "categories",
+          "unconverted",
+          "estimated_rates",
+          "budgets"
+        ],
+        "title": "BudgetOverviewResponse",
+        "type": "object"
+      },
+      "BudgetResponse": {
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "food",
+                  "lodging",
+                  "transport",
+                  "activities",
+                  "shopping",
+                  "groceries",
+                  "fees",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "limit_minor": {
+            "title": "Limit Minor",
+            "type": "integer"
+          },
+          "participant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Participant Id"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "scope": {
+            "enum": [
+              "total",
+              "category",
+              "participant",
+              "daily"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "plan_id",
+          "scope",
+          "category",
+          "participant_id",
+          "currency",
+          "limit_minor",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BudgetResponse",
+        "type": "object"
+      },
+      "BudgetUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "limit_minor": {
+            "title": "Limit Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "limit_minor"
+        ],
+        "title": "BudgetUpdateRequest",
+        "type": "object"
+      },
+      "BudgetUsageResponse": {
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/BudgetResponse"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DaySpend"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "over_limit": {
+            "title": "Over Limit",
+            "type": "boolean"
+          },
+          "remaining_minor": {
+            "title": "Remaining Minor",
+            "type": "integer"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/SpendResponse"
+          }
+        },
+        "required": [
+          "budget",
+          "spend",
+          "remaining_minor",
+          "over_limit",
+          "days"
+        ],
+        "title": "BudgetUsageResponse",
+        "type": "object"
+      },
+      "CategorySpend": {
+        "properties": {
+          "category": {
+            "enum": [
+              "food",
+              "lodging",
+              "transport",
+              "activities",
+              "shopping",
+              "groceries",
+              "fees",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/SpendResponse"
+          }
+        },
+        "required": [
+          "category",
+          "spend"
+        ],
+        "title": "CategorySpend",
+        "type": "object"
+      },
       "ChangeItem": {
         "description": "One entity state to apply. ``seq`` is null for snapshot rows.\n\n``data`` is the entity's public representation (the same contract the REST\nresource returns) and is null for ``delete``. Apply an upsert only when\n``version`` is at least the locally stored version. A delete carries the\nversion at which the row disappeared and beats every upsert with a version\nnot greater than it; an upsert with a greater version revives the entity\n(a membership that was left and joined again).",
         "properties": {
@@ -292,6 +578,268 @@
         "title": "CommandInfo",
         "type": "object"
       },
+      "CommitmentCreateRequest": {
+        "additionalProperties": false,
+        "description": "A planned cost; link it from the expense that pays it to count it once.",
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "base_rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "default": "other",
+            "enum": [
+              "food",
+              "lodging",
+              "transport",
+              "activities",
+              "shopping",
+              "groceries",
+              "fees",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "state": {
+            "default": "estimated",
+            "enum": [
+              "estimated",
+              "committed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "currency",
+          "amount_minor"
+        ],
+        "title": "CommitmentCreateRequest",
+        "type": "object"
+      },
+      "CommitmentResponse": {
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "base": {
+            "$ref": "#/components/schemas/BaseAmountResponse"
+          },
+          "category": {
+            "enum": [
+              "food",
+              "lodging",
+              "transport",
+              "activities",
+              "shopping",
+              "groceries",
+              "fees",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "commitment_kind": {
+            "title": "Commitment Kind",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "format": "uuid",
+            "title": "Created By User Id",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "expense_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_type": {
+            "enum": [
+              "manual",
+              "booking",
+              "itinerary_item",
+              "place",
+              "responsibility"
+            ],
+            "title": "Source Type",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "estimated",
+              "committed",
+              "converted_to_expense",
+              "cancelled",
+              "refunded"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "plan_id",
+          "source_type",
+          "source_id",
+          "commitment_kind",
+          "state",
+          "category",
+          "description",
+          "currency",
+          "amount_minor",
+          "base",
+          "expense_id",
+          "created_by_user_id",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CommitmentResponse",
+        "type": "object"
+      },
+      "CommitmentUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "base_rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "default": "other",
+            "enum": [
+              "food",
+              "lodging",
+              "transport",
+              "activities",
+              "shopping",
+              "groceries",
+              "fees",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "estimated",
+              "committed",
+              "cancelled",
+              "refunded"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "currency",
+          "amount_minor",
+          "state"
+        ],
+        "title": "CommitmentUpdateRequest",
+        "type": "object"
+      },
       "CreatedInviteResponse": {
         "properties": {
           "allow_guests": {
@@ -439,6 +987,25 @@
           "user_id"
         ],
         "title": "CurrentActorResponse",
+        "type": "object"
+      },
+      "DaySpend": {
+        "properties": {
+          "actual_minor": {
+            "title": "Actual Minor",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "actual_minor"
+        ],
+        "title": "DaySpend",
         "type": "object"
       },
       "DeviceRequest": {
@@ -717,6 +1284,19 @@
             "title": "Category",
             "type": "string"
           },
+          "commitment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The planned cost this expense pays for; it then counts once, as actual",
+            "title": "Commitment Id"
+          },
           "currency": {
             "pattern": "^[A-Z]{3}$",
             "title": "Currency",
@@ -841,6 +1421,19 @@
             ],
             "title": "Category",
             "type": "string"
+          },
+          "commitment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The planned cost this expense pays for; it then counts once, as actual",
+            "title": "Commitment Id"
           },
           "currency": {
             "pattern": "^[A-Z]{3}$",
@@ -4234,6 +4827,18 @@
             "title": "Category",
             "type": "string"
           },
+          "commitment_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commitment Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -4340,6 +4945,7 @@
           "split_algorithm",
           "shares",
           "base",
+          "commitment_id",
           "created_by_user_id",
           "created_at"
         ],
@@ -5295,6 +5901,35 @@
         "title": "SharesSplit",
         "type": "object"
       },
+      "SpendResponse": {
+        "properties": {
+          "actual_minor": {
+            "title": "Actual Minor",
+            "type": "integer"
+          },
+          "committed_minor": {
+            "title": "Committed Minor",
+            "type": "integer"
+          },
+          "estimated_minor": {
+            "title": "Estimated Minor",
+            "type": "integer"
+          },
+          "projected_minor": {
+            "description": "Actual plus committed plus estimated",
+            "title": "Projected Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "actual_minor",
+          "committed_minor",
+          "estimated_minor",
+          "projected_minor"
+        ],
+        "title": "SpendResponse",
+        "type": "object"
+      },
       "SplitExtra": {
         "additionalProperties": false,
         "description": "Tax, tip, or a service charge, spread over the item subtotals.",
@@ -6128,6 +6763,35 @@
           "version"
         ],
         "title": "TravelSegmentResponse",
+        "type": "object"
+      },
+      "UnconvertedSpend": {
+        "description": "Spend or planned cost in another currency without a rate; not in the totals.",
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "actual",
+              "committed",
+              "estimated"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tier",
+          "currency",
+          "amount_minor"
+        ],
+        "title": "UnconvertedSpend",
         "type": "object"
       },
       "UserProfileResponse": {
@@ -10691,6 +11355,1022 @@
         "summary": "Update Plan",
         "tags": [
           "plans"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/budgets": {
+      "get": {
+        "description": "Limits against actual, committed, and estimated spend in the plan's base currency.",
+        "operationId": "get_budgets_v1_plans__plan_id__budgets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Budgets",
+        "tags": [
+          "finance"
+        ]
+      },
+      "post": {
+        "operationId": "create_budget_v1_plans__plan_id__budgets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Budget",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/budgets/{budget_id}": {
+      "delete": {
+        "operationId": "delete_budget_v1_plans__plan_id__budgets__budget_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "budget_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Budget Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Budget",
+        "tags": [
+          "finance"
+        ]
+      },
+      "patch": {
+        "operationId": "update_budget_v1_plans__plan_id__budgets__budget_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "budget_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Budget Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Budget",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/commitments": {
+      "get": {
+        "description": "Planned and committed costs from every module, with the expense that settled each.",
+        "operationId": "list_commitments_v1_plans__plan_id__commitments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CommitmentResponse"
+                  },
+                  "title": "Response List Commitments V1 Plans  Plan Id  Commitments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Commitments",
+        "tags": [
+          "finance"
+        ]
+      },
+      "post": {
+        "operationId": "create_commitment_v1_plans__plan_id__commitments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitmentCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Commitment",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/commitments/{commitment_id}": {
+      "put": {
+        "operationId": "update_commitment_v1_plans__plan_id__commitments__commitment_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "commitment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Commitment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitmentUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Commitment",
+        "tags": [
+          "finance"
         ]
       }
     },

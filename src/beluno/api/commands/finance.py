@@ -1,4 +1,4 @@
-"""Finance commands: expenses, refunds, settlements, and waivers."""
+"""Finance commands: expenses, refunds, settlements, waivers, budgets, and commitments."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ from typing import Any
 
 from beluno.api.commands.groups import required_version
 from beluno.api.finance_presenters import (
+    budget_response,
+    commitment_draft,
+    commitment_response,
     expense_draft,
     expense_response,
     refund_draft,
@@ -14,6 +17,12 @@ from beluno.api.finance_presenters import (
     waiver_draft,
 )
 from beluno.contracts.finance import (
+    BudgetCreateRequest,
+    BudgetResponse,
+    BudgetUpdateRequest,
+    CommitmentCreateRequest,
+    CommitmentResponse,
+    CommitmentUpdateRequest,
     ExpenseCreateRequest,
     ExpenseRequest,
     ExpenseResponse,
@@ -23,7 +32,7 @@ from beluno.contracts.finance import (
     WaiverRequest,
 )
 from beluno.modules.context import CommandContext
-from beluno.modules.finance import expenses, settlements
+from beluno.modules.finance import budgets, commitments, expenses, settlements
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
 from beluno.sync.commands import Command, CommandCall, EmptyPayload, version_of
 
@@ -101,6 +110,51 @@ async def _reverse(
         ctx, call.id("plan_id"), call.id("settlement_id"), required_version(call)
     )
     return settlement_response(view)
+
+
+async def _create_budget(
+    ctx: CommandContext, call: CommandCall, body: BudgetCreateRequest
+) -> BudgetResponse:
+    draft = budgets.BudgetDraft(
+        scope=body.scope,
+        category=body.category,
+        participant_id=body.participant_id,
+        limit_minor=body.limit_minor,
+    )
+    return budget_response(await budgets.create_budget(ctx, call.id("plan_id"), body.id, draft))
+
+
+async def _update_budget(
+    ctx: CommandContext, call: CommandCall, body: BudgetUpdateRequest
+) -> BudgetResponse:
+    budget = await budgets.update_budget(
+        ctx, call.id("plan_id"), call.id("budget_id"), body.limit_minor, required_version(call)
+    )
+    return budget_response(budget)
+
+
+async def _delete_budget(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> None:
+    await budgets.delete_budget(ctx, call.id("plan_id"), call.id("budget_id"))
+
+
+async def _create_commitment(
+    ctx: CommandContext, call: CommandCall, body: CommitmentCreateRequest
+) -> CommitmentResponse:
+    view = await commitments.create_manual(ctx, call.id("plan_id"), body.id, commitment_draft(body))
+    return commitment_response(view)
+
+
+async def _update_commitment(
+    ctx: CommandContext, call: CommandCall, body: CommitmentUpdateRequest
+) -> CommitmentResponse:
+    view = await commitments.update_manual(
+        ctx,
+        call.id("plan_id"),
+        call.id("commitment_id"),
+        commitment_draft(body),
+        required_version(call),
+    )
+    return commitment_response(view)
 
 
 EXPENSE_CREATE = Command(
@@ -211,6 +265,66 @@ SETTLEMENT_REVERSE = Command(
     rate_limit_target="plan_id",
 )
 
+BUDGET_CREATE = Command(
+    name="budget.create",
+    payload_model=BudgetCreateRequest,
+    response_model=BudgetResponse,
+    handler=_create_budget,
+    target_fields=("plan_id",),
+    status=201,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+BUDGET_UPDATE = Command(
+    name="budget.update",
+    payload_model=BudgetUpdateRequest,
+    response_model=BudgetResponse,
+    handler=_update_budget,
+    target_fields=("plan_id", "budget_id"),
+    versioned=True,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+BUDGET_DELETE = Command(
+    name="budget.delete",
+    payload_model=EmptyPayload,
+    response_model=None,
+    handler=_delete_budget,
+    target_fields=("plan_id", "budget_id"),
+    status=204,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+COMMITMENT_CREATE = Command(
+    name="commitment.create",
+    payload_model=CommitmentCreateRequest,
+    response_model=CommitmentResponse,
+    handler=_create_commitment,
+    target_fields=("plan_id",),
+    status=201,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+COMMITMENT_UPDATE = Command(
+    name="commitment.update",
+    payload_model=CommitmentUpdateRequest,
+    response_model=CommitmentResponse,
+    handler=_update_commitment,
+    target_fields=("plan_id", "commitment_id"),
+    versioned=True,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
 COMMANDS: list[Command[Any, Any]] = [
     EXPENSE_CREATE,
     EXPENSE_REVISE,
@@ -221,4 +335,9 @@ COMMANDS: list[Command[Any, Any]] = [
     SETTLEMENT_CONFIRM,
     SETTLEMENT_DISPUTE,
     SETTLEMENT_REVERSE,
+    BUDGET_CREATE,
+    BUDGET_UPDATE,
+    BUDGET_DELETE,
+    COMMITMENT_CREATE,
+    COMMITMENT_UPDATE,
 ]

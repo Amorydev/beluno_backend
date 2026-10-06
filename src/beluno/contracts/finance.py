@@ -170,6 +170,10 @@ class ExpenseRequest(BaseModel):
         default=None,
         description="Rate to the plan's base currency, for budgets and display only",
     )
+    commitment_id: UUID | None = Field(
+        default=None,
+        description="The planned cost this expense pays for; it then counts once, as actual",
+    )
 
 
 class ExpenseCreateRequest(ExpenseRequest):
@@ -254,6 +258,7 @@ class RevisionResponse(BaseModel):
     split_algorithm: str
     shares: list[ShareResponse]
     base: BaseAmountResponse
+    commitment_id: UUID | None
     created_by_user_id: UUID
     created_at: datetime
 
@@ -458,3 +463,126 @@ class SettlementPreviewResponse(BaseModel):
     currency: str
     transfers: list[SuggestedTransfer]
     fund_payouts: list[SuggestedFundPayout]
+
+
+BudgetScope = Literal["total", "category", "participant", "daily"]
+CommitmentStateName = Literal[
+    "estimated", "committed", "converted_to_expense", "cancelled", "refunded"
+]
+
+
+class BudgetCreateRequest(BaseModel):
+    """A limit in the plan's base currency; ``daily`` applies to every day."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    scope: BudgetScope
+    category: ExpenseCategory | None = None
+    participant_id: UUID | None = None
+    limit_minor: StrictInt
+
+
+class BudgetUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    limit_minor: StrictInt
+
+
+class BudgetResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    scope: BudgetScope
+    category: ExpenseCategory | None
+    participant_id: UUID | None
+    currency: str
+    limit_minor: int
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SpendResponse(BaseModel):
+    actual_minor: int
+    committed_minor: int
+    estimated_minor: int
+    projected_minor: int = Field(description="Actual plus committed plus estimated")
+
+
+class DaySpend(BaseModel):
+    date: date
+    actual_minor: int
+
+
+class BudgetUsageResponse(BaseModel):
+    budget: BudgetResponse
+    spend: SpendResponse
+    remaining_minor: int
+    over_limit: bool
+    days: list[DaySpend]
+
+
+class CategorySpend(BaseModel):
+    category: ExpenseCategory
+    spend: SpendResponse
+
+
+class UnconvertedSpend(BaseModel):
+    """Spend or planned cost in another currency without a rate; not in the totals."""
+
+    tier: Literal["actual", "committed", "estimated"]
+    currency: str
+    amount_minor: int
+
+
+class BudgetOverviewResponse(BaseModel):
+    currency: str
+    total: SpendResponse
+    categories: list[CategorySpend]
+    unconverted: list[UnconvertedSpend]
+    estimated_rates: bool = Field(description="Some totals use offline estimated rates")
+    budgets: list[BudgetUsageResponse]
+
+
+class CommitmentCreateRequest(BaseModel):
+    """A planned cost; link it from the expense that pays it to count it once."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    category: ExpenseCategory = "other"
+    description: Description
+    currency: CurrencyCode
+    amount_minor: StrictInt
+    state: Literal["estimated", "committed"] = "estimated"
+    base_rate: RateRequest | None = None
+
+
+class CommitmentUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: ExpenseCategory = "other"
+    description: Description
+    currency: CurrencyCode
+    amount_minor: StrictInt
+    state: Literal["estimated", "committed", "cancelled", "refunded"]
+    base_rate: RateRequest | None = None
+
+
+class CommitmentResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    source_type: Literal["manual", "booking", "itinerary_item", "place", "responsibility"]
+    source_id: UUID
+    commitment_kind: str
+    state: CommitmentStateName
+    category: ExpenseCategory
+    description: str
+    currency: str
+    amount_minor: int
+    base: BaseAmountResponse
+    expense_id: UUID | None
+    created_by_user_id: UUID
+    version: int
+    created_at: datetime
+    updated_at: datetime

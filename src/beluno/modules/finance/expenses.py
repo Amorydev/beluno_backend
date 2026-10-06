@@ -11,8 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -34,8 +33,9 @@ from beluno.db.models.finance import (
     RefundShare,
 )
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.commitments import link_expense, release_expense
 from beluno.modules.finance.errors import refund_exceeds_amount, split_invalid
-from beluno.modules.finance.fx import RateSource, convert, parse_rate
+from beluno.modules.finance.fx import convert, parse_rate
 from beluno.modules.finance.ledger import Ledger, open_ledger
 from beluno.modules.finance.money import check_amount
 from beluno.modules.finance.postings import (
@@ -44,6 +44,7 @@ from beluno.modules.finance.postings import (
     refund_allocation,
     refund_postings,
 )
+from beluno.modules.finance.rates import RateInput, record_rate
 from beluno.modules.finance.splits import (
     SPLIT_ALGORITHM,
     Payer,
@@ -58,13 +59,6 @@ EXPENSE_ENTITY = "expense"
 
 
 @dataclass(frozen=True)
-class RateInput:
-    rate: str
-    source: RateSource
-    as_of: datetime | None
-
-
-@dataclass(frozen=True)
 class ExpenseDraft:
     description: str
     category: str
@@ -76,6 +70,8 @@ class ExpenseDraft:
     split: SplitSpec
     split_input: dict[str, Any]
     base_rate: RateInput | None = None
+    # The cost commitment this expense now accounts for (converted atomically).
+    commitment_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -243,6 +239,8 @@ async def create_expense(
             await ctx.session.flush()
     except IntegrityError as error:
         raise conflict("ALREADY_EXISTS", "A resource with this id already exists") from error
+    if draft.commitment_id is not None:
+        await link_expense(ledger, draft.commitment_id, expense)
     await _append_revision(ledger, expense, revision_id, 1, draft, keep=())
     await ledger.finish()
     await _record(ctx, expense, "finance.expense_created")
@@ -266,6 +264,11 @@ async def revise_expense(
             raise refund_exceeds_amount()
     previous = {payer.participant_id for payer in current.payers if payer.participant_id}
     previous |= {split.participant_id for split in current.splits}
+    previous_link = current.revision.commitment_id
+    if previous_link is not None and previous_link != draft.commitment_id:
+        await release_expense(ledger, previous_link, expense.id)
+    if draft.commitment_id is not None:
+        await link_expense(ledger, draft.commitment_id, expense)
     await ledger.reverse(
         await _transaction(ctx, revision_id=current.revision.id), kind="expense_reversal"
     )
@@ -301,6 +304,9 @@ async def void_expense(
     expense.version += 1
     expense.updated_at = ctx.now
     await ctx.session.flush()
+    linked = (await _current_revision(ctx, expense)).commitment_id
+    if linked is not None:
+        await release_expense(ledger, linked, expense.id)
     await ledger.finish()
     await _record(ctx, expense, "finance.expense_voided")
     return await expense_view(ctx, expense)
@@ -440,7 +446,7 @@ async def _append_revision(
         base_currency=base_currency,
         base_amount_minor=base_amount,
         base_fx_snapshot_id=snapshot.id if snapshot else None,
-        commitment_id=None,
+        commitment_id=draft.commitment_id,
         created_by_user_id=ctx.require_actor().user_id,
         created_at=ctx.now,
     )
@@ -498,33 +504,6 @@ async def _base_amount(
         draft.amount_minor, from_exponent=exponent, to_exponent=base.exponent, rate=rate
     )
     return amount, snapshot
-
-
-async def record_rate(
-    ledger: Ledger,
-    *,
-    base: str,
-    quote: str,
-    rate: Decimal,
-    source: RateSource,
-    as_of: datetime | None,
-) -> FxSnapshot:
-    ctx = ledger.ctx
-    snapshot = FxSnapshot(
-        id=new_id(),
-        plan_id=ledger.plan_id,
-        base_currency=base,
-        quote_currency=quote,
-        rate=rate,
-        source=source.value,
-        rounding_mode="half_even",
-        as_of=as_of or ctx.now,
-        created_by_user_id=ctx.require_actor().user_id,
-        created_at=ctx.now,
-    )
-    ctx.session.add(snapshot)
-    await ctx.session.flush()
-    return snapshot
 
 
 def _merge_shares(ledger: Ledger, shares: Sequence[Share]) -> list[Share]:

@@ -34,11 +34,11 @@ from beluno.db.ids import new_id
 from beluno.db.models.finance import FxSnapshot, LedgerTransaction, Settlement
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
-from beluno.modules.finance.expenses import record_rate
 from beluno.modules.finance.fx import RateSource, implied_rate
 from beluno.modules.finance.ledger import Ledger, open_ledger
 from beluno.modules.finance.money import check_amount
 from beluno.modules.finance.postings import Party, transfer_postings
+from beluno.modules.finance.rates import record_rate
 from beluno.modules.finance.states import SETTLEMENT_TRANSITIONS, SettlementStatus
 from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
 

@@ -13,6 +13,8 @@ from fastapi import APIRouter, Query, Response, status
 from beluno.api.commands import finance as commands
 from beluno.api.dependencies import ActorDep, RunnerDep, RuntimeDep
 from beluno.api.finance_presenters import (
+    budget_overview_response,
+    commitment_response,
     currency_response,
     expense_response,
     explanation_entry,
@@ -32,6 +34,7 @@ from beluno.api.http import (
     decode_cursor,
     encode_cursor,
     finish,
+    finish_empty,
     set_etag,
 )
 from beluno.api.problems import problem_responses
@@ -39,6 +42,13 @@ from beluno.contracts.common import Page
 from beluno.contracts.errors import validation_error
 from beluno.contracts.finance import (
     BalanceExplanation,
+    BudgetCreateRequest,
+    BudgetOverviewResponse,
+    BudgetResponse,
+    BudgetUpdateRequest,
+    CommitmentCreateRequest,
+    CommitmentResponse,
+    CommitmentUpdateRequest,
     CurrencyResponse,
     ExpenseCreateRequest,
     ExpenseRequest,
@@ -53,7 +63,14 @@ from beluno.contracts.finance import (
     WaiverRequest,
 )
 from beluno.modules.context import open_context
-from beluno.modules.finance import currencies, expenses, settlements, views
+from beluno.modules.finance import (
+    budgets,
+    commitments,
+    currencies,
+    expenses,
+    settlements,
+    views,
+)
 from beluno.sync.commands import Command, EmptyPayload
 
 router = APIRouter(prefix="/v1/plans/{plan_id}", tags=["finance"])
@@ -433,3 +450,109 @@ async def reverse_settlement(
         idempotency_key,
         if_match,
     )
+
+
+@router.get("/budgets", response_model=BudgetOverviewResponse, responses=READ_ERRORS)
+async def get_budgets(
+    plan_id: UUID, runtime: RuntimeDep, actor: ActorDep
+) -> BudgetOverviewResponse:
+    """Limits against actual, committed, and estimated spend in the plan's base currency."""
+
+    async with open_context(runtime, actor) as ctx:
+        overview = await budgets.get_budgets(ctx, plan_id)
+    return budget_overview_response(overview)
+
+
+@router.post(
+    "/budgets",
+    status_code=status.HTTP_201_CREATED,
+    response_model=BudgetResponse,
+    responses=WRITE_ERRORS,
+)
+async def create_budget(
+    plan_id: UUID,
+    body: BudgetCreateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> BudgetResponse:
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.BUDGET_CREATE, call, body))
+
+
+@router.patch("/budgets/{budget_id}", response_model=BudgetResponse, responses=WRITE_ERRORS)
+async def update_budget(
+    plan_id: UUID,
+    budget_id: UUID,
+    body: BudgetUpdateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> BudgetResponse:
+    call = command_call(idempotency_key, if_match=if_match, plan_id=plan_id, budget_id=budget_id)
+    return finish(response, await runner.run(actor, commands.BUDGET_UPDATE, call, body))
+
+
+@router.delete(
+    "/budgets/{budget_id}", status_code=status.HTTP_204_NO_CONTENT, responses=WRITE_ERRORS
+)
+async def delete_budget(
+    plan_id: UUID,
+    budget_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    idempotency_key: IdempotencyKey = None,
+) -> Response:
+    call = command_call(idempotency_key, plan_id=plan_id, budget_id=budget_id)
+    return finish_empty(await runner.run(actor, commands.BUDGET_DELETE, call, EmptyPayload()))
+
+
+@router.get("/commitments", response_model=list[CommitmentResponse], responses=READ_ERRORS)
+async def list_commitments(
+    plan_id: UUID, runtime: RuntimeDep, actor: ActorDep
+) -> list[CommitmentResponse]:
+    """Planned and committed costs from every module, with the expense that settled each."""
+
+    async with open_context(runtime, actor) as ctx:
+        found = await commitments.list_commitments(ctx, plan_id)
+    return [commitment_response(view) for view in found]
+
+
+@router.post(
+    "/commitments",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CommitmentResponse,
+    responses=WRITE_ERRORS,
+)
+async def create_commitment(
+    plan_id: UUID,
+    body: CommitmentCreateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> CommitmentResponse:
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.COMMITMENT_CREATE, call, body))
+
+
+@router.put(
+    "/commitments/{commitment_id}", response_model=CommitmentResponse, responses=WRITE_ERRORS
+)
+async def update_commitment(
+    plan_id: UUID,
+    commitment_id: UUID,
+    body: CommitmentUpdateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> CommitmentResponse:
+    call = command_call(
+        idempotency_key, if_match=if_match, plan_id=plan_id, commitment_id=commitment_id
+    )
+    return finish(response, await runner.run(actor, commands.COMMITMENT_UPDATE, call, body))
