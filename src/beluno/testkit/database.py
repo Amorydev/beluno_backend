@@ -15,6 +15,7 @@ TRUNCATE
     finance.expense_splits, finance.expense_payers, finance.expense_revisions,
     finance.expenses, finance.cost_commitments, finance.settlements, finance.budgets,
     finance.fx_snapshots, finance.account_balances, finance.ledger_accounts,
+    finance.ledger_confirmations, finance.fund_counts, finance.market_rates,
     finance.plan_ledger_heads,
     sync_audit.audit_events, sync_audit.change_log, sync_audit.scope_heads,
     sync_audit.operations,

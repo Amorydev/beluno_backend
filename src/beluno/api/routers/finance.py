@@ -23,6 +23,7 @@ from beluno.api.finance_presenters import (
     fund_settings_response,
     ledger_response,
     preview_response,
+    rate_text,
     revision_response,
     settlement_response,
     transaction_response,
@@ -68,6 +69,8 @@ from beluno.contracts.finance import (
     LedgerConfirmRequest,
     LedgerResponse,
     LedgerSettingsRequest,
+    MarketRateResponse,
+    MarketRatesResponse,
     MemberContribution,
     RefundRequest,
     RevisionResponse,
@@ -85,6 +88,7 @@ from beluno.modules.finance import (
     currencies,
     expenses,
     funds,
+    market_rates,
     settlements,
     views,
 )
@@ -92,6 +96,7 @@ from beluno.sync.commands import Command, EmptyPayload
 
 router = APIRouter(prefix="/v1/plans/{plan_id}", tags=["finance"])
 currency_router = APIRouter(prefix="/v1/currencies", tags=["finance"])
+fx_router = APIRouter(prefix="/v1/fx", tags=["finance"])
 
 READ_ERRORS = problem_responses(401, 403, 404, 422, 503)
 CurrencyQuery = Annotated[str, Query(pattern=r"^[A-Z]{3}$")]
@@ -106,6 +111,28 @@ async def list_currencies(runtime: RuntimeDep, actor: ActorDep) -> list[Currency
     async with open_context(runtime, actor) as ctx:
         rows = await currencies.list_currencies(ctx)
     return [currency_response(row) for row in rows]
+
+
+@fx_router.get("/rates", response_model=MarketRatesResponse, responses=READ_ERRORS)
+async def list_market_rates(
+    base: CurrencyQuery, runtime: RuntimeDep, actor: ActorDep
+) -> MarketRatesResponse:
+    """The latest published market rates from ``base``, for offline estimates only."""
+
+    async with open_context(runtime, actor) as ctx:
+        rows = await market_rates.latest_rates(ctx, base)
+    return MarketRatesResponse(
+        base=base,
+        rates=[
+            MarketRateResponse(
+                quote=row.quote_currency,
+                rate=rate_text(row.rate),
+                as_of=row.as_of,
+                source=row.source,
+            )
+            for row in rows
+        ],
+    )
 
 
 @router.get("/ledger", response_model=LedgerResponse, responses=READ_ERRORS)

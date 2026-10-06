@@ -7,6 +7,7 @@ from uuid import UUID
 import procrastinate
 
 from beluno.modules.finance.maintenance import reconcile_ledgers
+from beluno.modules.finance.market_rates import ingest_market_rates, rate_provider
 from beluno.modules.iam.email_challenges import DELIVER_TASK_NAME, EMAIL_QUEUE, deliver_challenge
 from beluno.modules.iam.maintenance import purge_expired_auth_records
 from beluno.modules.sync_audit.maintenance import compact_changes, purge_operations
@@ -94,3 +95,17 @@ async def reconcile_finance_ledgers(timestamp: int) -> int:
 
     del timestamp
     return await reconcile_ledgers(get_worker_runtime())
+
+
+@app.periodic(cron="11 5 * * *", periodic_id="finance.ingest_market_rates")
+@app.task(
+    name="finance.ingest_market_rates",
+    queue="maintenance",
+    retry=3,
+    queueing_lock="finance:ingest_market_rates",
+)
+async def ingest_finance_market_rates(timestamp: int) -> int:
+    """Daily: store the market rates the provider published (estimates for clients only)."""
+
+    del timestamp
+    return await ingest_market_rates(get_worker_runtime(), rate_provider())

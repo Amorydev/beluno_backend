@@ -3148,6 +3148,65 @@
         "title": "LedgerSettingsRequest",
         "type": "object"
       },
+      "MarketRateResponse": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "rate": {
+            "description": "Quote-currency units for one base-currency unit",
+            "title": "Rate",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quote",
+          "rate",
+          "as_of",
+          "source"
+        ],
+        "title": "MarketRateResponse",
+        "type": "object"
+      },
+      "MarketRatesResponse": {
+        "description": "Published market rates for offline estimates; never applied to the ledger.",
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "estimate_only": {
+            "const": true,
+            "default": true,
+            "description": "Show as an estimate; entries keep the rate people confirm",
+            "title": "Estimate Only",
+            "type": "boolean"
+          },
+          "rates": {
+            "items": {
+              "$ref": "#/components/schemas/MarketRateResponse"
+            },
+            "title": "Rates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base",
+          "rates"
+        ],
+        "title": "MarketRatesResponse",
+        "type": "object"
+      },
       "MemberContribution": {
         "properties": {
           "contributed_minor": {
@@ -8258,6 +8317,95 @@
           }
         ],
         "summary": "List Currencies",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/fx/rates": {
+      "get": {
+        "description": "The latest published market rates from ``base``, for offline estimates only.",
+        "operationId": "list_market_rates_v1_fx_rates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "base",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Z]{3}$",
+              "title": "Base",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketRatesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Market Rates",
         "tags": [
           "finance"
         ]

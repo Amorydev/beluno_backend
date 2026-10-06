@@ -45,6 +45,23 @@ class CurrencyResponse(BaseModel):
     state: Literal["supported", "retired"]
 
 
+class MarketRateResponse(BaseModel):
+    quote: str
+    rate: str = Field(description="Quote-currency units for one base-currency unit")
+    as_of: datetime
+    source: str
+
+
+class MarketRatesResponse(BaseModel):
+    """Published market rates for offline estimates; never applied to the ledger."""
+
+    base: str
+    rates: list[MarketRateResponse]
+    estimate_only: Literal[True] = Field(
+        default=True, description="Show as an estimate; entries keep the rate people confirm"
+    )
+
+
 class RateRequest(BaseModel):
     """Quote-currency units for one unit of the expense currency (major units)."""
 

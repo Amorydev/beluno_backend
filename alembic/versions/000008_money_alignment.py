@@ -23,6 +23,9 @@ Forward action:
 * New append-only ``finance.fund_counts``: the custodian or a manager counted
   the kitty (``counted_minor``) against what the ledger expected
   (``expected_minor``). Counts post nothing.
+* New append-only reference table ``finance.market_rates`` (no tenant): daily
+  market rates a provider published, for offline estimates only. The API reads
+  them; only the worker inserts.
 
 Lock/scan risk: ``ALTER TABLE`` takes ACCESS EXCLUSIVE on
 ``finance.expense_revisions``, ``finance.plan_ledger_heads``, and
@@ -39,6 +42,7 @@ Validation:
     SELECT relrowsecurity FROM pg_class
     WHERE oid = 'finance.ledger_confirmations'::regclass;                       -- t
     SELECT relrowsecurity FROM pg_class WHERE oid = 'finance.fund_counts'::regclass; -- t
+    SELECT has_table_privilege('api_runtime', 'finance.market_rates', 'INSERT');   -- f
 
 Compatibility: additive for stored data. The API adds request and response
 fields; old clients that send none of them keep working.
@@ -230,12 +234,35 @@ CREATE POLICY fund_counts_insert ON finance.fund_counts FOR INSERT
 GRANT SELECT, INSERT ON finance.fund_counts TO api_runtime;
 """
 
+MARKET_RATES_SQL = """
+CREATE TABLE finance.market_rates (
+    base_currency char(3) NOT NULL REFERENCES finance.currencies (code),
+    quote_currency char(3) NOT NULL REFERENCES finance.currencies (code),
+    rate numeric(28, 12) NOT NULL CHECK (rate > 0 AND rate <= 1000000000),
+    as_of timestamptz NOT NULL,
+    source text NOT NULL CHECK (char_length(source) BETWEEN 1 AND 40),
+    fetched_at timestamptz NOT NULL,
+    PRIMARY KEY (base_currency, quote_currency, as_of),
+    CHECK (base_currency <> quote_currency)
+);
+CREATE TRIGGER market_rates_append_only BEFORE UPDATE OR DELETE ON finance.market_rates
+    FOR EACH ROW EXECUTE FUNCTION finance.reject_history_change();
+ALTER TABLE finance.market_rates ENABLE ROW LEVEL SECURITY;
+CREATE POLICY market_rates_select ON finance.market_rates FOR SELECT
+    TO api_runtime, worker_runtime USING (true);
+CREATE POLICY market_rates_insert ON finance.market_rates FOR INSERT
+    TO worker_runtime WITH CHECK (true);
+GRANT SELECT ON finance.market_rates TO api_runtime, worker_runtime;
+GRANT INSERT ON finance.market_rates TO worker_runtime;
+"""
+
 
 def upgrade() -> None:
     op.execute(REVISIONS_SQL)
     op.execute(SETTINGS_SQL)
     op.execute(MERGE_STATUS_SQL)
     op.execute(KITTY_SQL)
+    op.execute(MARKET_RATES_SQL)
 
 
 def downgrade() -> None:

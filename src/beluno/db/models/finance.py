@@ -353,3 +353,17 @@ class Budget(Base):
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
     deleted_at: Mapped[datetime | None]
+
+
+class MarketRate(Base):
+    """A market rate a provider published (reference data, no tenant, append-only)."""
+
+    __tablename__ = "market_rates"
+    __table_args__ = SCHEMA
+
+    base_currency: Mapped[str] = mapped_column(CHAR(3), primary_key=True)
+    quote_currency: Mapped[str] = mapped_column(CHAR(3), primary_key=True)
+    as_of: Mapped[datetime] = mapped_column(primary_key=True)
+    rate: Mapped[Decimal] = mapped_column(Numeric(28, 12))
+    source: Mapped[str] = mapped_column(Text)
+    fetched_at: Mapped[datetime]
