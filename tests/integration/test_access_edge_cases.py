@@ -1,4 +1,4 @@
-"""Phase 3 edge cases: identity, groups, plans with focus on uncovered branches."""
+"""Edge cases for identity, groups, and plans that the main suites do not reach."""
 
 from __future__ import annotations
 
