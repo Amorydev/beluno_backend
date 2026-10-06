@@ -319,6 +319,7 @@ class LedgerTransaction(Base):
     refund_id: Mapped[UUID | None]
     settlement_id: Mapped[UUID | None]
     fund_movement_id: Mapped[UUID | None]
+    consolidation_id: Mapped[UUID | None]
     reverses_transaction_id: Mapped[UUID | None]
     memo: Mapped[str | None] = mapped_column(Text)
     created_by_user_id: Mapped[UUID | None]
@@ -367,3 +368,45 @@ class MarketRate(Base):
     rate: Mapped[Decimal] = mapped_column(Numeric(28, 12))
     source: Mapped[str] = mapped_column(Text)
     fetched_at: Mapped[datetime]
+
+
+class Consolidation(Base):
+    """Every foreign-currency balance converted into the base currency at frozen rates."""
+
+    __tablename__ = "consolidations"
+    __table_args__ = SCHEMA
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    plan_id: Mapped[UUID]
+    base_currency: Mapped[str] = mapped_column(CHAR(3))
+    state: Mapped[str] = mapped_column(Text)
+    created_by_user_id: Mapped[UUID]
+    created_at: Mapped[datetime]
+    reversed_by_user_id: Mapped[UUID | None]
+    reversed_at: Mapped[datetime | None]
+    version: Mapped[int]
+    updated_at: Mapped[datetime]
+
+
+class ConsolidationRate(Base):
+    __tablename__ = "consolidation_rates"
+    __table_args__ = SCHEMA
+
+    consolidation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    currency: Mapped[str] = mapped_column(CHAR(3), primary_key=True)
+    plan_id: Mapped[UUID]
+    fx_snapshot_id: Mapped[UUID]
+
+
+class ConsolidationLine(Base):
+    """One participant's balance in one currency and the base amount it became."""
+
+    __tablename__ = "consolidation_lines"
+    __table_args__ = SCHEMA
+
+    consolidation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    currency: Mapped[str] = mapped_column(CHAR(3), primary_key=True)
+    participant_id: Mapped[UUID] = mapped_column(primary_key=True)
+    plan_id: Mapped[UUID]
+    amount_minor: Mapped[int] = mapped_column(BigInteger)
+    base_amount_minor: Mapped[int] = mapped_column(BigInteger)

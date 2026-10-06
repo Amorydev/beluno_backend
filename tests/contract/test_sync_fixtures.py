@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from beluno.contracts.finance import (
     BudgetResponse,
     CommitmentResponse,
+    ConsolidationResponse,
     ExpenseResponse,
     FundCountResponse,
     FundMovementResponse,
@@ -68,6 +69,7 @@ FINANCE_ENTITIES: dict[str, type[BaseModel]] = {
     "fund": FundSettingsResponse,
     "fund_movement": FundMovementResponse,
     "fund_count": FundCountResponse,
+    "consolidation": ConsolidationResponse,
 }
 
 

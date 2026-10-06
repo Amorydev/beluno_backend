@@ -279,6 +279,48 @@
       "operation": "upsert",
       "seq": null,
       "version": 1
+    },
+    {
+      "changed_at": null,
+      "data": {
+        "base_currency": "USD",
+        "created_at": "2026-10-06T11:12:12.703121Z",
+        "created_by_user_id": "01a110e9-fbba-7a1b-88a9-a0a38a2a90fa",
+        "id": "01a110ea-0207-7a1c-8f3e-6d2b9c4e5a10",
+        "lines": [
+          {
+            "amount_minor": 1500,
+            "base_amount_minor": 1005,
+            "currency": "JPY",
+            "participant_id": "01a110e9-fc94-792d-b26c-4552e8365801"
+          },
+          {
+            "amount_minor": -1500,
+            "base_amount_minor": -1005,
+            "currency": "JPY",
+            "participant_id": "01a110e9-fca6-7aaa-920f-c280d3ca2413"
+          }
+        ],
+        "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
+        "rates": [
+          {
+            "as_of": "2026-10-06T11:12:12.703121Z",
+            "currency": "JPY",
+            "rate": "0.0067",
+            "source": "manual"
+          }
+        ],
+        "reversed_at": null,
+        "reversed_by_user_id": null,
+        "state": "active",
+        "updated_at": "2026-10-06T11:12:12.703121Z",
+        "version": 1
+      },
+      "entity_id": "01a110ea-0207-7a1c-8f3e-6d2b9c4e5a10",
+      "entity_type": "consolidation",
+      "operation": "upsert",
+      "seq": null,
+      "version": 1
     }
   ]
 }

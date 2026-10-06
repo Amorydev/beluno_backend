@@ -13,6 +13,7 @@ from sqlalchemy import select
 from beluno.api.finance_presenters import (
     budget_response,
     commitment_response,
+    consolidation_response,
     expense_response,
     fund_count_response,
     fund_movement_response,
@@ -22,6 +23,7 @@ from beluno.api.finance_presenters import (
 )
 from beluno.db.models.finance import (
     Budget,
+    Consolidation,
     CostCommitment,
     Expense,
     FundCount,
@@ -31,6 +33,7 @@ from beluno.db.models.finance import (
 )
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.commitments import commitment_view
+from beluno.modules.finance.consolidation import consolidation_view
 from beluno.modules.finance.expenses import expense_view, expense_views
 from beluno.modules.finance.settlements import settlement_view
 from beluno.modules.finance.views import ledger_snapshot
@@ -46,6 +49,7 @@ FINANCE_TYPES = (
     "fund",
     "fund_movement",
     "fund_count",
+    "consolidation",
 )
 
 
@@ -208,3 +212,25 @@ async def page_fund_counts(
         statement = statement.where(FundCount.id > after)
     rows = (await ctx.session.execute(statement.order_by(FundCount.id).limit(limit))).scalars()
     return [SnapshotRow(row.id, 1, fund_count_response(row)) for row in rows]
+
+
+async def load_consolidation(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID
+) -> BaseModel | None:
+    consolidation = await ctx.session.get(Consolidation, id)
+    if consolidation is None or consolidation.plan_id != scope.scope_id:
+        return None
+    return consolidation_response(await consolidation_view(ctx, consolidation))
+
+
+async def page_consolidations(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(Consolidation).where(Consolidation.plan_id == scope.scope_id)
+    if after is not None:
+        statement = statement.where(Consolidation.id > after)
+    rows = (await ctx.session.execute(statement.order_by(Consolidation.id).limit(limit))).scalars()
+    return [
+        SnapshotRow(row.id, row.version, consolidation_response(await consolidation_view(ctx, row)))
+        for row in rows
+    ]

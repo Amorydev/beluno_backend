@@ -9,6 +9,7 @@ from beluno.api.finance_presenters import (
     budget_response,
     commitment_draft,
     commitment_response,
+    consolidation_response,
     expense_draft,
     expense_response,
     fund_count_response,
@@ -30,6 +31,8 @@ from beluno.contracts.finance import (
     CommitmentCreateRequest,
     CommitmentResponse,
     CommitmentUpdateRequest,
+    ConsolidateRequest,
+    ConsolidationResponse,
     ExpenseCreateRequest,
     ExpenseRequest,
     ExpenseResponse,
@@ -52,6 +55,7 @@ from beluno.modules.context import CommandContext
 from beluno.modules.finance import (
     budgets,
     commitments,
+    consolidation,
     expenses,
     funds,
     ledger_settings,
@@ -59,6 +63,8 @@ from beluno.modules.finance import (
     views,
 )
 from beluno.modules.finance.expenses import RevisionOrigin
+from beluno.modules.finance.fx import RateSource
+from beluno.modules.finance.rates import RateInput
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
 from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
 
@@ -258,6 +264,26 @@ async def _confirm_ledger(
 ) -> LedgerResponse:
     snapshot = await ledger_settings.confirm_ledger(ctx, call.id("plan_id"), body.ledger_seq)
     return ledger_response(snapshot)
+
+
+async def _consolidate(
+    ctx: CommandContext, call: CommandCall, body: ConsolidateRequest
+) -> ConsolidationResponse:
+    rates = {
+        rate.currency: RateInput(rate=rate.rate, source=RateSource(rate.source), as_of=rate.as_of)
+        for rate in body.rates
+    }
+    view = await consolidation.consolidate(ctx, call.id("plan_id"), body.id, rates)
+    return consolidation_response(view)
+
+
+async def _reverse_consolidation(
+    ctx: CommandContext, call: CommandCall, body: EmptyPayload
+) -> ConsolidationResponse:
+    view = await consolidation.reverse_consolidation(
+        ctx, call.id("plan_id"), call.id("consolidation_id"), required_version(call)
+    )
+    return consolidation_response(view)
 
 
 EXPENSE_CREATE = Command(
@@ -507,6 +533,31 @@ LEDGER_CONFIRM = Command(
     rate_limit_target="plan_id",
 )
 
+LEDGER_CONSOLIDATE = Command(
+    name="ledger.consolidate",
+    payload_model=ConsolidateRequest,
+    response_model=ConsolidationResponse,
+    handler=_consolidate,
+    target_fields=("plan_id",),
+    status=201,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+LEDGER_REVERSE_CONSOLIDATION = Command(
+    name="ledger.reverse_consolidation",
+    payload_model=EmptyPayload,
+    response_model=ConsolidationResponse,
+    handler=_reverse_consolidation,
+    target_fields=("plan_id", "consolidation_id"),
+    versioned=True,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
 COMMANDS: list[Command[Any, Any]] = [
     EXPENSE_CREATE,
     EXPENSE_REVISE,
@@ -529,4 +580,6 @@ COMMANDS: list[Command[Any, Any]] = [
     LEDGER_ADJUST,
     LEDGER_CONFIGURE,
     LEDGER_CONFIRM,
+    LEDGER_CONSOLIDATE,
+    LEDGER_REVERSE_CONSOLIDATION,
 ]

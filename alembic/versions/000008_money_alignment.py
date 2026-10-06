@@ -26,6 +26,17 @@ Forward action:
 * New append-only reference table ``finance.market_rates`` (no tenant): daily
   market rates a provider published, for offline estimates only. The API reads
   them; only the worker inserts.
+* Consolidation ("settle everything in the base currency"): mutable
+  ``finance.consolidations`` (active, then possibly reversed once) with
+  append-only ``consolidation_rates`` (one frozen FX snapshot per converted
+  currency) and ``consolidation_lines`` (per participant and currency, the
+  balance moved and the base amount it became). ``ledger_transactions`` gains
+  ``consolidation_id`` and the kind ``conversion_reversal``; a ``conversion``
+  belongs to a cross-currency settlement or to a consolidation, never both.
+  ``finance.expected_postings`` and ``finance.verify_transaction`` are replaced
+  so a consolidation conversion must post exactly its lines and its reversal
+  must mirror it; a new deferred trigger checks each consolidation has its one
+  conversion and its lines.
 
 Lock/scan risk: ``ALTER TABLE`` takes ACCESS EXCLUSIVE on
 ``finance.expense_revisions``, ``finance.plan_ledger_heads``, and
@@ -256,6 +267,312 @@ GRANT SELECT ON finance.market_rates TO api_runtime, worker_runtime;
 GRANT INSERT ON finance.market_rates TO worker_runtime;
 """
 
+CONSOLIDATION_TABLES_SQL = """
+CREATE TABLE finance.consolidations (
+    id uuid PRIMARY KEY,
+    plan_id uuid NOT NULL REFERENCES finance.plan_ledger_heads (plan_id),
+    base_currency char(3) NOT NULL REFERENCES finance.currencies (code),
+    state text NOT NULL CHECK (state IN ('active', 'reversed')),
+    created_by_user_id uuid NOT NULL REFERENCES iam.users (id),
+    created_at timestamptz NOT NULL,
+    reversed_by_user_id uuid REFERENCES iam.users (id),
+    reversed_at timestamptz,
+    version integer NOT NULL CHECK (version > 0),
+    updated_at timestamptz NOT NULL,
+    UNIQUE (plan_id, id),
+    CHECK ((state = 'reversed') = (reversed_at IS NOT NULL))
+);
+
+CREATE TABLE finance.consolidation_rates (
+    consolidation_id uuid NOT NULL,
+    plan_id uuid NOT NULL,
+    currency char(3) NOT NULL REFERENCES finance.currencies (code),
+    fx_snapshot_id uuid NOT NULL,
+    PRIMARY KEY (consolidation_id, currency),
+    FOREIGN KEY (plan_id, consolidation_id) REFERENCES finance.consolidations (plan_id, id),
+    FOREIGN KEY (plan_id, fx_snapshot_id) REFERENCES finance.fx_snapshots (plan_id, id)
+);
+
+-- One line per participant and converted currency: the balance moved out of
+-- that currency and the base-currency amount it became.
+CREATE TABLE finance.consolidation_lines (
+    consolidation_id uuid NOT NULL,
+    plan_id uuid NOT NULL,
+    currency char(3) NOT NULL,
+    participant_id uuid NOT NULL,
+    amount_minor bigint NOT NULL
+        CHECK (amount_minor <> 0 AND abs(amount_minor) <= 1000000000000),
+    base_amount_minor bigint NOT NULL CHECK (abs(base_amount_minor) <= 1000000000000),
+    PRIMARY KEY (consolidation_id, currency, participant_id),
+    FOREIGN KEY (plan_id, consolidation_id) REFERENCES finance.consolidations (plan_id, id),
+    FOREIGN KEY (consolidation_id, currency)
+        REFERENCES finance.consolidation_rates (consolidation_id, currency),
+    FOREIGN KEY (plan_id, participant_id) REFERENCES plans.plan_participants (plan_id, id)
+);
+
+ALTER TABLE finance.ledger_transactions
+    ADD COLUMN consolidation_id uuid,
+    ADD CONSTRAINT ledger_transactions_consolidation_fkey
+        FOREIGN KEY (plan_id, consolidation_id) REFERENCES finance.consolidations (plan_id, id),
+    DROP CONSTRAINT ledger_transactions_kind_check,
+    ADD CONSTRAINT ledger_transactions_kind_check CHECK (kind IN (
+        'expense', 'expense_reversal', 'refund', 'settlement', 'settlement_reversal',
+        'fund_contribution', 'fund_withdrawal', 'adjustment', 'conversion',
+        'conversion_reversal'
+    )),
+    DROP CONSTRAINT ledger_transactions_check1,
+    ADD CONSTRAINT ledger_transactions_check1 CHECK (
+        (kind IN ('expense_reversal', 'settlement_reversal', 'conversion_reversal'))
+        = (reverses_transaction_id IS NOT NULL)
+    ),
+    DROP CONSTRAINT ledger_transactions_check5,
+    ADD CONSTRAINT ledger_transactions_check5 CHECK (
+        kind NOT IN ('settlement', 'settlement_reversal') OR settlement_id IS NOT NULL
+    ),
+    ADD CONSTRAINT ledger_transactions_conversion_source CHECK (
+        kind <> 'conversion' OR ((settlement_id IS NULL) <> (consolidation_id IS NULL))
+    ),
+    ADD CONSTRAINT ledger_transactions_consolidation_kind CHECK (
+        (kind = 'conversion_reversal' AND consolidation_id IS NOT NULL)
+        OR (kind = 'conversion')
+        OR consolidation_id IS NULL
+    );
+CREATE UNIQUE INDEX ledger_transactions_consolidation_key
+    ON finance.ledger_transactions (consolidation_id) WHERE kind = 'conversion';
+
+CREATE TRIGGER consolidation_rates_append_only
+    BEFORE UPDATE OR DELETE ON finance.consolidation_rates
+    FOR EACH ROW EXECUTE FUNCTION finance.reject_history_change();
+CREATE TRIGGER consolidation_lines_append_only
+    BEFORE UPDATE OR DELETE ON finance.consolidation_lines
+    FOR EACH ROW EXECUTE FUNCTION finance.reject_history_change();
+
+-- A consolidation changes only by being reversed, once.
+CREATE FUNCTION finance.guard_consolidation() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.id, NEW.plan_id, NEW.base_currency, NEW.created_by_user_id, NEW.created_at)
+       IS DISTINCT FROM
+       (OLD.id, OLD.plan_id, OLD.base_currency, OLD.created_by_user_id, OLD.created_at)
+       OR OLD.state = 'reversed' OR NEW.version <> OLD.version + 1 THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE TRIGGER consolidations_guard BEFORE UPDATE ON finance.consolidations
+    FOR EACH ROW EXECUTE FUNCTION finance.guard_consolidation();
+
+ALTER TABLE finance.consolidations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE finance.consolidation_rates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE finance.consolidation_lines ENABLE ROW LEVEL SECURITY;
+CREATE POLICY consolidations_select ON finance.consolidations FOR SELECT TO api_runtime
+    USING (plans.actor_is_active_participant(plan_id));
+CREATE POLICY consolidations_insert ON finance.consolidations FOR INSERT TO api_runtime
+    WITH CHECK (plans.actor_is_active_participant(plan_id));
+CREATE POLICY consolidations_update ON finance.consolidations FOR UPDATE TO api_runtime
+    USING (plans.actor_is_active_participant(plan_id))
+    WITH CHECK (plans.actor_is_active_participant(plan_id));
+CREATE POLICY consolidation_rates_select ON finance.consolidation_rates FOR SELECT
+    TO api_runtime USING (plans.actor_is_active_participant(plan_id));
+CREATE POLICY consolidation_rates_insert ON finance.consolidation_rates FOR INSERT
+    TO api_runtime WITH CHECK (plans.actor_is_active_participant(plan_id));
+CREATE POLICY consolidation_lines_select ON finance.consolidation_lines FOR SELECT
+    TO api_runtime USING (plans.actor_is_active_participant(plan_id));
+CREATE POLICY consolidation_lines_insert ON finance.consolidation_lines FOR INSERT
+    TO api_runtime WITH CHECK (plans.actor_is_active_participant(plan_id));
+GRANT SELECT, INSERT, UPDATE ON finance.consolidations TO api_runtime;
+GRANT SELECT, INSERT ON finance.consolidation_rates, finance.consolidation_lines TO api_runtime;
+"""
+
+# The deferred invariants of 000005, extended: a consolidation conversion must
+# post exactly its lines, and a conversion reversal must mirror its conversion.
+CONSOLIDATION_INVARIANTS_SQL = """
+CREATE OR REPLACE FUNCTION finance.expected_postings(p_transaction_id uuid)
+    RETURNS TABLE (participant_id uuid, currency char(3), amount_minor bigint)
+    LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+#variable_conflict use_column
+DECLARE
+    tx finance.ledger_transactions%ROWTYPE;
+    s finance.settlements%ROWTYPE;
+    m finance.fund_movements%ROWTYPE;
+BEGIN
+    SELECT * INTO tx FROM finance.ledger_transactions WHERE id = p_transaction_id;
+    IF tx.kind = 'expense' THEN
+        RETURN QUERY
+            SELECT x.participant_id, r.currency, sum(x.amount)::bigint
+            FROM finance.expense_revisions AS r
+            CROSS JOIN LATERAL (
+                SELECT pa.participant_id, pa.amount_minor AS amount
+                FROM finance.expense_payers AS pa WHERE pa.revision_id = r.id
+                UNION ALL
+                SELECT sp.participant_id, -sp.owed_minor
+                FROM finance.expense_splits AS sp WHERE sp.revision_id = r.id
+            ) AS x
+            WHERE r.id = tx.revision_id
+            GROUP BY x.participant_id, r.currency
+            HAVING sum(x.amount) <> 0;
+    ELSIF tx.kind = 'refund' THEN
+        RETURN QUERY
+            SELECT x.participant_id, f.currency, sum(x.amount)::bigint
+            FROM finance.expense_refunds AS f
+            CROSS JOIN LATERAL (
+                SELECT f.recipient_participant_id AS participant_id, -f.amount_minor AS amount
+                UNION ALL
+                SELECT sh.participant_id, sh.amount_minor
+                FROM finance.refund_shares AS sh WHERE sh.refund_id = f.id
+            ) AS x
+            WHERE f.id = tx.refund_id
+            GROUP BY x.participant_id, f.currency
+            HAVING sum(x.amount) <> 0;
+    ELSIF tx.kind IN ('expense_reversal', 'settlement_reversal', 'conversion_reversal') THEN
+        RETURN QUERY
+            SELECT finance.resolve_participant(tx.plan_id, o.participant_id) AS resolved,
+                   o.currency, (-sum(o.amount_minor))::bigint
+            FROM finance.actual_postings(tx.reverses_transaction_id) AS o
+            GROUP BY resolved, o.currency
+            HAVING sum(o.amount_minor) <> 0;
+    ELSIF tx.kind = 'conversion' AND tx.consolidation_id IS NOT NULL THEN
+        RETURN QUERY
+            SELECT x.participant_id, x.currency, sum(x.amount)::bigint
+            FROM (
+                SELECT l.participant_id, l.currency, -l.amount_minor AS amount
+                FROM finance.consolidation_lines AS l
+                WHERE l.consolidation_id = tx.consolidation_id
+                UNION ALL
+                SELECT l.participant_id, c.base_currency, l.base_amount_minor
+                FROM finance.consolidation_lines AS l
+                JOIN finance.consolidations AS c ON c.id = l.consolidation_id
+                WHERE l.consolidation_id = tx.consolidation_id
+            ) AS x
+            GROUP BY x.participant_id, x.currency
+            HAVING sum(x.amount) <> 0;
+    ELSIF tx.kind IN ('settlement', 'conversion')
+          OR (tx.kind = 'adjustment' AND tx.subtype = 'waiver') THEN
+        SELECT * INTO s FROM finance.settlements WHERE id = tx.settlement_id;
+        IF tx.kind = 'conversion' THEN
+            RETURN QUERY VALUES
+                (s.from_participant_id, s.currency, s.amount_minor),
+                (s.to_participant_id, s.currency, -s.amount_minor),
+                (s.from_participant_id, s.paid_currency, -s.paid_amount_minor),
+                (s.to_participant_id, s.paid_currency, s.paid_amount_minor);
+        ELSIF tx.kind = 'settlement' AND s.paid_currency IS NOT NULL THEN
+            RETURN QUERY VALUES
+                (s.from_participant_id, s.paid_currency, s.paid_amount_minor),
+                (s.to_participant_id, s.paid_currency, -s.paid_amount_minor);
+        ELSE
+            RETURN QUERY VALUES
+                (s.from_participant_id, s.currency, s.amount_minor),
+                (s.to_participant_id, s.currency, -s.amount_minor);
+        END IF;
+    ELSIF tx.kind IN ('fund_contribution', 'fund_withdrawal') THEN
+        SELECT * INTO m FROM finance.fund_movements WHERE id = tx.fund_movement_id;
+        IF tx.kind = 'fund_contribution' THEN
+            RETURN QUERY VALUES
+                (m.participant_id, m.currency, m.amount_minor),
+                (NULL::uuid, m.currency, -m.amount_minor);
+        ELSE
+            RETURN QUERY VALUES
+                (NULL::uuid, m.currency, m.amount_minor),
+                (m.participant_id, m.currency, -m.amount_minor);
+        END IF;
+    ELSE
+        RETURN QUERY SELECT * FROM finance.actual_postings(p_transaction_id);
+    END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION finance.verify_transaction(p_transaction_id uuid) RETURNS void
+    LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    tx finance.ledger_transactions%ROWTYPE;
+    source_kind text;
+    source_subtype text;
+    head_seq bigint;
+    differences integer;
+BEGIN
+    SELECT * INTO tx FROM finance.ledger_transactions WHERE id = p_transaction_id;
+    SELECT ledger_seq INTO head_seq FROM finance.plan_ledger_heads WHERE plan_id = tx.plan_id;
+    IF head_seq IS NULL OR tx.ledger_seq > head_seq THEN
+        PERFORM finance.invariant_violation('transaction sequence is ahead of its ledger head');
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM finance.ledger_postings WHERE transaction_id = p_transaction_id
+        GROUP BY currency HAVING sum(amount_minor) <> 0
+    ) THEN
+        PERFORM finance.invariant_violation('postings do not sum to zero per currency');
+    END IF;
+    IF tx.reverses_transaction_id IS NOT NULL THEN
+        SELECT kind, subtype INTO source_kind, source_subtype
+        FROM finance.ledger_transactions WHERE id = tx.reverses_transaction_id;
+        IF EXISTS (
+            SELECT 1 FROM finance.ledger_transactions AS source
+            WHERE source.id = tx.reverses_transaction_id
+              AND (source.expense_id IS DISTINCT FROM tx.expense_id
+                   OR source.settlement_id IS DISTINCT FROM tx.settlement_id
+                   OR source.consolidation_id IS DISTINCT FROM tx.consolidation_id)
+        ) THEN
+            PERFORM finance.invariant_violation('reversal is filed under another entry');
+        END IF;
+        IF (tx.kind = 'expense_reversal' AND source_kind NOT IN ('expense', 'refund'))
+           OR (tx.kind = 'settlement_reversal'
+               AND source_kind NOT IN ('settlement', 'conversion')
+               AND source_subtype IS DISTINCT FROM 'waiver')
+           OR (tx.kind = 'conversion_reversal' AND source_kind <> 'conversion') THEN
+            PERFORM finance.invariant_violation('reversal does not match its source kind');
+        END IF;
+    END IF;
+    IF tx.kind = 'settlement' AND NOT EXISTS (
+        SELECT 1 FROM finance.settlements WHERE id = tx.settlement_id AND kind = 'payment'
+    ) OR tx.subtype = 'waiver' AND NOT EXISTS (
+        SELECT 1 FROM finance.settlements WHERE id = tx.settlement_id AND kind = 'waiver'
+    ) OR tx.kind = 'conversion' AND tx.settlement_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM finance.settlements
+        WHERE id = tx.settlement_id AND paid_currency IS NOT NULL
+    ) THEN
+        PERFORM finance.invariant_violation('transaction does not match its settlement');
+    END IF;
+    SELECT count(*) INTO differences FROM (
+        (SELECT * FROM finance.expected_postings(p_transaction_id)
+         EXCEPT ALL SELECT * FROM finance.actual_postings(p_transaction_id))
+        UNION ALL
+        (SELECT * FROM finance.actual_postings(p_transaction_id)
+         EXCEPT ALL SELECT * FROM finance.expected_postings(p_transaction_id))
+    ) AS diff;
+    IF differences > 0 THEN
+        PERFORM finance.invariant_violation('postings do not match their source entry');
+    END IF;
+END;
+$$;
+
+CREATE FUNCTION finance.verify_consolidation(p_consolidation_id uuid) RETURNS void
+    LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (SELECT count(*) FROM finance.ledger_transactions
+        WHERE consolidation_id = p_consolidation_id AND kind = 'conversion') <> 1
+       OR NOT EXISTS (
+           SELECT 1 FROM finance.consolidation_lines WHERE consolidation_id = p_consolidation_id
+       ) THEN
+        PERFORM finance.invariant_violation('consolidation is incomplete');
+    END IF;
+END;
+$$;
+
+CREATE FUNCTION finance.check_consolidation() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    PERFORM finance.verify_consolidation(NEW.id);
+    RETURN NULL;
+END;
+$$;
+CREATE CONSTRAINT TRIGGER consolidations_complete
+    AFTER INSERT ON finance.consolidations DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION finance.check_consolidation();
+REVOKE EXECUTE ON FUNCTION finance.guard_consolidation(), finance.verify_consolidation(uuid),
+    finance.check_consolidation() FROM PUBLIC;
+"""
+
 
 def upgrade() -> None:
     op.execute(REVISIONS_SQL)
@@ -263,6 +580,8 @@ def upgrade() -> None:
     op.execute(MERGE_STATUS_SQL)
     op.execute(KITTY_SQL)
     op.execute(MARKET_RATES_SQL)
+    op.execute(CONSOLIDATION_TABLES_SQL)
+    op.execute(CONSOLIDATION_INVARIANTS_SQL)
 
 
 def downgrade() -> None:

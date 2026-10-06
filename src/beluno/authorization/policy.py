@@ -83,6 +83,7 @@ class PlanAction(StrEnum):
     ADJUST_LEDGER = "plan.ledger.adjust"
     CONFIGURE_LEDGER = "plan.ledger.configure"
     CONFIRM_LEDGER = "plan.ledger.confirm"
+    CONSOLIDATE_LEDGER = "plan.ledger.consolidate"
 
 
 ALL_PLAN_ROLES = frozenset(PlanRole)
@@ -160,6 +161,8 @@ PLAN_RULES: dict[PlanAction, Rule] = {
     PlanAction.CONFIGURE_LEDGER: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
     # Everyone may say the ledger looks right to them; it never blocks anything.
     PlanAction.CONFIRM_LEDGER: Rule(ALL_PLAN_ROLES, SETTLEMENT_PLAN_STATES),
+    # Converting every balance into the base currency changes what everyone owes.
+    PlanAction.CONSOLIDATE_LEDGER: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
 }
 
 

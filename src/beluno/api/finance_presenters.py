@@ -15,6 +15,9 @@ from beluno.contracts.finance import (
     CommitmentCreateRequest,
     CommitmentResponse,
     CommitmentUpdateRequest,
+    ConsolidationLineResponse,
+    ConsolidationRateResponse,
+    ConsolidationResponse,
     CurrencyResponse,
     EqualSplit,
     ExactSplit,
@@ -52,6 +55,7 @@ from beluno.contracts.finance import (
 )
 from beluno.db.models.finance import (
     Budget,
+    Consolidation,
     CostCommitment,
     Currency,
     Expense,
@@ -64,6 +68,7 @@ from beluno.db.models.finance import (
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.budgets import BudgetOverview, Spend
 from beluno.modules.finance.commitments import CommitmentDraft, CommitmentView, commitment_view
+from beluno.modules.finance.consolidation import ConsolidationView, consolidation_view
 from beluno.modules.finance.expenses import (
     ExpenseDraft,
     ExpenseView,
@@ -369,7 +374,47 @@ async def present_finance_current(ctx: CommandContext, entity: object) -> BaseMo
         return fund_settings_response(entity)
     if isinstance(entity, CostCommitment):
         return commitment_response(await commitment_view(ctx, entity))
+    if isinstance(entity, Consolidation):
+        return consolidation_response(await consolidation_view(ctx, entity))
     return None
+
+
+def consolidation_response(view: ConsolidationView) -> ConsolidationResponse:
+    consolidation = view.consolidation
+    return ConsolidationResponse.model_validate(
+        {
+            "id": consolidation.id,
+            "plan_id": consolidation.plan_id,
+            "base_currency": consolidation.base_currency,
+            "state": consolidation.state,
+            "rates": [
+                ConsolidationRateResponse.model_validate(
+                    {
+                        "currency": rate.currency,
+                        "rate": rate_text(snapshot.rate),
+                        "source": snapshot.source,
+                        "as_of": snapshot.as_of,
+                    }
+                )
+                for rate, snapshot in view.rates
+            ],
+            "lines": [
+                ConsolidationLineResponse(
+                    participant_id=line.participant_id,
+                    currency=line.currency,
+                    amount_minor=line.amount_minor,
+                    base_amount_minor=line.base_amount_minor,
+                )
+                for line in view.lines
+            ],
+            "created_by_user_id": consolidation.created_by_user_id,
+            "created_at": consolidation.created_at,
+            "reversed_by_user_id": consolidation.reversed_by_user_id,
+            "reversed_at": consolidation.reversed_at,
+            "version": consolidation.version,
+            "updated_at": consolidation.updated_at,
+        }
+    )
 
 
 # --- settlements and ledger views ---------------------------------------------------
@@ -458,6 +503,7 @@ def transaction_response(view: TransactionView) -> TransactionResponse:
             "refund_id": tx.refund_id,
             "settlement_id": tx.settlement_id,
             "fund_movement_id": tx.fund_movement_id,
+            "consolidation_id": tx.consolidation_id,
             "reverses_transaction_id": tx.reverses_transaction_id,
             "memo": tx.memo,
             "created_by_user_id": tx.created_by_user_id,

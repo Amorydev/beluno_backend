@@ -15,6 +15,7 @@ from beluno.api.dependencies import ActorDep, RunnerDep, RuntimeDep
 from beluno.api.finance_presenters import (
     budget_overview_response,
     commitment_response,
+    consolidation_response,
     currency_response,
     expense_response,
     explanation_entry,
@@ -54,6 +55,8 @@ from beluno.contracts.finance import (
     CommitmentCreateRequest,
     CommitmentResponse,
     CommitmentUpdateRequest,
+    ConsolidateRequest,
+    ConsolidationResponse,
     CurrencyResponse,
     ExpenseCreateRequest,
     ExpenseRequest,
@@ -85,6 +88,7 @@ from beluno.modules.context import open_context
 from beluno.modules.finance import (
     budgets,
     commitments,
+    consolidation,
     currencies,
     expenses,
     funds,
@@ -297,6 +301,62 @@ async def confirm_ledger(
 
     call = command_call(idempotency_key, plan_id=plan_id)
     return finish(response, await runner.run(actor, commands.LEDGER_CONFIRM, call, body))
+
+
+@router.get(
+    "/ledger/consolidations", response_model=list[ConsolidationResponse], responses=READ_ERRORS
+)
+async def list_consolidations(
+    plan_id: UUID, runtime: RuntimeDep, actor: ActorDep
+) -> list[ConsolidationResponse]:
+    async with open_context(runtime, actor) as ctx:
+        found = await consolidation.list_consolidations(ctx, plan_id)
+    return [consolidation_response(view) for view in found]
+
+
+@router.post(
+    "/ledger/consolidations",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ConsolidationResponse,
+    responses=WRITE_ERRORS,
+)
+async def consolidate_ledger(
+    plan_id: UUID,
+    body: ConsolidateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> ConsolidationResponse:
+    """Settle everything in the base currency (owner or admin) at rates frozen now."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.LEDGER_CONSOLIDATE, call, body))
+
+
+@router.post(
+    "/ledger/consolidations/{consolidation_id}/reverse",
+    response_model=ConsolidationResponse,
+    responses=WRITE_ERRORS,
+)
+async def reverse_consolidation(
+    plan_id: UUID,
+    consolidation_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> ConsolidationResponse:
+    """Undo the latest consolidation exactly, while nobody has settled up since."""
+
+    call = command_call(
+        idempotency_key, if_match=if_match, plan_id=plan_id, consolidation_id=consolidation_id
+    )
+    return finish(
+        response,
+        await runner.run(actor, commands.LEDGER_REVERSE_CONSOLIDATION, call, EmptyPayload()),
+    )
 
 
 @router.get("/ledger/transactions", response_model=TransactionPage, responses=READ_ERRORS)

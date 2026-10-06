@@ -138,6 +138,7 @@ class Ledger:
         refund_id: UUID | None = None,
         settlement_id: UUID | None = None,
         fund_movement_id: UUID | None = None,
+        consolidation_id: UUID | None = None,
         reverses: LedgerTransaction | None = None,
     ) -> LedgerTransaction:
         ctx = self.ctx
@@ -156,6 +157,7 @@ class Ledger:
             refund_id=refund_id,
             settlement_id=settlement_id,
             fund_movement_id=fund_movement_id,
+            consolidation_id=consolidation_id,
             reverses_transaction_id=reverses.id if reverses else None,
             memo=memo,
             created_by_user_id=ctx.actor.user_id if ctx.actor else None,
@@ -247,6 +249,7 @@ class Ledger:
             postings=reversed_entries,
             expense_id=original.expense_id,
             settlement_id=original.settlement_id,
+            consolidation_id=original.consolidation_id,
             reverses=original,
         )
 

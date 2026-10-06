@@ -492,6 +492,7 @@ TransactionKind = Literal[
     "fund_withdrawal",
     "adjustment",
     "conversion",
+    "conversion_reversal",
 ]
 
 
@@ -513,6 +514,7 @@ class TransactionResponse(BaseModel):
     refund_id: UUID | None
     settlement_id: UUID | None
     fund_movement_id: UUID | None
+    consolidation_id: UUID | None
     reverses_transaction_id: UUID | None
     memo: str | None
     created_by_user_id: UUID | None
@@ -564,6 +566,62 @@ class SettlementPreviewResponse(BaseModel):
     currency: str
     transfers: list[SuggestedTransfer]
     fund_payouts: list[SuggestedFundPayout]
+
+
+class ConsolidationRateRequest(BaseModel):
+    """Base-currency units for one unit of ``currency`` (major units), frozen for good."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    currency: CurrencyCode
+    rate: RateText
+    source: Literal["manual", "estimated"] = "manual"
+    as_of: AwareDatetime | None = None
+
+
+class ConsolidateRequest(BaseModel):
+    """One rate for every foreign currency that still has open balances."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    rates: Annotated[list[ConsolidationRateRequest], Field(min_length=1, max_length=50)]
+
+    @model_validator(mode="after")
+    def one_rate_per_currency(self) -> Self:
+        currencies = [rate.currency for rate in self.rates]
+        if len(set(currencies)) != len(currencies):
+            raise ValueError("send one rate per currency")
+        return self
+
+
+class ConsolidationRateResponse(BaseModel):
+    currency: str
+    rate: str
+    source: Literal["manual", "estimated"]
+    as_of: datetime
+
+
+class ConsolidationLineResponse(BaseModel):
+    participant_id: UUID
+    currency: str
+    amount_minor: int = Field(description="The balance moved out of this currency")
+    base_amount_minor: int = Field(description="What it became in the base currency")
+
+
+class ConsolidationResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    base_currency: str
+    state: Literal["active", "reversed"]
+    rates: list[ConsolidationRateResponse]
+    lines: list[ConsolidationLineResponse]
+    created_by_user_id: UUID
+    created_at: datetime
+    reversed_by_user_id: UUID | None
+    reversed_at: datetime | None
+    version: int
+    updated_at: datetime
 
 
 BudgetScope = Literal["total", "category", "participant", "daily"]

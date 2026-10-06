@@ -6,7 +6,7 @@ from decimal import Decimal
 from uuid import UUID
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from beluno.contracts.errors import BelunoError
@@ -15,6 +15,7 @@ from beluno.modules.finance.money import MAX_AMOUNT_MINOR, check_amount
 from beluno.modules.finance.postings import (
     FUND,
     Party,
+    consolidation_amounts,
     expense_postings,
     refund_allocation,
     refund_postings,
@@ -265,6 +266,20 @@ def test_debt_preview_leaves_out_balances_within_the_tolerance() -> None:
     assert [(p.to_participant_id, p.amount_minor) for p in payout.fund_payouts] == [(a, 10)]
 
 
+def test_consolidation_shares_the_converted_total_on_each_side() -> None:
+    a, b, c = PEOPLE[:3]
+    assert consolidation_amounts({a: 2_000, b: -1_000, c: -1_000}, 1_340) == {
+        a: 1_340,
+        b: -670,
+        c: -670,
+    }
+    # One unit left over goes to the larger remainder on each side.
+    assert consolidation_amounts({a: 1, b: 2, c: -3}, 10) == {a: 3, b: 7, c: -10}
+    assert consolidation_amounts({}, 0) == {}
+    with pytest.raises(ValueError):
+        consolidation_amounts({a: 1, b: -2}, 5)
+
+
 def test_ledger_status_and_commitment_tiers() -> None:
     assert next_ledger_status(LedgerStatus.OPEN, balances_zero=True, has_live_settlement=False) is (
         LedgerStatus.OPEN
@@ -424,3 +439,30 @@ def test_conversion_is_within_half_a_unit_of_the_exact_value(
         return
     converted = convert(amount, from_exponent=from_exponent, to_exponent=to_exponent, rate=rate)
     assert abs(Decimal(converted) - exact) <= Decimal("0.5")
+
+
+@given(
+    st.lists(
+        st.integers(min_value=-(10**9), max_value=10**9).filter(bool), min_size=1, max_size=30
+    ),
+    st.decimals(min_value=Decimal("0.000001"), max_value=Decimal("100000"), places=6),
+    st.sampled_from([(0, 2), (2, 0), (2, 2), (3, 0)]),
+)
+@settings(max_examples=300, deadline=None)
+def test_consolidation_is_zero_sum_and_close_to_each_exact_value(
+    values: list[int], rate: Decimal, exponents: tuple[int, int]
+) -> None:
+    balances = dict(zip(PEOPLE, values, strict=False))
+    balances[PEOPLE[len(balances)]] = -sum(balances.values())
+    balances = {pid: value for pid, value in balances.items() if value}
+    from_exponent, to_exponent = exponents
+    positive = sum(value for value in balances.values() if value > 0)
+    scale = rate * Decimal(10) ** (to_exponent - from_exponent)
+    assume(positive * scale <= MAX_AMOUNT_MINOR)
+    total = convert(positive, from_exponent=from_exponent, to_exponent=to_exponent, rate=rate)
+    amounts = consolidation_amounts(balances, total)
+    assert sum(amounts.values()) == 0
+    assert set(amounts) == set(balances)
+    for pid, value in balances.items():
+        assert (value > 0) == (amounts[pid] >= 0) or amounts[pid] == 0
+        assert abs(Decimal(amounts[pid]) - Decimal(value) * scale) < 2

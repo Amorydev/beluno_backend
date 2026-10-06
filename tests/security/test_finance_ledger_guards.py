@@ -190,7 +190,7 @@ def test_finance_tables_are_rls_protected_and_never_deletable(admin: AdminDataba
         "SELECT c.relname, c.relrowsecurity, pg_get_userbyid(c.relowner) FROM pg_class c "
         "WHERE c.relnamespace = 'finance'::regnamespace AND c.relkind = 'r'"
     )
-    assert len(tables) == 21
+    assert len(tables) == 24
     assert all(rls and owner == "migrator" for _, rls, owner in tables), tables
     for role in ("api_runtime", "worker_runtime"):
         deletable = admin.fetch(
@@ -216,6 +216,7 @@ def test_finance_tables_are_rls_protected_and_never_deletable(admin: AdminDataba
         "settlements",
         "fund_settings",
         "budgets",
+        "consolidations",
     }
 
 
