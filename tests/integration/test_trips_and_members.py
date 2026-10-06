@@ -235,3 +235,139 @@ async def test_insiders_cannot_grant_themselves_capabilities(
                 (row["id"],),
             )
             assert updated.rowcount == 1
+
+
+async def test_admins_manage_members_but_not_the_owner_or_other_admins(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
+) -> None:
+    owner = await sign_in(api, identity_provider, name="Linh")
+    first, second, member = [
+        await sign_in(api, identity_provider, name=name) for name in ("An", "Bao", "Minh")
+    ]
+    plan = (await create(api, owner, type="trip", base_currency="VND")).json()
+    rows = {
+        person.user_id: await join_with_invite(api, owner, plan["id"], person)
+        for person in (first, second, member)
+    }
+    for admin in (first, second):
+        promoted = await api.patch(
+            f"/v1/plans/{plan['id']}/participants/{rows[admin.user_id]['id']}",
+            json={"role": "admin"},
+            headers=if_match(1, owner),
+        )
+        assert promoted.status_code == 200, promoted.text
+
+    def path(row_id: str) -> str:
+        return f"/v1/plans/{plan['id']}/participants/{row_id}"
+
+    owner_row, other_admin = plan["my_participant"]["id"], rows[second.user_id]["id"]
+    for row_id, version, body in (
+        (owner_row, 1, {"default_share": 10_000}),
+        (owner_row, 1, {"avatar_color": "olive"}),
+        (other_admin, 2, {"default_share": 1}),
+        (other_admin, 2, {"capabilities": []}),
+    ):
+        refused = await api.patch(path(row_id), json=body, headers=if_match(version, first))
+        assert refused.status_code == 403, (row_id, body)
+    managed = await api.patch(
+        path(rows[member.user_id]["id"]),
+        json={"default_share": 50, "capabilities": ["expenses.manage"]},
+        headers=if_match(1, first),
+    )
+    assert managed.status_code == 200, managed.text
+    nulls = await api.patch(
+        path(rows[member.user_id]["id"]), json={"role": None}, headers=if_match(2, first)
+    )
+    assert nulls.status_code == 422
+
+
+async def test_capabilities_end_with_the_member_role_and_membership(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
+) -> None:
+    owner = await sign_in(api, identity_provider, name="Linh")
+    bea, dan, cam = [await sign_in(api, identity_provider, name=n) for n in ("Bea", "Dan", "Cam")]
+    plan = (await create(api, owner, type="trip", base_currency="VND")).json()
+    rows = {p.user_id: await join_with_invite(api, owner, plan["id"], p) for p in (bea, dan, cam)}
+    grant = {"capabilities": ["budgets.manage", "expenses.manage"]}
+
+    async def patch(person: SignedIn, version: int, body: dict[str, Any]) -> dict[str, Any]:
+        response = await api.patch(
+            f"/v1/plans/{plan['id']}/participants/{rows[person.user_id]['id']}",
+            json=body,
+            headers=if_match(version, owner),
+        )
+        assert response.status_code == 200, response.text
+        row: dict[str, Any] = response.json()
+        return row
+
+    async def capabilities_of(person: SignedIn) -> list[str]:
+        roster = await api.get(f"/v1/plans/{plan['id']}/participants", headers=owner.headers)
+        return next(p["capabilities"] for p in roster.json() if p["user_id"] == person.user_id)
+
+    # A demotion drops the grants; promoting back does not restore them.
+    await patch(bea, 1, grant)
+    assert (await patch(bea, 2, {"role": "viewer"}))["capabilities"] == []
+    assert (await patch(bea, 3, {"role": "member"}))["capabilities"] == []
+
+    # Leaving or being removed ends them too, so rejoining starts clean.
+    await patch(bea, 4, grant)
+    assert (await api.post(f"/v1/plans/{plan['id']}/leave", headers=bea.headers)).status_code in (
+        200,
+        204,
+    )
+    await join_with_invite(api, owner, plan["id"], bea)
+    assert await capabilities_of(bea) == []
+    await patch(dan, 1, grant)
+    removed = await api.delete(
+        f"/v1/plans/{plan['id']}/participants/{rows[dan.user_id]['id']}", headers=owner.headers
+    )
+    assert removed.status_code == 204, removed.text
+    readded = await api.post(
+        f"/v1/plans/{plan['id']}/participants", json={"user_id": dan.user_id}, headers=owner.headers
+    )
+    assert readded.status_code == 201, readded.text
+    assert readded.json()["capabilities"] == []
+
+    # A new owner holds everything through the role, not through grants.
+    await patch(cam, 1, grant)
+    transferred = await api.post(
+        f"/v1/plans/{plan['id']}/ownership-transfer",
+        json={"new_owner_participant_id": rows[cam.user_id]["id"]},
+        headers=if_match(1, owner),
+    )
+    assert transferred.status_code == 200, transferred.text
+    assert await capabilities_of(cam) == []
+
+
+async def test_insiders_cannot_change_a_plan_type_or_grant_non_members(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub, live_settings: Settings
+) -> None:
+    owner = await sign_in(api, identity_provider, name="Linh")
+    viewer = await sign_in(api, identity_provider, name="Minh")
+    plan = (await create(api, owner, type="trip", base_currency="VND")).json()
+    row = await join_with_invite(api, owner, plan["id"], viewer)
+    demoted = await api.patch(
+        f"/v1/plans/{plan['id']}/participants/{row['id']}",
+        json={"role": "viewer"},
+        headers=if_match(1, owner),
+    )
+    assert demoted.status_code == 200
+    assert live_settings.api_database_dsn is not None
+    dsn = live_settings.api_database_dsn.replace("postgresql+psycopg://", "postgresql://")
+    with psycopg.connect(dsn) as connection:
+        for statement, params, error in (
+            (
+                "UPDATE plans.plans SET type = 'hangout' WHERE id = %s",
+                (plan["id"],),
+                psycopg.errors.InsufficientPrivilege,
+            ),
+            (
+                "UPDATE plans.plan_participants SET capabilities = '{expenses.manage}' "
+                "WHERE id = %s",
+                (row["id"],),
+                psycopg.errors.CheckViolation,
+            ),
+        ):
+            with pytest.raises(error), connection.transaction():
+                connection.execute("SELECT set_config('app.actor_id', %s, true)", (owner.user_id,))
+                connection.execute(statement, params)

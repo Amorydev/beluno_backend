@@ -39,6 +39,20 @@ Removed group scope. Remaining scopes:
 
 Access levels remain: `self`, `manager`, `member`.
 
+### Contract breaks
+
+Accepted before launch; the client had wired only health and sign-in.
+`openapi/accepted-breaks.json` lists what the compatibility checker detects.
+It cannot see these, so they are recorded here:
+
+- Sync commands removed: `plan.join`, `group.*`, `series.*`, `travel.*`.
+  `plan.participant.change_role` became `plan.participant.update` (role,
+  default share, capabilities, avatar colour).
+- Request bodies forbid unknown fields, so removed fields (`group_id`,
+  `visibility`, `kind`, series and travel fields) now return `422`.
+- Nested response fields went away with them (plan list items, invite preview
+  and redeem responses).
+
 ## Consequences
 
 - Fewer moving parts: queries on plans no longer branch on group visibility or series.

@@ -228,6 +228,8 @@ class ParticipantUpdateRequest(BaseModel):
     def something_changes(self) -> Self:
         if not self.model_fields_set:
             raise ValueError("send at least one field to change")
+        if any(getattr(self, name) is None for name in self.model_fields_set):
+            raise ValueError("fields cannot be null")
         if self.capabilities is not None and len(set(self.capabilities)) != len(self.capabilities):
             raise ValueError("capabilities must not repeat")
         return self

@@ -32,9 +32,12 @@ group-visible plans go away.
   ``expected_size``.
 * ``plans.plan_participants`` gains ``default_share`` (hundredths, default
   100), ``avatar_color`` (backfilled by join order), and ``capabilities``
-  (``expenses.manage``, ``budgets.manage``). The participant write guard lets
-  non-managers change only their own avatar colour; capabilities and default
-  shares are a manager's call, and a self-inserted row carries none.
+  (``expenses.manage``, ``budgets.manage``), held only by active members with
+  an account (a check constraint; every row starts with none). The participant
+  write guard keeps default shares and capability grants a manager's call: a
+  non-manager may only clear their own capabilities (leaving), and a
+  self-inserted row carries none. ``plans.plan_write_guard`` also keeps a
+  plan's ``type`` fixed.
 * ``iam.users`` gains ``default_currency``.
 * New schema ``people`` with ``people.crews``: a user's private, saved list of
   people (``member_user_ids``, 1-50). RLS limits every crew to its owner; a
@@ -104,7 +107,9 @@ BEGIN
     IF NOT iam.is_guarded_runtime() THEN
         RETURN NEW;
     END IF;
-    IF NEW.id <> OLD.id OR NEW.created_by_user_id <> OLD.created_by_user_id THEN
+    -- ``type`` is added later in this migration; a plan never changes between trip and hangout.
+    IF NEW.id <> OLD.id OR NEW.created_by_user_id <> OLD.created_by_user_id
+       OR NEW.type <> OLD.type THEN
         RAISE EXCEPTION 'plan scope is immutable' USING ERRCODE = 'insufficient_privilege';
     END IF;
     IF plans.actor_plan_role(NEW.id) IS DISTINCT FROM 'owner'
@@ -172,11 +177,17 @@ DROP FUNCTION groups.membership_write_guard();
 DROP FUNCTION groups.owner_seat_vacant(uuid);
 DROP SCHEMA groups;
 
+-- Procrastinate's delete trigger names its tables without a schema, so the
+-- delete runs with the job schema on the search path, restored afterwards.
 DO $$
+DECLARE
+    previous text := current_setting('search_path');
 BEGIN
     IF to_regclass('jobs.procrastinate_jobs') IS NOT NULL THEN
+        PERFORM set_config('search_path', 'jobs, pg_catalog', true);
         DELETE FROM jobs.procrastinate_jobs
         WHERE task_name = 'plans.extend_series_horizons' AND status = 'todo';
+        PERFORM set_config('search_path', previous, true);
     END IF;
 END;
 $$;
@@ -242,7 +253,11 @@ WHERE ordered.id = p.id;
 ALTER TABLE plans.plan_participants
     ALTER COLUMN avatar_color SET NOT NULL,
     ALTER COLUMN default_share DROP DEFAULT,
-    ALTER COLUMN capabilities DROP DEFAULT;
+    ALTER COLUMN capabilities DROP DEFAULT,
+    ADD CONSTRAINT plan_participants_capabilities_for_members CHECK (
+        capabilities = '{{}}'
+        OR (role = 'member' AND identity_kind = 'user' AND access_state = 'active')
+    );
 
 ALTER TABLE iam.users ADD COLUMN default_currency char(3) CHECK (default_currency ~ '^[A-Z]{{3}}$');
 """
@@ -289,7 +304,8 @@ BEGIN
        AND NOT (OLD.id = claim_target AND OLD.identity_kind = 'placeholder') THEN
         RAISE EXCEPTION 'participant update not allowed' USING ERRCODE = 'insufficient_privilege';
     END IF;
-    IF NEW.capabilities IS DISTINCT FROM OLD.capabilities
+    -- Leaving clears one's own capabilities; only managers grant them or change shares.
+    IF (NEW.capabilities IS DISTINCT FROM OLD.capabilities AND NEW.capabilities <> '{}')
        OR NEW.default_share IS DISTINCT FROM OLD.default_share THEN
         RAISE EXCEPTION 'participant settings are a manager''s call'
             USING ERRCODE = 'insufficient_privilege';

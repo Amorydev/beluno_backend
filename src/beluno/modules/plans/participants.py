@@ -264,16 +264,22 @@ async def update_participant(
     own_row = access.participant is not None and access.participant.id == target.id
     if changes.manager_fields or not own_row:
         require_plan(access, PlanAction.CHANGE_PARTICIPANT_ROLE)
+    # Admins manage members, viewers, and guests only, whatever the field.
+    if not own_row and not can_manage_participant(_role(access), PlanRole(target.role)):
+        raise forbidden()
     if target.version != expected_version:
         raise version_conflict(target)
-    actions: list[str] = []
+    changed: dict[str, str] = {}
     if changes.role is not None:
         if not can_manage_participant(_role(access), PlanRole(target.role), new_role=changes.role):
             raise forbidden()
         if target.identity_kind != "user" and changes.role is PlanRole.ADMIN:
             raise forbidden("Only registered participants can administer a plan")
         target.role = changes.role.value
-        actions.append("role")
+        changed["role"] = target.role
+        if PlanRole(target.role) not in CAPABILITY_ROLES and target.capabilities:
+            target.capabilities = []
+            changed["capabilities"] = ""
     if changes.capabilities is not None:
         # Owners and admins hold every capability; viewers and guests get none.
         if changes.capabilities and (
@@ -281,17 +287,17 @@ async def update_participant(
         ):
             raise validation_error("capabilities apply to registered members")
         target.capabilities = sorted(changes.capabilities)
-        actions.append("capabilities")
+        changed["capabilities"] = ",".join(target.capabilities)
     if changes.default_share is not None:
         target.default_share = changes.default_share
-        actions.append("default_share")
+        changed["default_share"] = str(target.default_share)
     if changes.avatar_color is not None:
         target.avatar_color = changes.avatar_color
-        actions.append("avatar_color")
+        changed["avatar_color"] = target.avatar_color
     bump(target, ctx)
     await ctx.session.flush()
     await record_participant_change(
-        ctx, target, "plan_participant.updated", {"changed": ",".join(actions)}
+        ctx, target, "plan_participant.updated", {"changed": ",".join(changed), **changed}
     )
     return target
 
@@ -307,6 +313,7 @@ async def remove_participant(ctx: CommandContext, plan_id: UUID, participant_id:
         raise forbidden()
     target.access_state = AccessState.REMOVED.value
     target.removed_at = ctx.now
+    target.capabilities = []
     bump(target, ctx)
     await ctx.session.flush()
     await record_participant_change(ctx, target, "plan_participant.removed")
@@ -325,6 +332,7 @@ async def _leave(ctx: CommandContext, access: PlanAccess) -> None:
         raise conflict("OWNER_TRANSFER_REQUIRED", "Transfer ownership before leaving the plan")
     participant.access_state = AccessState.LEFT.value
     participant.left_at = ctx.now
+    participant.capabilities = []
     bump(participant, ctx)
     await ctx.session.flush()
     await record_participant_change(ctx, participant, "plan_participant.left")
@@ -391,6 +399,7 @@ async def transfer_ownership(
     bump(current, ctx)
     await ctx.session.flush()
     target.role = PlanRole.OWNER.value
+    target.capabilities = []
     bump(target, ctx)
     bump(access.plan, ctx)
     await ctx.session.flush()

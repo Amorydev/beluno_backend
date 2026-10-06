@@ -7,6 +7,7 @@ from uuid import uuid4
 import psycopg
 import pytest
 from alembic.config import Config
+from procrastinate.schema import SchemaManager
 
 from alembic import command
 from beluno.db.bootstrap import PROJECT_ROOT
@@ -86,6 +87,16 @@ def test_upgrade_drops_groups_series_and_travel_but_keeps_plans(
         for statement in SEED_SQL.split(";\n"):
             if statement.strip():
                 connection.execute(statement, ids)
+    # The job queue exists in deployed databases; a queued series job must not block the upgrade.
+    migrator_dsn = settings.migration_database_dsn.replace("postgresql+psycopg://", "postgresql://")
+    with psycopg.connect(migrator_dsn) as connection, connection.transaction():
+        connection.execute("SET LOCAL search_path = jobs, public")
+        connection.execute(SchemaManager.get_schema())
+        connection.execute(
+            "INSERT INTO jobs.procrastinate_jobs (queue_name, task_name, args) "
+            "VALUES ('plans', 'plans.extend_series_horizons', '{}'), "
+            "('notifications', 'notifications.deliver', '{}')"
+        )
 
     command.upgrade(config, "head")
 
@@ -138,6 +149,9 @@ def test_upgrade_drops_groups_series_and_travel_but_keeps_plans(
     assert admin.fetch("SELECT scope_type, scope_seq FROM sync_audit.change_log") == [("plan", 1)]
     assert admin.fetch("SELECT scope_type FROM sync_audit.scope_heads") == [("plan",)]
     assert admin.scalar("SELECT count(*) FROM sync_audit.audit_events") == 1
+    assert admin.fetch("SELECT task_name FROM jobs.procrastinate_jobs") == [
+        ("notifications.deliver",)
+    ]
     with pytest.raises(psycopg.errors.CheckViolation):
         admin.execute(
             "INSERT INTO sync_audit.scope_heads (scope_type, scope_id, last_seq, floor_seq, "
