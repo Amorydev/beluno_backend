@@ -31,7 +31,7 @@ Decision (user, 2026-10-06): **realign, do not rebuild.** Platform, identity, of
 | Phase | Release | Dependency | Estimate | Name | Status |
 |---:|---|---|---:|---|---|
 | 1 | 1 | PR #4 fixes | 1.5–2 weeks | [Core realignment](./phase-01-core-realignment.md) | completed |
-| 2 | 1 | 1 | ~2 weeks | [Money alignment](./phase-02-money-alignment.md) | pending |
+| 2 | 1 | 1 | ~2 weeks | [Money alignment](./phase-02-money-alignment.md) | in-progress |
 | 3 | 1 | 1, 2 | 1–1.5 weeks | [People, activity, and account lifecycle](./phase-03-people-activity-account.md) | pending |
 | 4 | 1 | 1–3 | 1–2 weeks + soak | [Release 1 hardening](./phase-04-release-one-hardening.md) | pending |
 | 5 | 2 | 4 | 3–4 weeks | [Planning tab (slim)](./phase-05-planning-tab.md) | pending |

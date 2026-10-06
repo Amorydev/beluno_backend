@@ -92,6 +92,7 @@ async def create_manual(
     ctx: CommandContext, plan_id: UUID, commitment_id: UUID | None, draft: CommitmentDraft
 ) -> CommitmentView:
     ledger = await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    ledger.require_trip()
     if draft.state not in LINKABLE_COMMITMENT_STATES:
         raise validation_error("a new commitment is estimated or committed")
     identity = commitment_id or new_id()
@@ -107,6 +108,7 @@ async def update_manual(
     expected_version: int,
 ) -> CommitmentView:
     ledger = await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    ledger.require_trip()
     commitment = await _locked(ctx, plan_id, commitment_id)
     if commitment.source_type != MANUAL:
         raise forbidden("Change this cost where it was planned")
@@ -150,6 +152,7 @@ class CostCommitmentPort:
         if draft.state not in LINKABLE_COMMITMENT_STATES:
             raise ValueError("ports record estimated or committed costs; use cancel()")
         ledger = await ledger_for(ctx, access)
+        ledger.require_trip()
         existing = await _by_source(ctx, access.plan.id, source_type, source_id, commitment_kind)
         if existing is None:
             return await _create(ledger, source_type, source_id, commitment_kind, draft)

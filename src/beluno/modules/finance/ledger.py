@@ -39,13 +39,18 @@ from beluno.db.models.finance import (
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.currencies import supported_currency
-from beluno.modules.finance.errors import fund_insufficient, participant_not_eligible
+from beluno.modules.finance.errors import (
+    fund_insufficient,
+    not_available_for_hangout,
+    participant_not_eligible,
+)
 from beluno.modules.finance.postings import Party, Postings, reversal_postings
 from beluno.modules.finance.states import LedgerStatus, SettlementStatus, next_ledger_status
 from beluno.modules.sync_audit.recorder import ChangeScope, record_change
 from beluno.observability.metrics import instruments
 
 LEDGER_ENTITY = "ledger"
+TRIP = "trip"
 MAX_MERGE_DEPTH = 16
 # Participants who may still settle up: everyone with history except merged rows
 # (their money moved to the survivor) and people never admitted.
@@ -70,6 +75,12 @@ class Ledger:
         return self.access.plan.id
 
     # --- references ---------------------------------------------------------------
+
+    def require_trip(self) -> None:
+        """Budgets, cost commitments, and the fund exist for trips only."""
+
+        if self.access.plan.type != TRIP:
+            raise not_available_for_hangout()
 
     async def currency(self, code: str) -> Currency:
         if code not in self.currencies:
@@ -130,6 +141,9 @@ class Ledger:
         reverses: LedgerTransaction | None = None,
     ) -> LedgerTransaction:
         ctx = self.ctx
+        if any(party.is_fund for entries in postings.values() for party in entries):
+            # Fund-paid expenses, refunds to the fund, and fund adjustments included.
+            self.require_trip()
         self.head.ledger_seq += 1
         transaction = LedgerTransaction(
             id=new_id(),

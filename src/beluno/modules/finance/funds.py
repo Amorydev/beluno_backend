@@ -91,6 +91,7 @@ async def put_settings(
     """Create the fund settings (no version) or replace them (current version required)."""
 
     ledger = await open_ledger(ctx, plan_id, PlanAction.MANAGE_FUND)
+    ledger.require_trip()
     if custodian_participant_id is not None:
         ledger.participant(custodian_participant_id)
     settings = (
@@ -127,6 +128,7 @@ async def put_settings(
 
 async def contribute(ctx: CommandContext, plan_id: UUID, draft: MovementDraft) -> FundMovement:
     ledger = await open_ledger(ctx, plan_id, PlanAction.CONTRIBUTE_FUND)
+    ledger.require_trip()
     contributor = ledger.participant(draft.participant_id)
     own = ledger.access.participant
     manages = decide_plan(PlanAction.MANAGE_FUND, ledger.access.subject) is Decision.ALLOW
@@ -149,6 +151,7 @@ async def withdraw(ctx: CommandContext, plan_id: UUID, draft: MovementDraft) -> 
     """Money handed back from the fund to a participant (managers only)."""
 
     ledger = await open_ledger(ctx, plan_id, PlanAction.MANAGE_FUND)
+    ledger.require_trip()
     receiver = ledger.settling_party(draft.participant_id)
     movement = await _movement(ledger, WITHDRAWAL, draft)
     await ledger.append(

@@ -31,6 +31,7 @@ async def finance_plan(
     members: tuple[str, ...] = ("Bea",),
     placeholders: tuple[str, ...] = ("Cam",),
     currency: str = "USD",
+    plan_type: str = "trip",
 ) -> FinancePlan:
     """Owner "Ann", registered members, and name-only placeholders, all active participants."""
 
@@ -38,7 +39,7 @@ async def finance_plan(
     plan = await api.post(
         "/v1/plans",
         json={
-            "type": "trip",
+            "type": plan_type,
             "title": "Trip",
             "base_currency": currency,
             "participants": [{"placeholder_name": name} for name in placeholders],

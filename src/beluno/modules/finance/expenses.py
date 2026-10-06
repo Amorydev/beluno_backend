@@ -557,6 +557,7 @@ async def _append_revision(
 async def _require_fund_spender(ledger: Ledger) -> None:
     """Spending pooled money is a fund manager's or the custodian's call, like a withdrawal."""
 
+    ledger.require_trip()
     if decide_plan(PlanAction.MANAGE_FUND, ledger.access.subject) is Decision.ALLOW:
         return
     settings = await ledger.ctx.session.get(FundSettings, ledger.plan_id)

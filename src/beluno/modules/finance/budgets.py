@@ -104,6 +104,7 @@ async def create_budget(
     ctx: CommandContext, plan_id: UUID, budget_id: UUID | None, draft: BudgetDraft
 ) -> Budget:
     ledger = await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    ledger.require_trip()
     _check_scope(ledger, draft)
     check_amount(draft.limit_minor, field="limit_minor")
     currency = ledger.access.plan.base_currency
@@ -137,7 +138,7 @@ async def create_budget(
 async def update_budget(
     ctx: CommandContext, plan_id: UUID, budget_id: UUID, limit_minor: int, expected_version: int
 ) -> Budget:
-    await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    (await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)).require_trip()
     budget = await _locked(ctx, plan_id, budget_id)
     if budget.version != expected_version:
         raise version_conflict(budget)
@@ -151,7 +152,7 @@ async def update_budget(
 
 
 async def delete_budget(ctx: CommandContext, plan_id: UUID, budget_id: UUID) -> None:
-    await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    (await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)).require_trip()
     budget = await _locked(ctx, plan_id, budget_id)
     budget.deleted_at = ctx.now
     budget.version += 1

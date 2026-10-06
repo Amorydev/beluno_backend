@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Money alignment"
-status: pending
+status: in-progress
 priority: P1
 effort: "~2 weeks"
 dependencies: [1]
@@ -60,7 +60,7 @@ Budgets, cost commitments, and the fund are trip-only. Their commands return `40
 
 ### 7. Settle everything in the base currency ("All in VND")
 
-- Command `ledger.consolidate` (managers, or `budgets.manage`) freezes one rate per foreign currency (from the feed or entered manually). It then appends one `conversion` entry per foreign currency, moving every participant balance in that currency into the base currency at the frozen rate.
+- Command `ledger.consolidate` (owner or admin) freezes one rate per foreign currency (from the feed or entered manually). It then appends one `conversion` entry per foreign currency, moving every participant balance in that currency into the base currency at the frozen rate.
 - Base-side amounts use largest remainder so each entry stays zero-sum in both currencies.
 - Source rows: `finance.consolidations` and `finance.consolidation_rates` (immutable), referenced by the transactions. The database verifies zero-sum per currency; reconciliation re-derives the converted amounts.
 - Requires zero fund availability in each converted currency (`409 FUND_NOT_EMPTY`), so the kitty pays out first.
@@ -94,6 +94,12 @@ Budgets, cost commitments, and the fund are trip-only. Their commands return `40
 ### Settings placement
 
 `count_personal_spend` and `settle_tolerance_minor` live on the finance side (ledger head columns via `ledger.configure`) so finance keeps owning money rules. The trip settings screen reads them from the `ledger` entity.
+
+## Execution Decisions (user, 2026-10-06)
+
+- **FX provider:** none yet. Build the table, endpoint, daily job, and `RateProvider` port with a no-op adapter; the endpoint returns an empty list until a provider is chosen. Manual rates always work.
+- **Who may consolidate:** owner and admin only (`ledger.consolidate`, `ledger.reverse_consolidation`). The `budgets.manage` capability does not grant it: consolidation changes everyone's balances, not the budget.
+- **Branch:** `feat/money-alignment`, cut from the realignment branch (PR #5 merges on its own).
 
 ## Architecture notes
 
