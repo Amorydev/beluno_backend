@@ -118,9 +118,10 @@ other people's rows or the plan, only the owner moves ownership, a
 non-manager changes only their own row through the transitions the API offers
 and never its `default_share` or `capabilities` (a self-inserted row carries
 none), and an invite-token holder can only count one use. On `people.crews`,
-RLS limits every row to its owner and `people.crew_write_guard` keeps the ID,
-owner, and creation time immutable, makes a delete final, and admits a newly
-listed person only when they are in a plan the owner is active in.
+RLS limits every row to its owner and `people.crew_write_guard` requires a
+registered owner, keeps the ID, owner, and creation time immutable, makes a
+delete final, and admits a newly listed person only when they are registered
+and in a plan the owner is active in.
 
 ## Background roles
 

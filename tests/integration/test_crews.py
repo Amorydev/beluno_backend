@@ -11,7 +11,7 @@ import pytest
 
 from beluno.config import Settings
 from beluno.db.ids import new_id
-from beluno.testkit.api_client import SignedIn, sign_in
+from beluno.testkit.api_client import SignedIn, sign_in, signed_in_from
 from beluno.testkit.finance import if_match, join_with_invite, pull_all
 from beluno.testkit.identity import IdentityProviderStub
 
@@ -91,15 +91,54 @@ async def test_saving_a_plan_keeps_everyone_active_in_it(
     assert saved.status_code == 201, saved.text
     crew = saved.json()
     assert crew["source_plan_id"] == plan_id
-    listed = members(crew)
-    assert [name for name, _ in listed.values()] == ["Linh", "Minh", "Guest"]
-    assert listed[minh.user_id] == ("Minh", True)
-    # Guests have no account to add directly; they join through an invite link.
-    assert [addable for name, addable in listed.values() if name == "Guest"] == [False]
+    # Crews list registered people only; guests join new plans through an invite link.
+    assert members(crew) == {linh.user_id: ("Linh", False), minh.user_id: ("Minh", True)}
 
     outsider = await sign_in(api, identity_provider, name="Outsider")
     hidden = await create_crew(api, outsider, from_plan_id=plan_id)
     assert hidden.status_code == 404
+
+
+async def test_crews_belong_to_registered_accounts_and_list_registered_people(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub, live_settings: Settings
+) -> None:
+    linh = await sign_in(api, identity_provider, name="Linh")
+    minh = await sign_in(api, identity_provider, name="Minh")
+    plan_id = await trip_with(api, linh, minh)
+    invite = await api.post(f"/v1/plans/{plan_id}/invites", json={}, headers=linh.headers)
+    redeemed = await api.post(
+        "/v1/invites/redeem", json={"token": invite.json()["token"], "display_name": "Guest"}
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    guest = signed_in_from(redeemed.json()["session"])
+
+    refused = await create_crew(api, guest, member_user_ids=[minh.user_id])
+    assert refused.status_code == 403
+    assert (await api.get("/v1/crews", headers=guest.headers)).json() == []
+    with_guest = await create_crew(api, linh, member_user_ids=[minh.user_id, guest.user_id])
+    assert with_guest.status_code == 422
+    crew = (await create_crew(api, linh, member_user_ids=[minh.user_id])).json()
+    grown = await api.patch(
+        f"/v1/crews/{crew['id']}",
+        json={"member_user_ids": [minh.user_id, guest.user_id]},
+        headers=if_match(1, linh),
+    )
+    assert grown.status_code == 422
+
+    assert live_settings.api_database_dsn is not None
+    dsn = live_settings.api_database_dsn.replace("postgresql+psycopg://", "postgresql://")
+    insert = (
+        "INSERT INTO people.crews (id, owner_user_id, name, member_user_ids, version, "
+        "created_at, updated_at) VALUES (%s, %s, 'Crew', %s::uuid[], 1, now(), now())"
+    )
+    with psycopg.connect(dsn) as connection:
+        for actor, params in (
+            (guest, (str(new_id()), guest.user_id, [guest.user_id])),
+            (linh, (str(new_id()), linh.user_id, [guest.user_id])),
+        ):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege), connection.transaction():
+                connection.execute("SELECT set_config('app.actor_id', %s, true)", (actor.user_id,))
+                connection.execute(insert, params)
 
 
 async def test_crews_stay_private_to_their_owner(

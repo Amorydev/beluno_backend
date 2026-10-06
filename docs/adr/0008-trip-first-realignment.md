@@ -26,7 +26,7 @@ The Stitch "Trip OS" UI defines the product as trip-first: trips, hangouts (shor
 - **Trip fields:** `destinations` (up to 10 ordered entries with name, code, country, dates), `pass_color` (deterministic from plan ID if omitted), `expected_size` (1–50 for "6 of 8 slots")
 - **Hangout fields:** optional `activity` icon key (`dinner`, `drinks`, `karaoke`, `coffee`, `movie`, `sport`, `birthday`, `other`), no destinations
 - **Member fields:** `default_share` (hundredths, default 100), `avatar_color` (self-editable for members, visible in the member palette), `capabilities` grants (`expenses.manage`, `budgets.manage`; only managers grant them, and only to participants with the `member` role; owners and admins hold both implicitly)
-- **Crews:** private saved lists of people (1–50 members, owner-only). Members must currently be active in a plan with the owner. Sync entity in the user scope. "Save from plan" captures all active members; "start from crew" reuses plan creation.
+- **Crews:** private saved lists of people (1–50 members, owner-only), for registered accounts only: a guest cannot own one or be listed (a guest account can be retired by a claim, and guests join plans through invite links). Members must currently be active in a plan with the owner. Sync entity in the user scope. "Save from plan" captures the registered people active in it; "start from crew" reuses plan creation.
 - **User default currency:** fallback for new plan base currency
 
 ### Sync scopes

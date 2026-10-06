@@ -188,6 +188,4 @@ Review fixes (code-reviewer report in `reports/`):
 - Capabilities survived demotion, leaving, removal, and ownership transfer. Now cleared on each, with a check constraint (`capabilities = '{}'` unless an active member with an account).
 - Also: explicit nulls rejected on participant update; plan `type` immutable in the write guard; ADR 0008 lists breaks the OpenAPI checker cannot see.
 
-Open:
-
-- Crews made by a guest stay with the retired guest account when that guest claims an existing account. Options: limit crews to registered users, or move them on merge.
+Follow-up (user decision 2026-10-06): crews are for registered accounts only. A guest cannot own a crew or be listed in one; "save from plan" keeps the registered people. The API and `people.crew_write_guard` both enforce it, so a guest account retired by a claim never strands a crew.

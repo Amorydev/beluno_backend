@@ -40,10 +40,10 @@ group-visible plans go away.
   plan's ``type`` fixed.
 * ``iam.users`` gains ``default_currency``.
 * New schema ``people`` with ``people.crews``: a user's private, saved list of
-  people (``member_user_ids``, 1-50). RLS limits every crew to its owner; a
-  write guard admits a newly listed member only when it is the owner or someone
-  in a plan the owner is active in (the API also requires that person to be
-  active there).
+  registered people (``member_user_ids``, 1-50), owned by a registered
+  account. RLS limits every crew to its owner; a write guard admits a newly
+  listed member only when it is the owner or a registered person in a plan the
+  owner is active in (the API also requires that person to be active there).
 
 Dependents were listed before writing this migration with:
     SELECT n.nspname || '.' || p.proname FROM pg_proc p
@@ -355,7 +355,8 @@ CREATE TABLE people.crews (
 );
 CREATE INDEX crews_owner_idx ON people.crews (owner_user_id) WHERE deleted_at IS NULL;
 
--- A newly listed person is the owner or someone in a plan the owner is active in.
+-- Crews belong to registered accounts and list registered people; a newly listed
+-- person is the owner or someone in a plan the owner is active in.
 CREATE FUNCTION people.crew_write_guard() RETURNS trigger
     LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
@@ -369,11 +370,19 @@ BEGIN
                              OR OLD.deleted_at IS NOT NULL) THEN
         RAISE EXCEPTION 'crew identity is immutable' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    IF TG_OP = 'INSERT' AND NOT EXISTS (
+        SELECT 1 FROM iam.users WHERE id = NEW.owner_user_id AND kind = 'registered'
+    ) THEN
+        RAISE EXCEPTION 'crews need a registered account' USING ERRCODE = 'insufficient_privilege';
+    END IF;
     FOR added IN
         SELECT unnest(NEW.member_user_ids)
         EXCEPT SELECT unnest(CASE WHEN TG_OP = 'UPDATE' THEN OLD.member_user_ids END)
     LOOP
-        IF added <> iam.actor_id() AND NOT iam.actor_shares_context(added) THEN
+        IF added <> iam.actor_id() AND (
+            NOT iam.actor_shares_context(added)
+            OR NOT EXISTS (SELECT 1 FROM iam.users WHERE id = added AND kind = 'registered')
+        ) THEN
             RAISE EXCEPTION 'crew members must share a plan with the owner'
                 USING ERRCODE = 'insufficient_privilege';
         END IF;

@@ -33,7 +33,7 @@ The `plans` schema models individual plans (trips or hangouts):
 
 The `people` schema holds each user's private, saved lists of people:
 
-- **crews**: a name and `member_user_ids` (1–50 users), owned by one user. A newly listed person must currently be active in a plan with the owner (`people.crew_write_guard` backs the API check). Owner-only under RLS; deletes are tombstones (`deleted_at`). Clients start new plans from a crew.
+- **crews**: a name and `member_user_ids` (1–50 registered users), owned by one registered user. A newly listed person must currently be active in a plan with the owner (`people.crew_write_guard` backs the API check). Owner-only under RLS; deletes are tombstones (`deleted_at`). Clients start new plans from a crew.
 
 ## Finance
 

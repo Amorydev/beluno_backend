@@ -11,7 +11,7 @@ User ──< Plan ──< PlanParticipant (trips and hangouts)
 ```
 
 - **User**: registered or guest; guests are upgraded when they claim an identity. Users have an optional default currency for new plans.
-- **Crew**: private list of 1–50 people, owned by one user. A newly listed person must currently be active in a plan with the owner. Private to its owner.
+- **Crew**: private list of 1–50 registered people, owned by one registered user. A newly listed person must currently be active in a plan with the owner. Guests are never listed; they join plans through invite links.
 - **Plan**: a trip (destination-based, up to 10 stops) or hangout (activity-based, optional icon); fixed type at creation. State machine: draft → planning → active → settling → completed.
 - **PlanParticipant**: stable historical identity for votes, tasks, money, and RSVP; guest claims link participants to users without rewriting history. Members hold a default share (default 1.0×), avatar color, and optional capability grants.
 - **PlanInvite**: bearer tokens for joining or claiming an existing placeholder; optional email binding, use limit, and guest switch.

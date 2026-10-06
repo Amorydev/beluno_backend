@@ -1012,7 +1012,7 @@
       },
       "CrewCreateRequest": {
         "additionalProperties": false,
-        "description": "Name the people directly, or save everyone from a plan (\"Saved from Friday hotpot\").",
+        "description": "Name the people directly, or save a plan's registered people (\"Saved from Friday hotpot\").\n\nRegistered accounts only; guests are never listed and join plans through invite links.",
         "properties": {
           "from_plan_id": {
             "anyOf": [

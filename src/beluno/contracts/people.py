@@ -29,7 +29,10 @@ def _unique(ids: list[UUID] | None) -> None:
 
 
 class CrewCreateRequest(BaseModel):
-    """Name the people directly, or save everyone from a plan ("Saved from Friday hotpot")."""
+    """Name the people directly, or save a plan's registered people ("Saved from Friday hotpot").
+
+    Registered accounts only; guests are never listed and join plans through invite links.
+    """
 
     model_config = ConfigDict(extra="forbid")
 

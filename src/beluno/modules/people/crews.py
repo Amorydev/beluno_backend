@@ -1,7 +1,9 @@
 """Crews: a user's private, saved list of people ("Hotpot gang", "Japan crew").
 
 A crew is never shared and never carries money: starting a plan from it only
-brings the people. Anyone listed must be the owner or someone who currently
+brings the people. Crews belong to registered accounts and list registered
+people only: guests join plans through invite links, and a guest account can be
+retired by a claim. Anyone listed must be the owner or someone who currently
 shares an active plan with the owner (the people the owner can already see).
 """
 
@@ -17,7 +19,13 @@ from sqlalchemy.orm import aliased
 
 from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import AccessState, PlanAction
-from beluno.contracts.errors import conflict, not_found, validation_error, version_conflict
+from beluno.contracts.errors import (
+    conflict,
+    forbidden,
+    not_found,
+    validation_error,
+    version_conflict,
+)
 from beluno.db.ids import new_id
 from beluno.db.models.iam import User
 from beluno.db.models.people import Crew
@@ -121,7 +129,10 @@ async def create_crew(
     member_user_ids: Sequence[UUID] | None,
     from_plan_id: UUID | None,
 ) -> CrewView:
-    owner = ctx.require_actor().user_id
+    actor = ctx.require_actor()
+    if actor.is_guest:
+        raise forbidden("Crews need a registered account")
+    owner = actor.user_id
     if from_plan_id is not None:
         members = await _plan_people(ctx, from_plan_id)
     else:
@@ -189,16 +200,17 @@ async def delete_crew(ctx: CommandContext, crew_id: UUID) -> None:
 
 
 async def _plan_people(ctx: CommandContext, plan_id: UUID) -> list[UUID]:
-    """Everyone with an account (registered or guest) active in the plan, in join order."""
+    """Every registered account active in the plan, in join order; guests are left out."""
 
     access = await load_plan(ctx, plan_id)
     require_plan(access, PlanAction.VIEW_PARTICIPANTS)
     rows = await ctx.session.execute(
         select(PlanParticipant.user_id)
+        .join(User, User.id == PlanParticipant.user_id)
         .where(
             PlanParticipant.plan_id == plan_id,
             PlanParticipant.access_state == AccessState.ACTIVE.value,
-            PlanParticipant.user_id.is_not(None),
+            User.kind == "registered",
         )
         .order_by(PlanParticipant.created_at, PlanParticipant.id)
     )
@@ -213,6 +225,11 @@ async def _require_known(ctx: CommandContext, user_ids: Sequence[UUID]) -> None:
     others = {user_id for user_id in user_ids if user_id != owner}
     if others - await shared_people(ctx, others):
         raise validation_error("crew members must share an active plan with you")
+    registered = await ctx.session.execute(
+        select(User.id).where(User.id.in_(others), User.kind == "registered")
+    )
+    if others - set(registered.scalars()):
+        raise validation_error("crews list registered people; guests join through an invite")
 
 
 async def _own_crew(ctx: CommandContext, crew_id: UUID, *, for_update: bool = False) -> Crew:
