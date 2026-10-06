@@ -170,7 +170,10 @@ async def revise_expense(
     if_match: IfMatch = None,
     idempotency_key: IdempotencyKey = None,
 ) -> ExpenseResponse:
-    """Append a new revision; the previous one is reversed, never overwritten."""
+    """Append a new revision; the previous one is reversed, never overwritten.
+
+    While refunds are in effect the currency and split stay as they are.
+    """
 
     call = command_call(idempotency_key, if_match=if_match, plan_id=plan_id, expense_id=expense_id)
     return finish(response, await runner.run(actor, commands.EXPENSE_REVISE, call, body))

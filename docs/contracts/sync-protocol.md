@@ -140,7 +140,7 @@ access level, and position. Never edit or share them.
 | Intent commands (RSVP, join, leave, invitation answer, join-request review, removal) | no version; the server applies the intent to current state |
 | Delete versus edit | the delete wins; recreate with a new ID |
 | Ordered collections (future itinerary) | fractional ordering keys from `beluno.sync.ordering`; deterministic rebalance |
-| Expenses (revise, void, refund) | strict `expected_version` on the expense; a revision appends a reversal and a new revision, never an overwrite; a voided expense rejects further changes (`409`) |
+| Expenses (revise, void, refund) | strict `expected_version` on the expense; a revision appends a reversal and a new revision, never an overwrite; a voided expense rejects further changes (`409`); a refunded expense keeps its currency and split (`409 INVALID_STATE_TRANSITION`) |
 | Settlements | recording is a create; `confirm`/`dispute` are creditor intents; `reverse` needs `expected_version` and appends exact reversals |
 | Budgets, commitments, fund settings | strict `expected_version`; budget delete is an intent (delete wins) |
 | Fund movements, waivers, adjustments | creates only; corrections are new entries |

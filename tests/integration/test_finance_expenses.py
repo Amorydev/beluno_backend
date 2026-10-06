@@ -174,6 +174,42 @@ async def test_refunds_follow_shares_and_voiding_reverses_everything(
     assert again.status_code == 409 and again.json()["code"] == "INVALID_STATE_TRANSITION"
 
 
+async def test_a_refunded_expense_keeps_its_split(
+    api: httpx.AsyncClient, trip: FinancePlan
+) -> None:
+    ann, bea, cam = ids(trip, "Ann", "Bea", "Cam")
+    expense = await add_expense(api, trip.owner, trip, equal_expense(9000, ann, [ann, bea, cam]))
+    path = trip.path(f"/expenses/{expense['id']}")
+    refund = await api.post(
+        path + "/refunds",
+        json={"amount_minor": 3000, "recipient": {"participant_id": ann}},
+        headers=if_match(1, trip.owner),
+    )
+    assert refund.status_code == 200, refund.text
+    refunded = await ledger_balances(api, trip.owner, trip)
+
+    # Cam's refund credit would outlive their share of the bill.
+    without_cam = await api.put(
+        path, json=equal_expense(9000, ann, [ann, bea]), headers=if_match(2, trip.owner)
+    )
+    assert without_cam.status_code == 409, without_cam.text
+    assert without_cam.json()["code"] == "INVALID_STATE_TRANSITION"
+    assert await ledger_balances(api, trip.owner, trip) == refunded
+
+    # The amount and details may change; the refund keeps following the same split.
+    corrected = await api.put(
+        path,
+        json=equal_expense(9300, ann, [ann, bea, cam], description="Dinner and tip"),
+        headers=if_match(2, trip.owner),
+    )
+    assert corrected.status_code == 200, corrected.text
+    assert await ledger_balances(api, trip.owner, trip) == {
+        (ann, "USD"): 9300 - 3100 - 3000 + 1000,
+        (bea, "USD"): -3100 + 1000,
+        (cam, "USD"): -3100 + 1000,
+    }
+
+
 async def test_split_methods_and_validation_codes(
     api: httpx.AsyncClient, trip: FinancePlan, admin: AdminDatabase
 ) -> None:

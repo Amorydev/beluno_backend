@@ -30,7 +30,10 @@ than overwriting history. Projections are rebuildable caches.
 - **Revisions.** Editing an expense appends the exact reversal of its current
   revision and a new revision with full postings in the same database
   transaction; voiding appends only reversals (of the revision and of every
-  refund). The previous rows are never updated or deleted.
+  refund). The previous rows are never updated or deleted. While refunds are in
+  effect a revision keeps the currency and the split input (the amount may
+  change, never below the refunds): refund credit was allocated under that split
+  and must stay with the people who share the cost.
 - **Splits.** Equal (over any subset), exact, percentage (basis points), shares
   (integer weights), and itemized splits reduce to integer weights resolved by
   the largest-remainder algorithm `lr-v1`: floor quotas, then one unit each to
