@@ -112,8 +112,10 @@ async def record_audit(
     entity_type: str,
     entity_id: UUID,
     metadata: Mapping[str, Any] | None = None,
+    plan_id: UUID | None = None,
 ) -> None:
-    """Record an audit event with no sync change (operator and maintenance actions)."""
+    """Record an audit event with no sync change (operator, maintenance, and actions
+    whose sync change another record already carries)."""
 
     _require_tracked_savepoint(ctx)
     ctx.pending_audit.append(
@@ -127,7 +129,7 @@ async def record_audit(
             "entity_type": entity_type,
             "entity_id": entity_id,
             "group_id": None,
-            "plan_id": None,
+            "plan_id": plan_id,
             "metadata": json.dumps(redact(dict(metadata or {})), default=str, sort_keys=True),
         }
     )

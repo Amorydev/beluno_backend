@@ -14,10 +14,14 @@ class LedgerStatus(StrEnum):
 def next_ledger_status(
     current: LedgerStatus, *, balances_zero: bool, has_live_settlement: bool
 ) -> LedgerStatus:
-    """``settled`` once every participant is square after a settlement; later drift reopens."""
+    """``settled`` once everyone is square after a settlement; later drift reopens it.
 
-    if balances_zero and has_live_settlement:
-        return LedgerStatus.SETTLED
+    A ledger with nothing owed and no live settlement (everything voided or
+    reversed) is simply ``open`` again.
+    """
+
+    if balances_zero:
+        return LedgerStatus.SETTLED if has_live_settlement else LedgerStatus.OPEN
     if current is LedgerStatus.OPEN:
         return LedgerStatus.OPEN
     return LedgerStatus.REOPENED

@@ -16,7 +16,8 @@ from uuid import UUID
 from sqlalchemy import text
 
 from beluno.modules.context import Runtime, open_context
-from beluno.modules.sync_audit.recorder import record_audit
+from beluno.modules.finance.ledger import LEDGER_ENTITY
+from beluno.modules.sync_audit.recorder import ChangeScope, record_audit, record_change
 from beluno.observability.metrics import attributes, instruments
 from beluno.observability.setup import logger, safe_extra
 
@@ -25,7 +26,7 @@ RECONCILE_SQL = text(
     "SELECT problem, account_id, expected_minor, actual_minor FROM finance.reconcile_plan(:plan_id)"
 )
 REBUILD_SQL = text(
-    "SELECT account_id, recorded_minor, rebuilt_minor "
+    "SELECT account_id, recorded_minor, rebuilt_minor, ledger_version "
     "FROM finance.rebuild_balances(:plan_id, :apply)"
 )
 BATCH_SIZE = 200
@@ -102,8 +103,19 @@ async def rebuild_balances(
             await record_audit(
                 ctx,
                 action="finance.balances_rebuilt",
-                entity_type="ledger",
+                entity_type=LEDGER_ENTITY,
                 entity_id=plan_id,
+                plan_id=plan_id,
                 metadata={"plan_id": str(plan_id), "accounts": len(repairs), "operator": operator},
             )
+            if repairs:
+                # Devices hold the drifted balances: publish the repaired ledger.
+                await record_change(
+                    ctx,
+                    entity_type=LEDGER_ENTITY,
+                    entity_id=plan_id,
+                    entity_version=rows[0][3],
+                    scope=ChangeScope.PLAN,
+                    scope_id=plan_id,
+                )
     return repairs

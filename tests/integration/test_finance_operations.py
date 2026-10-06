@@ -95,6 +95,8 @@ async def test_reconciler_reports_drift_and_the_audited_rebuild_repairs_it(
     ann, bea = trip.people["Ann"], trip.people["Bea"]
     await add_expense(api, trip.owner, trip, equal_expense(800, ann, [ann, bea]))
     assert await tasks.reconcile_finance_ledgers(0) == 0
+    scope = f"plan:{trip.plan_id}"
+    _, cursor, _ = await pull_all(api, trip.owner, scope)
     account = admin.scalar("SELECT id FROM finance.ledger_accounts WHERE participant_id = %s", bea)
     admin.execute(
         "UPDATE finance.account_balances SET balance_minor = 7 WHERE account_id = %s", account
@@ -124,6 +126,12 @@ async def test_reconciler_reports_drift_and_the_audited_rebuild_repairs_it(
     )
     assert audit == [({"plan_id": trip.plan_id, "accounts": 1, "operator": "oncall"},)]
     assert await ledger_balances(api, trip.owner, trip) == {(ann, "USD"): 400, (bea, "USD"): -400}
+    # Devices that cached the drifted balance receive the repaired ledger.
+    changes, _, _ = await pull_all(api, trip.owner, scope, cursor)
+    ledger = (await api.get(trip.path("/ledger"), headers=trip.owner.headers)).json()
+    assert [(c["entity_type"], c["entity_id"], c["data"]) for c in changes] == [
+        ("ledger", trip.plan_id, ledger)
+    ]
     waits = metric_points(reader, "beluno.finance.ledger_lock.wait")
     assert waits and waits[0].count >= 1  # type: ignore[attr-defined]
 

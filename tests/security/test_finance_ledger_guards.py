@@ -28,6 +28,7 @@ def raw_dsn(dsn: str | None) -> str:
 @dataclass
 class Tenant:
     owner_user: str
+    owner_headers: dict[str, str]
     outsider_user: str
     plan_id: str
     owner: str
@@ -60,6 +61,7 @@ async def tenant(api: httpx.AsyncClient, identity_provider: IdentityProviderStub
     other_plan_id, other_people = await plan_with_friend(outsider)
     return Tenant(
         owner_user=owner.user_id,
+        owner_headers=owner.headers,
         outsider_user=outsider.user_id,
         plan_id=plan_id,
         owner=people["Owner"],
@@ -387,12 +389,16 @@ def test_reconciliation_reports_drift_and_rebuild_repairs_it(
             "SELECT * FROM finance.rebuild_balances(%s, false)", (tenant.plan_id,)
         ).fetchall()
         worker.commit()
-        assert preview == [(UUID(accounts[tenant.friend]), -995, -1000)]
+        # A dry run leaves the ledger version alone.
+        assert preview == [(UUID(accounts[tenant.friend]), -995, -1000, 1)]
         assert worker.execute(
             "SELECT * FROM finance.reconcile_plan(%s)", (tenant.plan_id,)
         ).fetchall()
-        worker.execute("SELECT * FROM finance.rebuild_balances(%s, true)", (tenant.plan_id,))
+        applied = worker.execute(
+            "SELECT * FROM finance.rebuild_balances(%s, true)", (tenant.plan_id,)
+        ).fetchall()
         worker.commit()
+        assert applied == [(UUID(accounts[tenant.friend]), -995, -1000, 2)]
         assert (
             worker.execute("SELECT * FROM finance.reconcile_plan(%s)", (tenant.plan_id,)).fetchall()
             == []
@@ -405,12 +411,129 @@ def test_reconciliation_reports_drift_and_rebuild_repairs_it(
 def test_the_merge_gate_only_moves_merged_rows_for_participants(
     api_connection: psycopg.Connection, tenant: Tenant
 ) -> None:
-    call = (
-        "SELECT finance.transfer_merged_balances(%s, %s, gen_random_uuid(), %s, NULL, now())"
-    )
-    with pytest.raises(psycopg.errors.InsufficientPrivilege), api_connection.transaction():
-        act_as(api_connection, tenant.outsider_user)
-        api_connection.execute(call, (tenant.plan_id, tenant.friend, tenant.outsider_user))
+    call = "SELECT finance.transfer_merged_balances(%s, %s, gen_random_uuid(), NULL)"
+    lock = "SELECT finance.lock_plan_for_merge(%s)"
+    for statement, params in ((call, (tenant.plan_id, tenant.friend)), (lock, (tenant.plan_id,))):
+        with pytest.raises(psycopg.errors.InsufficientPrivilege), api_connection.transaction():
+            act_as(api_connection, tenant.outsider_user)
+            api_connection.execute(statement, params)
     with pytest.raises(psycopg.errors.InvalidParameterValue), api_connection.transaction():
         act_as(api_connection, tenant.owner_user)
-        api_connection.execute(call, (tenant.plan_id, tenant.friend, tenant.owner_user))
+        api_connection.execute(call, (tenant.plan_id, tenant.friend))
+
+
+async def test_mutable_rows_change_only_the_way_their_commands_do(
+    api: httpx.AsyncClient,
+    api_connection: psycopg.Connection,
+    tenant: Tenant,
+    admin: AdminDatabase,
+) -> None:
+    plan = f"/v1/plans/{tenant.plan_id}"
+    recorded = await api.post(
+        f"{plan}/settlements",
+        json={
+            "from_participant_id": tenant.friend,
+            "to_participant_id": tenant.owner,
+            "currency": "USD",
+            "amount_minor": 300,
+            "occurred_on": "2026-10-06",
+        },
+        headers=tenant.owner_headers,
+    )
+    assert recorded.status_code == 201, recorded.text
+    settlement = recorded.json()["id"]
+    for statement in (
+        "UPDATE finance.settlements SET amount_minor = 1, version = version + 1",
+        "UPDATE finance.settlements SET status = 'confirmed'",
+        "UPDATE finance.plan_ledger_heads SET ledger_seq = ledger_seq - 1",
+        "UPDATE finance.account_balances SET currency = 'EUR'",
+    ):
+        with (
+            pytest.raises(psycopg.errors.InsufficientPrivilege, match="does not allow"),
+            api_connection.transaction(),
+        ):
+            act_as(api_connection, tenant.owner_user)
+            api_connection.execute(statement)
+        with pytest.raises(psycopg.errors.InsufficientPrivilege, match="does not allow"):
+            admin.execute(statement)
+    reversed_ = await api.post(
+        f"{plan}/settlements/{settlement}/reverse",
+        headers={**tenant.owner_headers, "If-Match": '"1"'},
+    )
+    assert reversed_.status_code == 200, reversed_.text
+    with (
+        pytest.raises(psycopg.errors.InsufficientPrivilege, match="does not allow"),
+        api_connection.transaction(),
+    ):
+        act_as(api_connection, tenant.owner_user)
+        api_connection.execute(
+            "UPDATE finance.settlements SET status = 'confirmed', version = version + 1"
+        )
+    # A settlement is posted once, whatever an insider appends by hand.
+    with pytest.raises(psycopg.errors.UniqueViolation), api_connection.transaction():
+        act_as(api_connection, tenant.owner_user)
+        api_connection.execute(
+            "UPDATE finance.plan_ledger_heads SET ledger_seq = ledger_seq + 1, "
+            "version = version + 1"
+        )
+        api_connection.execute(
+            "INSERT INTO finance.ledger_transactions (id, plan_id, ledger_seq, kind, "
+            "settlement_id, created_by_user_id, created_at) "
+            "SELECT %s, plan_id, ledger_seq, 'settlement', %s, %s, now() "
+            "FROM finance.plan_ledger_heads WHERE plan_id = %s",
+            (str(new_id()), settlement, tenant.owner_user, tenant.plan_id),
+        )
+
+
+async def test_a_reversal_stays_with_the_entry_it_reverses(
+    api: httpx.AsyncClient,
+    api_connection: psycopg.Connection,
+    tenant: Tenant,
+    admin: AdminDatabase,
+) -> None:
+    created = []
+    for amount in (400, 600):
+        response = await api.post(
+            f"/v1/plans/{tenant.plan_id}/expenses",
+            json={
+                "description": "Dinner",
+                "occurred_on": "2026-10-06",
+                "amount_minor": amount,
+                "currency": "USD",
+                "payers": [{"participant_id": tenant.owner, "amount_minor": amount}],
+                "split": {"method": "equal", "participant_ids": [tenant.friend]},
+            },
+            headers=tenant.owner_headers,
+        )
+        assert response.status_code == 201, response.text
+        created.append(response.json()["id"])
+    first, second = created
+    source = admin.scalar("SELECT id FROM finance.ledger_transactions WHERE expense_id = %s", first)
+    postings = admin.fetch(
+        "SELECT account_id, currency, amount_minor FROM finance.ledger_postings "
+        "WHERE transaction_id = %s",
+        source,
+    )
+    reversal = str(new_id())
+    with (
+        pytest.raises(psycopg.errors.CheckViolation, match="filed under another entry"),
+        api_connection.transaction(),
+    ):
+        act_as(api_connection, tenant.owner_user)
+        api_connection.execute(
+            "UPDATE finance.plan_ledger_heads SET ledger_seq = ledger_seq + 1, "
+            "version = version + 1"
+        )
+        api_connection.execute(
+            "INSERT INTO finance.ledger_transactions (id, plan_id, ledger_seq, kind, "
+            "expense_id, reverses_transaction_id, created_by_user_id, created_at) "
+            "SELECT %s, plan_id, ledger_seq, 'expense_reversal', %s, %s, %s, now() "
+            "FROM finance.plan_ledger_heads WHERE plan_id = %s",
+            (reversal, second, source, tenant.owner_user, tenant.plan_id),
+        )
+        for account, currency, amount in postings:
+            api_connection.execute(
+                "INSERT INTO finance.ledger_postings (transaction_id, account_id, plan_id, "
+                "currency, amount_minor) VALUES (%s, %s, %s, %s, %s)",
+                (reversal, account, tenant.plan_id, currency, -amount),
+            )

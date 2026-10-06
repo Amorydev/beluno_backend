@@ -38,7 +38,7 @@ from beluno.db.ids import new_id
 from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanInvite, PlanParticipant
 from beluno.modules.context import CommandContext
-from beluno.modules.finance.merges import transfer_merged_balances
+from beluno.modules.finance.merges import lock_plan_for_merge, transfer_merged_balances
 from beluno.modules.iam.sessions import DeviceInfo, IssuedTokens, start_session
 from beluno.modules.iam.users import create_guest_user
 from beluno.modules.invite_links import (
@@ -314,6 +314,9 @@ async def _claim_placeholder(
     merge_existing: bool,
 ) -> PlanParticipant:
     actor = ctx.require_actor()
+    if merge_existing and await find_user_participant(ctx, invite.plan_id, actor.user_id):
+        # A merge moves money: serialize with finance writers before locking participants.
+        await lock_plan_for_merge(ctx, invite.plan_id)
     placeholder = (
         await ctx.session.execute(
             select(PlanParticipant)

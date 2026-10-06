@@ -11,7 +11,9 @@ ISO 4217 (minor-unit exponents pinned here), and adds:
   fund row stays inside one plan and one currency;
 * BEFORE UPDATE/DELETE triggers that make canonical history append-only
   (accounts, FX snapshots, revisions, payers, splits, refunds, transactions,
-  postings, fund movements);
+  postings, fund movements), and BEFORE UPDATE guards that let the mutable rows
+  (heads, balances, expenses, settlements, budgets, commitments, fund settings)
+  change only their state columns, with a version step of one;
 * ``DEFERRABLE INITIALLY DEFERRED`` constraint triggers that verify at commit
   that payers and splits add up to the revision amount, that every transaction
   sums to zero per currency, that expense, refund, settlement, conversion,
@@ -396,6 +398,12 @@ CREATE UNIQUE INDEX ledger_transactions_refund_key
     ON finance.ledger_transactions (refund_id) WHERE kind = 'refund';
 CREATE UNIQUE INDEX ledger_transactions_fund_movement_key
     ON finance.ledger_transactions (fund_movement_id) WHERE fund_movement_id IS NOT NULL;
+CREATE UNIQUE INDEX ledger_transactions_settlement_key
+    ON finance.ledger_transactions (settlement_id) WHERE kind = 'settlement';
+CREATE UNIQUE INDEX ledger_transactions_waiver_key
+    ON finance.ledger_transactions (settlement_id) WHERE subtype = 'waiver';
+CREATE UNIQUE INDEX ledger_transactions_conversion_key
+    ON finance.ledger_transactions (settlement_id) WHERE kind = 'conversion';
 CREATE INDEX ledger_transactions_expense_idx
     ON finance.ledger_transactions (expense_id) WHERE expense_id IS NOT NULL;
 CREATE INDEX ledger_transactions_settlement_idx
@@ -584,6 +592,14 @@ BEGIN
     IF tx.reverses_transaction_id IS NOT NULL THEN
         SELECT kind, subtype INTO source_kind, source_subtype
         FROM finance.ledger_transactions WHERE id = tx.reverses_transaction_id;
+        IF EXISTS (
+            SELECT 1 FROM finance.ledger_transactions AS source
+            WHERE source.id = tx.reverses_transaction_id
+              AND (source.expense_id IS DISTINCT FROM tx.expense_id
+                   OR source.settlement_id IS DISTINCT FROM tx.settlement_id)
+        ) THEN
+            PERFORM finance.invariant_violation('reversal is filed under another entry');
+        END IF;
         IF (tx.kind = 'expense_reversal' AND source_kind NOT IN ('expense', 'refund'))
            OR (tx.kind = 'settlement_reversal'
                AND source_kind NOT IN ('settlement', 'conversion')
@@ -796,20 +812,154 @@ CREATE CONSTRAINT TRIGGER fund_movements_complete
 """
 )
 
+GUARDS_SQL = """
+-- Mutable finance rows may change only the columns their commands change; money,
+-- parties, and identity are fixed once written, for every role.
+CREATE FUNCTION finance.guard_settlement() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.id, NEW.plan_id, NEW.kind, NEW.from_participant_id, NEW.to_participant_id,
+        NEW.currency, NEW.amount_minor, NEW.paid_currency, NEW.paid_amount_minor,
+        NEW.fx_snapshot_id, NEW.method, NEW.fee_minor, NEW.note, NEW.occurred_on,
+        NEW.overpaid, NEW.recorded_by_user_id, NEW.created_at)
+       IS DISTINCT FROM
+       (OLD.id, OLD.plan_id, OLD.kind, OLD.from_participant_id, OLD.to_participant_id,
+        OLD.currency, OLD.amount_minor, OLD.paid_currency, OLD.paid_amount_minor,
+        OLD.fx_snapshot_id, OLD.method, OLD.fee_minor, OLD.note, OLD.occurred_on,
+        OLD.overpaid, OLD.recorded_by_user_id, OLD.created_at)
+       OR OLD.status = 'reversed' OR NEW.version <> OLD.version + 1 THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION finance.guard_expense() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.id, NEW.plan_id, NEW.created_by_user_id, NEW.created_at)
+       IS DISTINCT FROM (OLD.id, OLD.plan_id, OLD.created_by_user_id, OLD.created_at)
+       OR OLD.state = 'voided' OR NEW.version <> OLD.version + 1 THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION finance.guard_budget() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.id, NEW.plan_id, NEW.scope, NEW.category, NEW.participant_id, NEW.currency,
+        NEW.created_by_user_id, NEW.created_at)
+       IS DISTINCT FROM
+       (OLD.id, OLD.plan_id, OLD.scope, OLD.category, OLD.participant_id, OLD.currency,
+        OLD.created_by_user_id, OLD.created_at)
+       OR OLD.deleted_at IS NOT NULL OR NEW.version <> OLD.version + 1 THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION finance.guard_commitment() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.id, NEW.plan_id, NEW.source_type, NEW.source_id, NEW.commitment_kind,
+        NEW.created_by_user_id, NEW.created_at)
+       IS DISTINCT FROM
+       (OLD.id, OLD.plan_id, OLD.source_type, OLD.source_id, OLD.commitment_kind,
+        OLD.created_by_user_id, OLD.created_at)
+       OR NEW.version <> OLD.version + 1 THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION finance.guard_fund_settings() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.plan_id, NEW.created_at) IS DISTINCT FROM (OLD.plan_id, OLD.created_at)
+       OR NEW.version <> OLD.version + 1 THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION finance.guard_ledger_head() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.plan_id, NEW.created_at) IS DISTINCT FROM (OLD.plan_id, OLD.created_at)
+       OR NEW.ledger_seq < OLD.ledger_seq OR NEW.version < OLD.version THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION finance.guard_balance() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (NEW.account_id, NEW.plan_id, NEW.currency)
+       IS DISTINCT FROM (OLD.account_id, OLD.plan_id, OLD.currency) THEN
+        RAISE EXCEPTION 'finance.% does not allow this change', TG_TABLE_NAME
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER settlements_guard BEFORE UPDATE ON finance.settlements
+    FOR EACH ROW EXECUTE FUNCTION finance.guard_settlement();
+CREATE TRIGGER expenses_guard BEFORE UPDATE ON finance.expenses
+    FOR EACH ROW EXECUTE FUNCTION finance.guard_expense();
+CREATE TRIGGER budgets_guard BEFORE UPDATE ON finance.budgets
+    FOR EACH ROW EXECUTE FUNCTION finance.guard_budget();
+CREATE TRIGGER cost_commitments_guard BEFORE UPDATE ON finance.cost_commitments
+    FOR EACH ROW EXECUTE FUNCTION finance.guard_commitment();
+CREATE TRIGGER fund_settings_guard BEFORE UPDATE ON finance.fund_settings
+    FOR EACH ROW EXECUTE FUNCTION finance.guard_fund_settings();
+CREATE TRIGGER plan_ledger_heads_guard BEFORE UPDATE ON finance.plan_ledger_heads
+    FOR EACH ROW EXECUTE FUNCTION finance.guard_ledger_head();
+CREATE TRIGGER account_balances_guard BEFORE UPDATE ON finance.account_balances
+    FOR EACH ROW EXECUTE FUNCTION finance.guard_balance();
+"""
+
 MERGE_SQL = """
--- Moves every balance of a merged participant to the participant it was merged
--- into, as one ``adjustment/merge_transfer`` entry. It runs inside the merge
--- transaction (placeholder claims, guest account claims), where the acting user
--- may no longer be an active participant, so it is a narrow definer gate: it moves
--- exactly the full balances of a row that is already ``merged`` and nothing else.
+-- Merges (placeholder and guest-account claims) run as a user who may no longer be
+-- an active participant, so RLS would hide the ledger from them. Two narrow
+-- definer gates keep them correct and serialized with finance writers:
+--
+-- lock_plan_for_merge takes the plan row lock every finance writer takes first,
+-- before the claim locks any participant row, so a merge and a finance command
+-- never wait on each other in a cycle and a merge cannot interleave with a
+-- plan's first finance write.
+CREATE FUNCTION finance.lock_plan_for_merge(p_plan_id uuid) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF NOT plans.actor_has_participant_row(p_plan_id) THEN
+        RAISE EXCEPTION 'not a participant of this plan' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    PERFORM 1 FROM plans.plans WHERE id = p_plan_id FOR UPDATE;
+END;
+$$;
+
+-- transfer_merged_balances moves every balance of a row that is already merged to
+-- the participant it now resolves to, as one adjustment/merge_transfer entry, and
+-- nothing else. The acting user and time come from the session, never the caller.
 -- Returns the new ledger version, or NULL when there was nothing to move.
 CREATE FUNCTION finance.transfer_merged_balances(
     p_plan_id uuid,
     p_participant_id uuid,
     p_transaction_id uuid,
-    p_actor_user_id uuid,
-    p_operation_id uuid,
-    p_now timestamptz
+    p_operation_id uuid
 ) RETURNS integer
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
@@ -817,9 +967,10 @@ DECLARE
     head finance.plan_ledger_heads%ROWTYPE;
     item record;
     survivor_account uuid;
-    settled boolean;
+    zero boolean;
+    live_settlement boolean;
+    now_at timestamptz := transaction_timestamp();
 BEGIN
-    -- Only someone taking part in this plan's merge (claimer or claimed guest) may run it.
     IF NOT plans.actor_has_participant_row(p_plan_id) THEN
         RAISE EXCEPTION 'not a participant of this plan' USING ERRCODE = 'insufficient_privilege';
     END IF;
@@ -843,7 +994,7 @@ BEGIN
         id, plan_id, ledger_seq, kind, subtype, created_by_user_id, operation_id, created_at
     ) VALUES (
         p_transaction_id, p_plan_id, head.ledger_seq, 'adjustment', 'merge_transfer',
-        p_actor_user_id, p_operation_id, p_now
+        iam.actor_id(), p_operation_id, now_at
     );
     FOR item IN
         SELECT a.id, a.currency, b.balance_minor
@@ -856,39 +1007,42 @@ BEGIN
         SELECT id INTO survivor_account FROM finance.ledger_accounts
         WHERE plan_id = p_plan_id AND participant_id = survivor AND currency = item.currency;
         IF survivor_account IS NULL THEN
+            -- Server-made account IDs (UUIDv4); clients never generate account IDs.
             survivor_account := gen_random_uuid();
             INSERT INTO finance.ledger_accounts (id, plan_id, kind, participant_id, currency, created_at)
-            VALUES (survivor_account, p_plan_id, 'participant', survivor, item.currency, p_now);
+            VALUES (survivor_account, p_plan_id, 'participant', survivor, item.currency, now_at);
             INSERT INTO finance.account_balances (
                 account_id, plan_id, currency, balance_minor, last_ledger_seq, updated_at
-            ) VALUES (survivor_account, p_plan_id, item.currency, 0, 0, p_now);
+            ) VALUES (survivor_account, p_plan_id, item.currency, 0, 0, now_at);
         END IF;
         INSERT INTO finance.ledger_postings (transaction_id, account_id, plan_id, currency, amount_minor)
         VALUES (p_transaction_id, item.id, p_plan_id, item.currency, -item.balance_minor),
                (p_transaction_id, survivor_account, p_plan_id, item.currency, item.balance_minor);
         UPDATE finance.account_balances
         SET balance_minor = balance_minor - item.balance_minor,
-            last_ledger_seq = head.ledger_seq, updated_at = p_now
+            last_ledger_seq = head.ledger_seq, updated_at = now_at
         WHERE account_id = item.id;
         UPDATE finance.account_balances
         SET balance_minor = balance_minor + item.balance_minor,
-            last_ledger_seq = head.ledger_seq, updated_at = p_now
+            last_ledger_seq = head.ledger_seq, updated_at = now_at
         WHERE account_id = survivor_account;
         survivor_account := NULL;
     END LOOP;
-    settled := NOT EXISTS (
+    zero := NOT EXISTS (
         SELECT 1 FROM finance.ledger_accounts AS a
         JOIN finance.account_balances AS b ON b.account_id = a.id
         WHERE a.plan_id = p_plan_id AND a.kind = 'participant' AND b.balance_minor <> 0
-    ) AND EXISTS (
+    );
+    live_settlement := EXISTS (
         SELECT 1 FROM finance.settlements WHERE plan_id = p_plan_id AND status <> 'reversed'
     );
     UPDATE finance.plan_ledger_heads
     SET ledger_seq = head.ledger_seq,
         version = head.version + 1,
-        status = CASE WHEN settled THEN 'settled'
-                      WHEN head.status = 'open' THEN 'open' ELSE 'reopened' END,
-        updated_at = p_now
+        status = CASE WHEN zero AND live_settlement THEN 'settled'
+                      WHEN zero OR head.status = 'open' THEN 'open'
+                      ELSE 'reopened' END,
+        updated_at = now_at
     WHERE plan_id = p_plan_id;
     RETURN head.version + 1;
 END;
@@ -905,7 +1059,8 @@ CREATE FUNCTION finance.ledger_plan_ids(p_after uuid, p_limit integer) RETURNS S
 $$;
 
 -- Recomputes one plan from canonical rows and reports every disagreement:
--- unbalanced transactions, projection drift, and ledger sequence gaps.
+-- unbalanced transactions, projection drift, money left on merged participants,
+-- and ledger sequence gaps.
 CREATE FUNCTION finance.reconcile_plan(p_plan_id uuid)
     RETURNS TABLE (problem text, account_id uuid, expected_minor bigint, actual_minor bigint)
     LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
@@ -926,6 +1081,12 @@ CREATE FUNCTION finance.reconcile_plan(p_plan_id uuid)
     WHERE a.plan_id = p_plan_id
       AND (b.account_id IS NULL OR b.balance_minor <> coalesce(t.total, 0))
     UNION ALL
+    SELECT 'merged_balance', a.id, 0::bigint, b.balance_minor
+    FROM finance.ledger_accounts AS a
+    JOIN finance.account_balances AS b ON b.account_id = a.id
+    JOIN plans.plan_participants AS p ON p.plan_id = a.plan_id AND p.id = a.participant_id
+    WHERE a.plan_id = p_plan_id AND p.access_state = 'merged' AND b.balance_minor <> 0
+    UNION ALL
     SELECT 'sequence_gap', NULL::uuid, h.ledger_seq,
            (SELECT count(*) FROM finance.ledger_transactions AS t WHERE t.plan_id = p_plan_id)
     FROM finance.plan_ledger_heads AS h
@@ -937,47 +1098,72 @@ CREATE FUNCTION finance.reconcile_plan(p_plan_id uuid)
                                WHERE t.plan_id = p_plan_id))
 $$;
 
+-- The shadow projection: each account's balance rebuilt from its postings, next to
+-- the recorded projection row (missing when the row does not exist).
+CREATE FUNCTION finance.shadow_balances(p_plan_id uuid)
+    RETURNS TABLE (
+        account_id uuid, currency char(3), recorded_minor bigint, rebuilt_minor bigint,
+        last_seq bigint, missing boolean
+    )
+    LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+    SELECT a.id, a.currency, b.balance_minor, coalesce(t.total, 0)::bigint,
+           coalesce(t.last_seq, 0)::bigint, b.account_id IS NULL
+    FROM finance.ledger_accounts AS a
+    LEFT JOIN (
+        SELECT p.account_id, sum(p.amount_minor) AS total, max(x.ledger_seq) AS last_seq
+        FROM finance.ledger_postings AS p
+        JOIN finance.ledger_transactions AS x ON x.id = p.transaction_id
+        WHERE p.plan_id = p_plan_id
+        GROUP BY p.account_id
+    ) AS t ON t.account_id = a.id
+    LEFT JOIN finance.account_balances AS b ON b.account_id = a.id
+    WHERE a.plan_id = p_plan_id
+$$;
+
 -- Rebuilds one plan's balance projection from postings (the shadow), returns the
 -- accounts that differ, and applies the rebuilt values only when asked. The
--- ledger head is locked so no writer can interleave.
+-- ledger head is locked so no writer can interleave; an applied repair bumps the
+-- ledger version (returned on every row) so sync clients receive the new balances.
 CREATE FUNCTION finance.rebuild_balances(p_plan_id uuid, p_apply boolean)
-    RETURNS TABLE (account_id uuid, recorded_minor bigint, rebuilt_minor bigint)
+    RETURNS TABLE (
+        account_id uuid, recorded_minor bigint, rebuilt_minor bigint, ledger_version integer
+    )
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 #variable_conflict use_column
+DECLARE
+    version_after integer;
 BEGIN
-    PERFORM 1 FROM finance.plan_ledger_heads WHERE plan_id = p_plan_id FOR UPDATE;
-    RETURN QUERY
-        SELECT a.id, b.balance_minor, coalesce(t.total, 0)::bigint
-        FROM finance.ledger_accounts AS a
-        LEFT JOIN (
-            SELECT p.account_id, sum(p.amount_minor) AS total
-            FROM finance.ledger_postings AS p WHERE p.plan_id = p_plan_id
-            GROUP BY p.account_id
-        ) AS t ON t.account_id = a.id
-        LEFT JOIN finance.account_balances AS b ON b.account_id = a.id
-        WHERE a.plan_id = p_plan_id
-          AND (b.account_id IS NULL OR b.balance_minor <> coalesce(t.total, 0))
-        ORDER BY a.id;
-    IF p_apply THEN
-        INSERT INTO finance.account_balances AS b (
+    SELECT h.version INTO version_after
+    FROM finance.plan_ledger_heads AS h WHERE h.plan_id = p_plan_id FOR UPDATE;
+    IF p_apply AND EXISTS (
+        SELECT 1 FROM finance.shadow_balances(p_plan_id) AS s
+        WHERE s.missing OR s.recorded_minor <> s.rebuilt_minor
+    ) THEN
+        RETURN QUERY
+            SELECT s.account_id, s.recorded_minor, s.rebuilt_minor, version_after + 1
+            FROM finance.shadow_balances(p_plan_id) AS s
+            WHERE s.missing OR s.recorded_minor <> s.rebuilt_minor
+            ORDER BY s.account_id;
+        UPDATE finance.account_balances AS b
+        SET balance_minor = s.rebuilt_minor, last_ledger_seq = s.last_seq, updated_at = now()
+        FROM finance.shadow_balances(p_plan_id) AS s
+        WHERE b.account_id = s.account_id AND NOT s.missing
+          AND s.recorded_minor <> s.rebuilt_minor;
+        INSERT INTO finance.account_balances (
             account_id, plan_id, currency, balance_minor, last_ledger_seq, updated_at
         )
-        SELECT a.id, a.plan_id, a.currency, coalesce(t.total, 0), coalesce(t.last_seq, 0), now()
-        FROM finance.ledger_accounts AS a
-        LEFT JOIN (
-            SELECT p.account_id, sum(p.amount_minor) AS total, max(x.ledger_seq) AS last_seq
-            FROM finance.ledger_postings AS p
-            JOIN finance.ledger_transactions AS x ON x.id = p.transaction_id
-            WHERE p.plan_id = p_plan_id
-            GROUP BY p.account_id
-        ) AS t ON t.account_id = a.id
-        WHERE a.plan_id = p_plan_id
-        ON CONFLICT ON CONSTRAINT account_balances_pkey DO UPDATE
-            SET balance_minor = EXCLUDED.balance_minor,
-                last_ledger_seq = EXCLUDED.last_ledger_seq,
-                updated_at = EXCLUDED.updated_at
-            WHERE b.balance_minor <> EXCLUDED.balance_minor;
+        SELECT s.account_id, p_plan_id, s.currency, s.rebuilt_minor, s.last_seq, now()
+        FROM finance.shadow_balances(p_plan_id) AS s WHERE s.missing;
+        UPDATE finance.plan_ledger_heads AS h
+        SET version = h.version + 1, updated_at = now()
+        WHERE h.plan_id = p_plan_id;
+        RETURN;
     END IF;
+    RETURN QUERY
+        SELECT s.account_id, s.recorded_minor, s.rebuilt_minor, version_after
+        FROM finance.shadow_balances(p_plan_id) AS s
+        WHERE s.missing OR s.recorded_minor <> s.rebuilt_minor
+        ORDER BY s.account_id;
 END;
 $$;
 """
@@ -1039,7 +1225,8 @@ GRANT UPDATE ON {", ".join(f"finance.{t}" for t in MUTABLE_TABLES)} TO api_runti
 
 REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA finance FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION
-    finance.transfer_merged_balances(uuid, uuid, uuid, uuid, uuid, timestamptz)
+    finance.lock_plan_for_merge(uuid),
+    finance.transfer_merged_balances(uuid, uuid, uuid, uuid)
     TO api_runtime;
 GRANT EXECUTE ON FUNCTION
     finance.ledger_plan_ids(uuid, integer),
@@ -1053,6 +1240,7 @@ def upgrade() -> None:
     op.execute(TABLES_SQL)
     op.execute(INVARIANTS_SQL)
     op.execute(TRIGGERS_SQL)
+    op.execute(GUARDS_SQL)
     op.execute(MERGE_SQL)
     op.execute(MAINTENANCE_SQL)
     op.execute(RLS_SQL)
