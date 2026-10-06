@@ -1,0 +1,95 @@
+"""The caller's profile and device sessions."""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from fastapi import APIRouter, Response, status
+
+from beluno.api.dependencies import ActorDep, RuntimeDep
+from beluno.api.http import IfMatch, parse_if_match, set_etag
+from beluno.api.problems import problem_responses
+from beluno.api.routers.auth import profile_response
+from beluno.contracts.errors import not_found
+from beluno.contracts.iam import ProfileUpdateRequest, SessionResponse, UserProfileResponse
+from beluno.modules.context import open_context
+from beluno.modules.iam import users
+from beluno.modules.iam.sessions import find_session, list_live_sessions, revoke_session
+
+router = APIRouter(prefix="/v1/me", tags=["me"])
+
+
+@router.get("", response_model=UserProfileResponse, responses=problem_responses(401, 503))
+async def get_profile(
+    runtime: RuntimeDep, actor: ActorDep, response: Response
+) -> UserProfileResponse:
+    async with open_context(runtime, actor) as ctx:
+        user = await users.load_user(ctx, ctx.require_actor().user_id)
+    set_etag(response, user.version)
+    return profile_response(user)
+
+
+@router.patch(
+    "",
+    response_model=UserProfileResponse,
+    responses=problem_responses(401, 412, 422, 428, 503),
+)
+async def update_profile(
+    body: ProfileUpdateRequest,
+    runtime: RuntimeDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+) -> UserProfileResponse:
+    expected_version = parse_if_match(if_match)
+    fields = body.model_fields_set
+    changes = users.ProfileChanges(
+        display_name=body.display_name,
+        locale=body.locale,
+        timezone=body.timezone,
+        clear_locale="locale" in fields and body.locale is None,
+        clear_timezone="timezone" in fields and body.timezone is None,
+    )
+    async with open_context(runtime, actor) as ctx:
+        user = await users.update_profile(ctx, changes, expected_version)
+    set_etag(response, user.version)
+    return profile_response(user)
+
+
+@router.get(
+    "/sessions", response_model=list[SessionResponse], responses=problem_responses(401, 503)
+)
+async def list_sessions(runtime: RuntimeDep, actor: ActorDep) -> list[SessionResponse]:
+    async with open_context(runtime, actor) as ctx:
+        current = ctx.require_actor()
+        sessions = await list_live_sessions(ctx, current.user_id)
+    return [
+        SessionResponse(
+            id=item.id,
+            auth_method=item.auth_method,
+            platform=item.platform,
+            device_label=item.device_label,
+            app_version=item.app_version,
+            created_at=item.created_at,
+            last_seen_at=item.last_seen_at,
+            authenticated_at=item.authenticated_at,
+            current=item.id == current.session_id,
+        )
+        for item in sessions
+    ]
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=problem_responses(401, 404, 503),
+)
+async def revoke_device_session(session_id: UUID, runtime: RuntimeDep, actor: ActorDep) -> Response:
+    """Sign a device out remotely; its refresh and access tokens stop working immediately."""
+
+    async with open_context(runtime, actor) as ctx:
+        target = await find_session(ctx, session_id)
+        if target is None or target.user_id != ctx.require_actor().user_id:
+            raise not_found()
+        await revoke_session(ctx, target, reason="user_revoked")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

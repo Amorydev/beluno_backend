@@ -1,0 +1,79 @@
+[project]
+name = "beluno-backend"
+version = "0.1.0"
+description = "Beluno's backend for plans with your people."
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+  "alembic>=1.16",
+  "fastapi>=0.115",
+  "httpx>=0.28",
+  "opentelemetry-api>=1.30",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.30",
+  "opentelemetry-instrumentation-fastapi>=0.51b0",
+  "opentelemetry-sdk>=1.30",
+  "procrastinate>=2.5",
+  "psycopg[binary]>=3.2",
+  "psycopg-pool>=3.2",
+  "pydantic-settings>=2.6",
+  "pyjwt[crypto]>=2.10",
+  "sqlalchemy[asyncio]>=2.0",
+  "sentry-sdk[fastapi]>=2.20",
+  "uvicorn[standard]>=0.30",
+  "python-dateutil>=2.9",
+  "tzdata>=2024.1",
+]
+
+[dependency-groups]
+dev = [
+  "cyclonedx-bom>=7.1",
+  "coverage[toml]>=7.6",
+  "hypothesis>=6.120",
+  "locust>=2.32",
+  "mypy>=1.13",
+  "openapi-python-client>=0.24",
+  "pip-audit>=2.8",
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "ruff>=0.8",
+  "schemathesis>=3.39",
+  "testcontainers[postgres]>=4.9",
+  "types-python-dateutil>=2.9",
+]
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/beluno"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "integration: needs a live disposable PostgreSQL container",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# FastAPI declares dependencies in callable defaults by design.
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["beluno"]
+exclude = ["alembic"]
+
+[tool.coverage.run]
+branch = true
+source = ["beluno"]
+# SQLAlchemy asyncio resumes application code inside greenlets.
+concurrency = ["greenlet", "thread"]

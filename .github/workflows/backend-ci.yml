@@ -1,0 +1,33 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --all-groups --locked
+      - run: uv run ruff check .
+      - run: uv run mypy src
+      - run: uv run python scripts/export_openapi.py
+      - run: git diff --exit-code -- openapi/openapi.json
+      - name: OpenAPI compatibility with the base branch
+        if: github.event_name == 'pull_request'
+        run: |
+          if git show "origin/${{ github.base_ref }}:openapi/openapi.json" > "$RUNNER_TEMP/base-openapi.json"; then
+            uv run python scripts/check_openapi_compatibility.py "$RUNNER_TEMP/base-openapi.json" openapi/openapi.json
+          fi
+      - name: Generate a disposable typed client
+        run: uv run openapi-python-client generate --path openapi/openapi.json --output-path "$RUNNER_TEMP/client" --overwrite
+      # Integration, security, and e2e suites use Testcontainers PostgreSQL here.
+      - run: uv run coverage run -m pytest
+      - run: uv run coverage report --fail-under=80
