@@ -23,11 +23,20 @@ submitted values.
 | `INVALID_STATE_TRANSITION` | 409 | Action is not valid in the resource's current state |
 | `OWNER_TRANSFER_REQUIRED` | 409 | Owner must transfer ownership before leaving |
 | `PARTICIPANT_MERGE_REQUIRED` | 409 | Claim would merge with an existing participation; resend with consent |
+| `REFUND_EXCEEDS_AMOUNT` | 409 | Refunds would exceed the expense's current amount (also when a revision goes below them) |
+| `FUND_INSUFFICIENT` | 409 | A fund-paid expense, withdrawal, or adjustment would overdraw the plan fund in that currency |
+| `BASE_CURRENCY_LOCKED` | 409 | The plan already has financial records in its base currency |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Same `Idempotency-Key` or `operation_id` was sent with a different request |
 | `OPERATION_SKIPPED` | 409 (push item only) | The operation was not attempted: an earlier operation on the same scope must be retried first, or a dependency was not applied |
 | `VERSION_CONFLICT` | 412 | `expected_version`/`If-Match` is stale; `current` carries the canonical representation |
 | `REQUEST_TOO_LARGE` | 413 | Body or push batch exceeds the configured size limit |
 | `VALIDATION_FAILED` | 422 | Request cannot satisfy a public contract |
+| `AMOUNT_OUT_OF_RANGE` | 422 | An amount is zero, negative, above `10^12` minor units, or a conversion would exceed that bound |
+| `CURRENCY_NOT_SUPPORTED` | 422 | Currency code is not in `GET /v1/currencies` (or is retired) |
+| `SPLIT_INVALID` | 422 | Split, payer, or refund shares are inconsistent (sums, duplicates, weights, item totals) |
+| `FX_RATE_INVALID` | 422 | Exchange rate is not positive, above `10^9`, or has more than 12 decimals |
+| `PARTICIPANT_NOT_ELIGIBLE` | 422 | A named participant is unknown, from another plan, merged, or not active for this entry (never distinguished) |
+| `LEDGER_ENTRY_UNBALANCED` | 422 | Adjustment entries do not sum to zero |
 | `CLIENT_UPGRADE_REQUIRED` | 426 | Sync protocol or command schema version is outside the supported window |
 | `PRECONDITION_REQUIRED` | 428 | Update requires an `If-Match` header |
 | `RATE_LIMITED` | 429 | Abuse limit reached; honour `Retry-After` |
@@ -37,3 +46,7 @@ submitted values.
 Sync pull never reports a stale cursor as an HTTP error: the per-scope status
 `resync_required` replaces the earlier `410 FULL_RESYNC_REQUIRED` design, and
 `unavailable` means the scope is not the caller's to read.
+
+Finance errors never echo amounts, descriptions, or notes. A deferred ledger
+invariant that fails at commit (a server defect, not a client error) aborts the
+whole transaction and surfaces as a 500; nothing is written.
