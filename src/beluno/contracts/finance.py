@@ -296,3 +296,165 @@ class LedgerResponse(BaseModel):
         description="Money the participants recorded as pooled; Beluno holds and moves none"
     )
     version: int
+
+
+SettlementMethod = Literal["cash", "bank_transfer", "card", "mobile_payment", "other"]
+
+
+class PaidAmount(BaseModel):
+    """What actually changed hands when it was another currency than the debt."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    currency: CurrencyCode
+    amount_minor: StrictInt
+
+
+class SettlementRequest(BaseModel):
+    """``from`` paid ``to``: the payer's balance rises and the receiver's falls."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    from_participant_id: UUID
+    to_participant_id: UUID
+    currency: CurrencyCode
+    amount_minor: StrictInt
+    paid: PaidAmount | None = None
+    method: SettlementMethod | None = None
+    fee_minor: StrictInt | None = Field(
+        default=None, description="Bank or transfer fee the payer bore; not part of the debt"
+    )
+    note: Note | None = None
+    occurred_on: date
+
+
+class WaiverRequest(BaseModel):
+    """The creditor forgives part of what the debtor owes; no money changes hands."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    debtor_participant_id: UUID
+    creditor_participant_id: UUID
+    currency: CurrencyCode
+    amount_minor: StrictInt
+    note: Note | None = None
+    occurred_on: date
+
+
+class PaidAmountResponse(BaseModel):
+    currency: str
+    amount_minor: int
+    rate: str = Field(description="Paid-currency units per debt-currency unit the amounts imply")
+
+
+class SettlementResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    kind: Literal["payment", "waiver"]
+    from_participant_id: UUID
+    to_participant_id: UUID
+    currency: str
+    amount_minor: int
+    paid: PaidAmountResponse | None
+    method: SettlementMethod | None
+    fee_minor: int | None
+    note: str | None
+    occurred_on: date
+    status: Literal["recorded", "confirmed", "disputed", "reversed"]
+    overpaid: bool
+    recorded_by_user_id: UUID
+    confirmed_by_user_id: UUID | None
+    confirmed_at: datetime | None
+    disputed_by_user_id: UUID | None
+    disputed_at: datetime | None
+    reversed_by_user_id: UUID | None
+    reversed_at: datetime | None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+TransactionKind = Literal[
+    "expense",
+    "expense_reversal",
+    "refund",
+    "settlement",
+    "settlement_reversal",
+    "fund_contribution",
+    "fund_withdrawal",
+    "adjustment",
+    "conversion",
+]
+
+
+class PostingResponse(BaseModel):
+    participant_id: UUID | None
+    fund: bool
+    currency: str
+    amount_minor: int
+
+
+class TransactionResponse(BaseModel):
+    """One balanced journal entry; its postings sum to zero in each currency."""
+
+    id: UUID
+    ledger_seq: int
+    kind: TransactionKind
+    subtype: Literal["waiver", "merge_transfer", "fund_adjustment", "correction"] | None
+    expense_id: UUID | None
+    refund_id: UUID | None
+    settlement_id: UUID | None
+    fund_movement_id: UUID | None
+    reverses_transaction_id: UUID | None
+    memo: str | None
+    created_by_user_id: UUID | None
+    created_at: datetime
+    postings: list[PostingResponse]
+
+
+class TransactionPage(BaseModel):
+    items: list[TransactionResponse]
+    next_cursor: str | None = None
+
+
+class ExplanationEntry(BaseModel):
+    transaction_id: UUID
+    ledger_seq: int
+    kind: TransactionKind
+    subtype: Literal["waiver", "merge_transfer", "fund_adjustment", "correction"] | None
+    expense_id: UUID | None
+    settlement_id: UUID | None
+    fund_movement_id: UUID | None
+    description: str | None
+    amount_minor: int
+    balance_after_minor: int
+    created_at: datetime
+
+
+class BalanceExplanation(BaseModel):
+    participant_id: UUID | None
+    fund: bool
+    currency: str
+    entries: list[ExplanationEntry]
+    next_cursor: str | None = None
+
+
+class SuggestedTransfer(BaseModel):
+    from_participant_id: UUID
+    to_participant_id: UUID
+    amount_minor: int
+
+
+class SuggestedFundPayout(BaseModel):
+    to_participant_id: UUID
+    amount_minor: int
+
+
+class SettlementPreviewResponse(BaseModel):
+    """A suggestion only: nothing is recorded until someone records a settlement."""
+
+    currency: str
+    transfers: list[SuggestedTransfer]
+    fund_payouts: list[SuggestedFundPayout]

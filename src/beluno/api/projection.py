@@ -285,6 +285,7 @@ LOADERS: dict[str, Loader] = {
     "plan_invite": _load_plan_invite,
     "ledger": finance_projection.load_ledger,
     "expense": finance_projection.load_expense,
+    "settlement": finance_projection.load_settlement,
 }
 
 
@@ -441,6 +442,7 @@ PAGERS: dict[str, Pager] = {
     "plan_invite": _page_plan_invites,
     "ledger": finance_projection.page_ledger,
     "expense": finance_projection.page_expenses,
+    "settlement": finance_projection.page_settlements,
 }
 
 

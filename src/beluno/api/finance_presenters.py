@@ -13,20 +13,30 @@ from beluno.contracts.finance import (
     ExactSplit,
     ExpenseRequest,
     ExpenseResponse,
+    ExplanationEntry,
     FundAvailabilityResponse,
     LedgerBalanceResponse,
     LedgerResponse,
+    PaidAmountResponse,
     PayerResponse,
     PercentageSplit,
+    PostingResponse,
     RefundRequest,
     RefundResponse,
     RefundShareResponse,
     RevisionResponse,
+    SettlementPreviewResponse,
+    SettlementRequest,
+    SettlementResponse,
     ShareResponse,
     SharesSplit,
     Split,
+    SuggestedFundPayout,
+    SuggestedTransfer,
+    TransactionResponse,
+    WaiverRequest,
 )
-from beluno.db.models.finance import Currency, Expense
+from beluno.db.models.finance import Currency, Expense, Settlement
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.expenses import (
     ExpenseDraft,
@@ -39,6 +49,12 @@ from beluno.modules.finance.expenses import (
 )
 from beluno.modules.finance.fx import RateSource
 from beluno.modules.finance.postings import FUND, Party
+from beluno.modules.finance.settlements import (
+    SettlementDraft,
+    SettlementView,
+    WaiverDraft,
+    settlement_view,
+)
 from beluno.modules.finance.splits import (
     Payer,
     Share,
@@ -48,7 +64,12 @@ from beluno.modules.finance.splits import (
     SplitSpec,
 )
 from beluno.modules.finance.states import LedgerStatus
-from beluno.modules.finance.views import LedgerSnapshot
+from beluno.modules.finance.views import (
+    CurrencyPreview,
+    ExplanationLine,
+    LedgerSnapshot,
+    TransactionView,
+)
 
 SPLIT_ADAPTER: TypeAdapter[Split] = TypeAdapter(Split)
 
@@ -275,4 +296,146 @@ async def present_finance_current(ctx: CommandContext, entity: object) -> BaseMo
 
     if isinstance(entity, Expense):
         return expense_response(await expense_view(ctx, entity))
+    if isinstance(entity, Settlement):
+        return settlement_response(await settlement_view(ctx, entity))
     return None
+
+
+# --- settlements and ledger views ---------------------------------------------------
+
+
+def settlement_draft(body: SettlementRequest) -> SettlementDraft:
+    return SettlementDraft(
+        settlement_id=body.id,
+        from_participant_id=body.from_participant_id,
+        to_participant_id=body.to_participant_id,
+        currency=body.currency,
+        amount_minor=body.amount_minor,
+        paid_currency=body.paid.currency if body.paid else None,
+        paid_amount_minor=body.paid.amount_minor if body.paid else None,
+        method=body.method,
+        fee_minor=body.fee_minor,
+        note=body.note,
+        occurred_on=body.occurred_on,
+    )
+
+
+def waiver_draft(body: WaiverRequest) -> WaiverDraft:
+    return WaiverDraft(
+        settlement_id=body.id,
+        debtor_participant_id=body.debtor_participant_id,
+        creditor_participant_id=body.creditor_participant_id,
+        currency=body.currency,
+        amount_minor=body.amount_minor,
+        note=body.note,
+        occurred_on=body.occurred_on,
+    )
+
+
+def settlement_response(view: SettlementView) -> SettlementResponse:
+    settlement = view.settlement
+    paid = None
+    if (
+        settlement.paid_currency is not None
+        and settlement.paid_amount_minor is not None
+        and view.rate is not None
+    ):
+        paid = PaidAmountResponse(
+            currency=settlement.paid_currency,
+            amount_minor=settlement.paid_amount_minor,
+            rate=rate_text(view.rate.rate),
+        )
+    return SettlementResponse.model_validate(
+        {
+            "id": settlement.id,
+            "plan_id": settlement.plan_id,
+            "kind": settlement.kind,
+            "from_participant_id": settlement.from_participant_id,
+            "to_participant_id": settlement.to_participant_id,
+            "currency": settlement.currency,
+            "amount_minor": settlement.amount_minor,
+            "paid": paid,
+            "method": settlement.method,
+            "fee_minor": settlement.fee_minor,
+            "note": settlement.note,
+            "occurred_on": settlement.occurred_on,
+            "status": settlement.status,
+            "overpaid": settlement.overpaid,
+            "recorded_by_user_id": settlement.recorded_by_user_id,
+            "confirmed_by_user_id": settlement.confirmed_by_user_id,
+            "confirmed_at": settlement.confirmed_at,
+            "disputed_by_user_id": settlement.disputed_by_user_id,
+            "disputed_at": settlement.disputed_at,
+            "reversed_by_user_id": settlement.reversed_by_user_id,
+            "reversed_at": settlement.reversed_at,
+            "version": settlement.version,
+            "created_at": settlement.created_at,
+            "updated_at": settlement.updated_at,
+        }
+    )
+
+
+def transaction_response(view: TransactionView) -> TransactionResponse:
+    tx = view.transaction
+    return TransactionResponse.model_validate(
+        {
+            "id": tx.id,
+            "ledger_seq": tx.ledger_seq,
+            "kind": tx.kind,
+            "subtype": tx.subtype,
+            "expense_id": tx.expense_id,
+            "refund_id": tx.refund_id,
+            "settlement_id": tx.settlement_id,
+            "fund_movement_id": tx.fund_movement_id,
+            "reverses_transaction_id": tx.reverses_transaction_id,
+            "memo": tx.memo,
+            "created_by_user_id": tx.created_by_user_id,
+            "created_at": tx.created_at,
+            "postings": [
+                PostingResponse(
+                    participant_id=posting.participant_id,
+                    fund=posting.participant_id is None,
+                    currency=posting.currency,
+                    amount_minor=posting.amount_minor,
+                )
+                for posting in view.postings
+            ],
+        }
+    )
+
+
+def explanation_entry(line: ExplanationLine) -> ExplanationEntry:
+    tx = line.transaction
+    return ExplanationEntry.model_validate(
+        {
+            "transaction_id": tx.id,
+            "ledger_seq": tx.ledger_seq,
+            "kind": tx.kind,
+            "subtype": tx.subtype,
+            "expense_id": tx.expense_id,
+            "settlement_id": tx.settlement_id,
+            "fund_movement_id": tx.fund_movement_id,
+            "description": line.description,
+            "amount_minor": line.amount_minor,
+            "balance_after_minor": line.balance_after_minor,
+            "created_at": tx.created_at,
+        }
+    )
+
+
+def preview_response(preview: CurrencyPreview) -> SettlementPreviewResponse:
+    return SettlementPreviewResponse(
+        currency=preview.currency,
+        transfers=[
+            SuggestedTransfer(
+                from_participant_id=t.from_participant_id,
+                to_participant_id=t.to_participant_id,
+                amount_minor=t.amount_minor,
+            )
+            for t in preview.preview.transfers
+        ],
+        fund_payouts=[
+            SuggestedFundPayout(to_participant_id=p.to_participant_id, amount_minor=p.amount_minor)
+            for p in preview.preview.fund_payouts
+        ],
+    )

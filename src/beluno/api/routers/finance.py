@@ -5,17 +5,22 @@ Beluno records what people spent and owe each other; it never holds or moves mon
 
 from __future__ import annotations
 
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Query, Response, status
 
 from beluno.api.commands import finance as commands
 from beluno.api.dependencies import ActorDep, RunnerDep, RuntimeDep
 from beluno.api.finance_presenters import (
     currency_response,
     expense_response,
+    explanation_entry,
     ledger_response,
+    preview_response,
     revision_response,
+    settlement_response,
+    transaction_response,
 )
 from beluno.api.http import (
     DEFAULT_PAGE_SIZE,
@@ -31,7 +36,9 @@ from beluno.api.http import (
 )
 from beluno.api.problems import problem_responses
 from beluno.contracts.common import Page
+from beluno.contracts.errors import validation_error
 from beluno.contracts.finance import (
+    BalanceExplanation,
     CurrencyResponse,
     ExpenseCreateRequest,
     ExpenseRequest,
@@ -39,15 +46,22 @@ from beluno.contracts.finance import (
     LedgerResponse,
     RefundRequest,
     RevisionResponse,
+    SettlementPreviewResponse,
+    SettlementRequest,
+    SettlementResponse,
+    TransactionPage,
+    WaiverRequest,
 )
 from beluno.modules.context import open_context
-from beluno.modules.finance import currencies, expenses, views
-from beluno.sync.commands import EmptyPayload
+from beluno.modules.finance import currencies, expenses, settlements, views
+from beluno.sync.commands import Command, EmptyPayload
 
 router = APIRouter(prefix="/v1/plans/{plan_id}", tags=["finance"])
 currency_router = APIRouter(prefix="/v1/currencies", tags=["finance"])
 
-READ_ERRORS = problem_responses(401, 403, 404, 503)
+READ_ERRORS = problem_responses(401, 403, 404, 422, 503)
+CurrencyQuery = Annotated[str, Query(pattern=r"^[A-Z]{3}$")]
+CurrencyFilter = Annotated[str | None, Query(pattern=r"^[A-Z]{3}$")]
 WRITE_ERRORS = problem_responses(401, 403, 404, 409, 412, 422, 428, 429, 503)
 
 
@@ -181,3 +195,241 @@ async def list_revisions(
     async with open_context(runtime, actor) as ctx:
         found = await expenses.list_revisions(ctx, plan_id, expense_id)
     return [revision_response(view) for view in found]
+
+
+def _seq_cursor(cursor: str | None) -> int | None:
+    if cursor is None:
+        return None
+    if not cursor.isdigit() or len(cursor) > 18:
+        raise validation_error("cursor is invalid")
+    return int(cursor)
+
+
+@router.get("/ledger/transactions", response_model=TransactionPage, responses=READ_ERRORS)
+async def list_transactions(
+    plan_id: UUID,
+    runtime: RuntimeDep,
+    actor: ActorDep,
+    cursor: CursorParam = None,
+    limit: LimitParam = DEFAULT_PAGE_SIZE,
+) -> TransactionPage:
+    """The journal in ledger order; every entry sums to zero in each currency."""
+
+    async with open_context(runtime, actor) as ctx:
+        found = await views.list_transactions(
+            ctx, plan_id, after_seq=_seq_cursor(cursor), limit=limit
+        )
+    next_cursor = str(found[-1].transaction.ledger_seq) if len(found) == limit else None
+    return TransactionPage(
+        items=[transaction_response(view) for view in found], next_cursor=next_cursor
+    )
+
+
+@router.get("/ledger/explanation", response_model=BalanceExplanation, responses=READ_ERRORS)
+async def explain_balance(
+    plan_id: UUID,
+    currency: CurrencyQuery,
+    runtime: RuntimeDep,
+    actor: ActorDep,
+    participant_id: UUID | None = None,
+    cursor: CursorParam = None,
+    limit: LimitParam = DEFAULT_PAGE_SIZE,
+) -> BalanceExplanation:
+    """Every entry behind one participant's balance (or the fund's, without participant_id)."""
+
+    async with open_context(runtime, actor) as ctx:
+        lines = await views.explain_balance(
+            ctx,
+            plan_id,
+            participant_id=participant_id,
+            currency=currency,
+            after_seq=_seq_cursor(cursor),
+            limit=limit,
+        )
+    next_cursor = str(lines[-1].transaction.ledger_seq) if len(lines) == limit else None
+    return BalanceExplanation(
+        participant_id=participant_id,
+        fund=participant_id is None,
+        currency=currency,
+        entries=[explanation_entry(line) for line in lines],
+        next_cursor=next_cursor,
+    )
+
+
+@router.get(
+    "/ledger/settlement-preview",
+    response_model=list[SettlementPreviewResponse],
+    responses=READ_ERRORS,
+)
+async def preview_settlements(
+    plan_id: UUID, runtime: RuntimeDep, actor: ActorDep, currency: CurrencyFilter = None
+) -> list[SettlementPreviewResponse]:
+    """Suggested transfers per currency that would square everyone; nothing is recorded."""
+
+    async with open_context(runtime, actor) as ctx:
+        previews = await views.settlement_preview(ctx, plan_id, currency=currency)
+    return [preview_response(preview) for preview in previews]
+
+
+@router.get("/settlements", response_model=Page[SettlementResponse], responses=READ_ERRORS)
+async def list_settlements(
+    plan_id: UUID,
+    runtime: RuntimeDep,
+    actor: ActorDep,
+    cursor: CursorParam = None,
+    limit: LimitParam = DEFAULT_PAGE_SIZE,
+) -> Page[SettlementResponse]:
+    async with open_context(runtime, actor) as ctx:
+        found = await settlements.list_settlements(
+            ctx, plan_id, after=decode_cursor(cursor), limit=limit
+        )
+    next_cursor = encode_cursor(found[-1].settlement.id) if len(found) == limit else None
+    return Page[SettlementResponse](
+        items=[settlement_response(view) for view in found], next_cursor=next_cursor
+    )
+
+
+@router.post(
+    "/settlements",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SettlementResponse,
+    responses=WRITE_ERRORS,
+)
+async def record_settlement(
+    plan_id: UUID,
+    body: SettlementRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> SettlementResponse:
+    """Record a payment one participant made to another (Beluno moves no money)."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.SETTLEMENT_RECORD, call, body))
+
+
+@router.post(
+    "/waivers",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SettlementResponse,
+    responses=WRITE_ERRORS,
+)
+async def waive_debt(
+    plan_id: UUID,
+    body: WaiverRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> SettlementResponse:
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.SETTLEMENT_WAIVE, call, body))
+
+
+@router.get(
+    "/settlements/{settlement_id}", response_model=SettlementResponse, responses=READ_ERRORS
+)
+async def get_settlement(
+    plan_id: UUID, settlement_id: UUID, runtime: RuntimeDep, actor: ActorDep, response: Response
+) -> SettlementResponse:
+    async with open_context(runtime, actor) as ctx:
+        view = await settlements.get_settlement(ctx, plan_id, settlement_id)
+    set_etag(response, view.settlement.version)
+    return settlement_response(view)
+
+
+async def _settlement_intent(
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    command: Command[EmptyPayload, SettlementResponse],
+    plan_id: UUID,
+    settlement_id: UUID,
+    idempotency_key: str | None,
+    if_match: str | None = None,
+) -> SettlementResponse:
+    call = command_call(
+        idempotency_key, if_match=if_match, plan_id=plan_id, settlement_id=settlement_id
+    )
+    return finish(response, await runner.run(actor, command, call, EmptyPayload()))
+
+
+@router.post(
+    "/settlements/{settlement_id}/confirm",
+    response_model=SettlementResponse,
+    responses=WRITE_ERRORS,
+)
+async def confirm_settlement(
+    plan_id: UUID,
+    settlement_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> SettlementResponse:
+    """The creditor confirms the money arrived."""
+
+    return await _settlement_intent(
+        runner,
+        actor,
+        response,
+        commands.SETTLEMENT_CONFIRM,
+        plan_id,
+        settlement_id,
+        idempotency_key,
+    )
+
+
+@router.post(
+    "/settlements/{settlement_id}/dispute",
+    response_model=SettlementResponse,
+    responses=WRITE_ERRORS,
+)
+async def dispute_settlement(
+    plan_id: UUID,
+    settlement_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> SettlementResponse:
+    """The creditor says the money did not arrive; balances stay until it is reversed."""
+
+    return await _settlement_intent(
+        runner,
+        actor,
+        response,
+        commands.SETTLEMENT_DISPUTE,
+        plan_id,
+        settlement_id,
+        idempotency_key,
+    )
+
+
+@router.post(
+    "/settlements/{settlement_id}/reverse",
+    response_model=SettlementResponse,
+    responses=WRITE_ERRORS,
+)
+async def reverse_settlement(
+    plan_id: UUID,
+    settlement_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> SettlementResponse:
+    """Append the exact reversal of the settlement's entries."""
+
+    return await _settlement_intent(
+        runner,
+        actor,
+        response,
+        commands.SETTLEMENT_REVERSE,
+        plan_id,
+        settlement_id,
+        idempotency_key,
+        if_match,
+    )

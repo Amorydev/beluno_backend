@@ -1,19 +1,29 @@
-"""Finance commands: expenses and refunds (settlements, budgets, and fund follow)."""
+"""Finance commands: expenses, refunds, settlements, and waivers."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from beluno.api.commands.groups import required_version
-from beluno.api.finance_presenters import expense_draft, expense_response, refund_draft
+from beluno.api.finance_presenters import (
+    expense_draft,
+    expense_response,
+    refund_draft,
+    settlement_draft,
+    settlement_response,
+    waiver_draft,
+)
 from beluno.contracts.finance import (
     ExpenseCreateRequest,
     ExpenseRequest,
     ExpenseResponse,
     RefundRequest,
+    SettlementRequest,
+    SettlementResponse,
+    WaiverRequest,
 )
 from beluno.modules.context import CommandContext
-from beluno.modules.finance import expenses
+from beluno.modules.finance import expenses, settlements
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
 from beluno.sync.commands import Command, CommandCall, EmptyPayload, version_of
 
@@ -52,6 +62,45 @@ async def _refund_expense(
         ctx, call.id("plan_id"), call.id("expense_id"), refund_draft(body), required_version(call)
     )
     return expense_response(view)
+
+
+async def _record_settlement(
+    ctx: CommandContext, call: CommandCall, body: SettlementRequest
+) -> SettlementResponse:
+    view = await settlements.record_settlement(ctx, call.id("plan_id"), settlement_draft(body))
+    return settlement_response(view)
+
+
+async def _waive(ctx: CommandContext, call: CommandCall, body: WaiverRequest) -> SettlementResponse:
+    view = await settlements.waive_debt(ctx, call.id("plan_id"), waiver_draft(body))
+    return settlement_response(view)
+
+
+async def _confirm(
+    ctx: CommandContext, call: CommandCall, body: EmptyPayload
+) -> SettlementResponse:
+    view = await settlements.answer_settlement(
+        ctx, call.id("plan_id"), call.id("settlement_id"), confirm=True
+    )
+    return settlement_response(view)
+
+
+async def _dispute(
+    ctx: CommandContext, call: CommandCall, body: EmptyPayload
+) -> SettlementResponse:
+    view = await settlements.answer_settlement(
+        ctx, call.id("plan_id"), call.id("settlement_id"), confirm=False
+    )
+    return settlement_response(view)
+
+
+async def _reverse(
+    ctx: CommandContext, call: CommandCall, body: EmptyPayload
+) -> SettlementResponse:
+    view = await settlements.reverse_settlement(
+        ctx, call.id("plan_id"), call.id("settlement_id"), required_version(call)
+    )
+    return settlement_response(view)
 
 
 EXPENSE_CREATE = Command(
@@ -103,9 +152,73 @@ EXPENSE_REFUND = Command(
     rate_limit_target="plan_id",
 )
 
+SETTLEMENT_RECORD = Command(
+    name="settlement.record",
+    payload_model=SettlementRequest,
+    response_model=SettlementResponse,
+    handler=_record_settlement,
+    target_fields=("plan_id",),
+    status=201,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+SETTLEMENT_WAIVE = Command(
+    name="settlement.waive",
+    payload_model=WaiverRequest,
+    response_model=SettlementResponse,
+    handler=_waive,
+    target_fields=("plan_id",),
+    status=201,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+SETTLEMENT_CONFIRM = Command(
+    name="settlement.confirm",
+    payload_model=EmptyPayload,
+    response_model=SettlementResponse,
+    handler=_confirm,
+    target_fields=("plan_id", "settlement_id"),
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+SETTLEMENT_DISPUTE = Command(
+    name="settlement.dispute",
+    payload_model=EmptyPayload,
+    response_model=SettlementResponse,
+    handler=_dispute,
+    target_fields=("plan_id", "settlement_id"),
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+SETTLEMENT_REVERSE = Command(
+    name="settlement.reverse",
+    payload_model=EmptyPayload,
+    response_model=SettlementResponse,
+    handler=_reverse,
+    target_fields=("plan_id", "settlement_id"),
+    versioned=True,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
 COMMANDS: list[Command[Any, Any]] = [
     EXPENSE_CREATE,
     EXPENSE_REVISE,
     EXPENSE_VOID,
     EXPENSE_REFUND,
+    SETTLEMENT_RECORD,
+    SETTLEMENT_WAIVE,
+    SETTLEMENT_CONFIRM,
+    SETTLEMENT_DISPUTE,
+    SETTLEMENT_REVERSE,
 ]
