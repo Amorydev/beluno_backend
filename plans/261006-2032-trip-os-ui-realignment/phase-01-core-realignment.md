@@ -1,10 +1,10 @@
 ---
 phase: 1
 title: "Core realignment"
-status: pending
+status: completed
 priority: P1
 effort: "1.5–2 weeks"
-dependencies: ["PR #4 merged"]
+dependencies: ["PR #4 fixes (same branch)"]
 ---
 
 # Phase 1: Core realignment
@@ -148,13 +148,13 @@ Access levels: `self`, `manager`, `member`. `reader`, `invited` (group), and the
 
 ## Success Criteria
 
-- [ ] No code, table, function, policy, route, or sync type references groups, series, travel, or visibility (grep and `pg_catalog` checks in a test).
-- [ ] Trip and hangout create/update/duplicate work through REST and sync push, with replay and conflicts as before.
-- [ ] A member granted `expenses.manage` can revise and void others' expenses; without it they cannot; owners and admins always can.
-- [ ] Crews are invisible to everyone but their owner in REST, sync, and direct SQL as `api_runtime`.
-- [ ] A crew member must share an active plan with the owner at insert time.
-- [ ] Migration `000007` upgrades a database seeded with groups, series, travel, and group-visible plans without errors, and the validation queries pass.
-- [ ] Full suite passes on real PostgreSQL with none skipped; coverage ≥ 80 %; ruff, format, mypy strict clean; OpenAPI exported with every break listed in `accepted-breaks.json`.
+- [x] No code, table, function, policy, route, or sync type references groups, series, travel, or visibility (grep and `pg_catalog` checks in a test).
+- [x] Trip and hangout create/update/duplicate work through REST and sync push, with replay and conflicts as before.
+- [x] A member granted `expenses.manage` can revise and void others' expenses; without it they cannot; owners and admins always can.
+- [x] Crews are invisible to everyone but their owner in REST, sync, and direct SQL as `api_runtime`.
+- [x] A crew member must share an active plan with the owner at insert time.
+- [x] Migration `000007` upgrades a database seeded with groups, series, travel, and group-visible plans without errors, and the validation queries pass.
+- [x] Full suite passes on real PostgreSQL with none skipped; coverage ≥ 80 %; ruff, format, mypy strict clean; OpenAPI exported with every break listed in `accepted-breaks.json`.
 
 ## Risk Assessment
 
@@ -168,3 +168,26 @@ Access levels: `self`, `manager`, `member`. `reader`, `invited` (group), and the
 ## Rollback
 
 Forward-only. Before release 1 nothing depends on the removed objects. If the migration fails in a shared environment, restore from the pre-migration backup (pre-launch data only). Never re-create groups by reversing the migration.
+
+## Completion Notes (2026-10-06)
+
+Built on the PR #4 branch (single branch, user decision). Commits: removals, trips/hangouts with member settings and capabilities, crews, catalog check, docs, review fixes. Gates: 455 passed, 0 skipped, coverage 95 %, ruff/format/mypy clean, OpenAPI exported, 76 accepted breaks.
+
+Deviations from this file, decided during implementation:
+
+- Crews store `member_user_ids uuid[]` on `people.crews`; no `crew_members` table (nothing queries members on their own). A write guard backs the API membership check.
+- "Start with this crew": the crew response marks each person `addable` (registered, active, sharing an active plan). The client seeds only addable people and shows the invite link for the rest; a guest seed still fails plan creation with `409 GUEST_NOT_ALLOWED` instead of being skipped server-side.
+- A `group:` scope is now an invalid scope type: pull and handshake return `422` for the batch, not a per-scope re-snapshot. No client ever synced one.
+- Duplicate takes the new title from the client; the server adds no suffix (an English-only string would leak into Vietnamese UI).
+- The migration backfills new plan and participant fields without change rows; acceptable only because no client has synced.
+
+Review fixes (code-reviewer report in `reports/`):
+
+- Migration deleted queued series jobs without the job schema on the search path; Procrastinate's delete trigger failed and rolled back the upgrade. Fixed and covered by a seeded-queue migration test.
+- Admins could change the owner's or another admin's default share, capabilities, or colour. Now any change to someone else's row needs `can_manage_participant`.
+- Capabilities survived demotion, leaving, removal, and ownership transfer. Now cleared on each, with a check constraint (`capabilities = '{}'` unless an active member with an account).
+- Also: explicit nulls rejected on participant update; plan `type` immutable in the write guard; ADR 0008 lists breaks the OpenAPI checker cannot see.
+
+Open:
+
+- Crews made by a guest stay with the retired guest account when that guest claims an existing account. Options: limit crews to registered users, or move them on merge.

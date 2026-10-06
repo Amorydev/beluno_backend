@@ -1,7 +1,7 @@
 ---
 title: "Realign the backend to the Trip OS UI"
 description: "Reshape the backend around trips, hangouts, and crews as designed in Stitch, close the money gaps, and ship in releases."
-status: pending
+status: in-progress
 priority: P1
 tags: [backend, realignment, trips, hangouts, crews, ledger, offline-sync]
 blockedBy: []
@@ -30,7 +30,7 @@ Decision (user, 2026-10-06): **realign, do not rebuild.** Platform, identity, of
 
 | Phase | Release | Dependency | Estimate | Name | Status |
 |---:|---|---|---:|---|---|
-| 1 | 1 | PR #4 merged | 1.5–2 weeks | [Core realignment](./phase-01-core-realignment.md) | pending |
+| 1 | 1 | PR #4 fixes | 1.5–2 weeks | [Core realignment](./phase-01-core-realignment.md) | completed |
 | 2 | 1 | 1 | ~2 weeks | [Money alignment](./phase-02-money-alignment.md) | pending |
 | 3 | 1 | 1, 2 | 1–1.5 weeks | [People, activity, and account lifecycle](./phase-03-people-activity-account.md) | pending |
 | 4 | 1 | 1–3 | 1–2 weeks + soak | [Release 1 hardening](./phase-04-release-one-hardening.md) | pending |
@@ -41,7 +41,7 @@ Phases 1–2 are detailed. Phases 3–6 carry scope and acceptance; each gets "E
 
 ## Dependencies
 
-- Branch from `main` after PR #4 (`000006_merged_guest_authorship`) merges; the next migration is `000007`.
+- Work continues on the PR #4 branch (`fix/finance-refund-split-lock-and-utc-sessions`, user decision 2026-10-06): one branch, one PR. The realignment migration is `000007`, after `000006_merged_guest_authorship`.
 - The client (`~/beluno/beluno_app`, KMP) has wired only health and Google sign-in, so contract breaks in Phases 1–2 cost nothing on the client. The OpenAPI compatibility gate needs an explicit accepted-breaks list for them (Phase 1).
 - App build order: `~/juntro/plans/261006-1432-beluno-app-ui-build-order/plan.md`. Its stages 1–7 and 9 need Phases 1–3.
 
