@@ -6,9 +6,16 @@ from typing import Any
 
 import psycopg
 
-# Every application table, so a suite can reset state between tests or examples.
+# Every application table except seeded reference data (``finance.currencies``), so a
+# suite can reset state between tests or examples.
 TRUNCATE_ALL_SQL = """
 TRUNCATE
+    finance.ledger_postings, finance.ledger_transactions, finance.fund_movements,
+    finance.fund_settings, finance.refund_shares, finance.expense_refunds,
+    finance.expense_splits, finance.expense_payers, finance.expense_revisions,
+    finance.expenses, finance.cost_commitments, finance.settlements, finance.budgets,
+    finance.fx_snapshots, finance.account_balances, finance.ledger_accounts,
+    finance.plan_ledger_heads,
     sync_audit.audit_events, sync_audit.change_log, sync_audit.scope_heads,
     sync_audit.operations,
     plans.travel_segments, plans.travel_plan_details, plans.plan_invites, groups.group_invites,
