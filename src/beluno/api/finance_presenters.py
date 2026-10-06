@@ -8,6 +8,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from beluno.contracts.finance import (
     AdjustmentRequest,
+    AdjustmentSplit,
     BaseAmountResponse,
     BudgetOverviewResponse,
     BudgetResponse,
@@ -64,6 +65,7 @@ from beluno.modules.finance.expenses import (
     ExpenseView,
     RefundDraft,
     RefundView,
+    RevisionOrigin,
     RevisionView,
     expense_view,
 )
@@ -127,6 +129,11 @@ def split_spec(split: Split) -> SplitSpec:
             SplitMethod.SHARES,
             tuple(SplitEntry(s.participant_id, s.weight) for s in split.shares),
         )
+    if isinstance(split, AdjustmentSplit):
+        return SplitSpec(
+            SplitMethod.ADJUSTMENT,
+            tuple(SplitEntry(s.participant_id, s.adjustment_minor) for s in split.shares),
+        )
     return SplitSpec(
         SplitMethod.ITEMIZED,
         items=tuple(
@@ -141,11 +148,13 @@ def split_spec(split: Split) -> SplitSpec:
     )
 
 
-def expense_draft(body: ExpenseRequest) -> ExpenseDraft:
+def expense_draft(body: ExpenseRequest, origin: RevisionOrigin) -> ExpenseDraft:
     return ExpenseDraft(
         description=body.description,
         category=body.category,
         occurred_on=body.occurred_on,
+        occurred_at=body.occurred_at,
+        occurred_timezone=body.occurred_timezone,
         notes=body.notes,
         amount_minor=body.amount_minor,
         currency=body.currency,
@@ -165,6 +174,7 @@ def expense_draft(body: ExpenseRequest) -> ExpenseDraft:
             else None
         ),
         commitment_id=body.commitment_id,
+        origin=origin,
     )
 
 
@@ -212,6 +222,16 @@ def base_amount(
     )
 
 
+def is_personal(view: RevisionView) -> bool:
+    """Its only payer is also its only sharer: spending that moves no balance."""
+
+    return (
+        len(view.payers) == 1
+        and len(view.splits) == 1
+        and view.payers[0].participant_id == view.splits[0].participant_id
+    )
+
+
 def revision_response(view: RevisionView) -> RevisionResponse:
     revision = view.revision
     base = base_amount(
@@ -224,6 +244,8 @@ def revision_response(view: RevisionView) -> RevisionResponse:
             "description": revision.description,
             "category": revision.category,
             "occurred_on": revision.occurred_on,
+            "occurred_at": revision.occurred_at,
+            "occurred_timezone": revision.occurred_timezone,
             "notes": revision.notes,
             "amount_minor": revision.amount_minor,
             "currency": revision.currency,
@@ -241,8 +263,12 @@ def revision_response(view: RevisionView) -> RevisionResponse:
                 ShareResponse(participant_id=split.participant_id, owed_minor=split.owed_minor)
                 for split in view.splits
             ],
+            "personal": is_personal(view),
             "base": base,
             "commitment_id": revision.commitment_id,
+            "source": revision.source,
+            "client_created_at": revision.client_created_at,
+            "device_label": revision.device_label,
             "created_by_user_id": revision.created_by_user_id,
             "created_at": revision.created_at,
         }

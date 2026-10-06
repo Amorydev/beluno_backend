@@ -93,6 +93,22 @@ def test_exact_shares_must_add_up() -> None:
     assert code(error) == "SPLIT_INVALID"
 
 
+def test_adjustments_shift_equal_shares_by_exact_minor_units() -> None:
+    adjusted = SplitSpec(SplitMethod.ADJUSTMENT, entries(100, 0, -100))
+    assert owed(resolve_split(1_000, adjusted)) == [434, 333, 233]
+    # Adjustments beyond the amount share the negative rest the same way.
+    over = SplitSpec(SplitMethod.ADJUSTMENT, entries(80, 80))
+    assert owed(resolve_split(100, over)) == [50, 50]
+    uneven = SplitSpec(SplitMethod.ADJUSTMENT, entries(12, 12, 1))
+    assert owed(resolve_split(20, uneven)) == [10, 10, 0]
+    with pytest.raises(BelunoError) as negative:
+        resolve_split(100, SplitSpec(SplitMethod.ADJUSTMENT, entries(0, 200)))
+    assert code(negative) == "SPLIT_INVALID"
+    with pytest.raises(BelunoError) as huge:
+        resolve_split(100, SplitSpec(SplitMethod.ADJUSTMENT, entries(MAX_AMOUNT_MINOR + 1, 0)))
+    assert code(huge) == "SPLIT_INVALID"
+
+
 def test_itemized_bill_spreads_tax_and_tip_over_item_subtotals() -> None:
     alice, bob, carol = PEOPLE[:3]
     spec = SplitSpec(
@@ -292,6 +308,8 @@ def test_every_method_resolves_to_the_exact_amount(
         spec = SplitSpec(method, entries(*points))
     elif method is SplitMethod.EXACT:
         spec = SplitSpec(method, entries(*largest_remainder(amount, [1] * people)))
+    elif method is SplitMethod.ADJUSTMENT:
+        spec = SplitSpec(method, entries(amount // 2, *([0] * (people - 1))))
     else:
         cut = largest_remainder(amount, [1] * min(people, 10))
         cut = [value for value in cut if value > 0]

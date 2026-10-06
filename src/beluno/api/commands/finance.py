@@ -43,16 +43,24 @@ from beluno.contracts.finance import (
 )
 from beluno.modules.context import CommandContext
 from beluno.modules.finance import budgets, commitments, expenses, funds, settlements, views
+from beluno.modules.finance.expenses import RevisionOrigin
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
 from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
 
 FINANCE_FEATURE = "finance"
 
 
+def _origin(call: CommandCall) -> RevisionOrigin:
+    source = expenses.SYNC if call.source == "push" else expenses.HTTP
+    return RevisionOrigin(source=source, client_created_at=call.client_created_at)
+
+
 async def _create_expense(
     ctx: CommandContext, call: CommandCall, body: ExpenseCreateRequest
 ) -> ExpenseResponse:
-    view = await expenses.create_expense(ctx, call.id("plan_id"), body.id, expense_draft(body))
+    view = await expenses.create_expense(
+        ctx, call.id("plan_id"), body.id, expense_draft(body, _origin(call))
+    )
     return expense_response(view)
 
 
@@ -60,7 +68,11 @@ async def _revise_expense(
     ctx: CommandContext, call: CommandCall, body: ExpenseRequest
 ) -> ExpenseResponse:
     view = await expenses.revise_expense(
-        ctx, call.id("plan_id"), call.id("expense_id"), expense_draft(body), required_version(call)
+        ctx,
+        call.id("plan_id"),
+        call.id("expense_id"),
+        expense_draft(body, _origin(call)),
+        required_version(call),
     )
     return expense_response(view)
 

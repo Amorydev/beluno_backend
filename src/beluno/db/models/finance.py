@@ -145,6 +145,8 @@ class ExpenseRevision(Base):
     description: Mapped[str] = mapped_column(Text)
     category: Mapped[str] = mapped_column(Text)
     occurred_on: Mapped[date]
+    occurred_at: Mapped[datetime | None]
+    occurred_timezone: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     split_method: Mapped[str] = mapped_column(Text)
     split_algorithm: Mapped[str] = mapped_column(Text)
@@ -153,6 +155,9 @@ class ExpenseRevision(Base):
     base_amount_minor: Mapped[int | None] = mapped_column(BigInteger)
     base_fx_snapshot_id: Mapped[UUID | None]
     commitment_id: Mapped[UUID | None]
+    source: Mapped[str] = mapped_column(Text)
+    client_created_at: Mapped[datetime | None]
+    device_label: Mapped[str | None] = mapped_column(Text)
     created_by_user_id: Mapped[UUID]
     created_at: Mapped[datetime]
 

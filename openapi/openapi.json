@@ -64,6 +64,32 @@
         "title": "AdjustmentRequest",
         "type": "object"
       },
+      "AdjustmentSplit": {
+        "additionalProperties": false,
+        "description": "Equal shares after per-person adjustments; nobody may owe less than zero.",
+        "properties": {
+          "method": {
+            "const": "adjustment",
+            "title": "Method",
+            "type": "string"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/SplitAdjustment"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Shares",
+            "type": "array"
+          }
+        },
+        "required": [
+          "method",
+          "shares"
+        ],
+        "title": "AdjustmentSplit",
+        "type": "object"
+      },
       "BalanceExplanation": {
         "properties": {
           "currency": {
@@ -1644,10 +1670,36 @@
             ],
             "title": "Notes"
           },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it happened; occurred_on must be its local date",
+            "title": "Occurred At"
+          },
           "occurred_on": {
             "format": "date",
             "title": "Occurred On",
             "type": "string"
+          },
+          "occurred_timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IANA zone of occurred_at (shown as 20:10 JST)",
+            "title": "Occurred Timezone"
           },
           "payers": {
             "items": {
@@ -1661,6 +1713,7 @@
           "split": {
             "discriminator": {
               "mapping": {
+                "adjustment": "#/components/schemas/AdjustmentSplit",
                 "equal": "#/components/schemas/EqualSplit",
                 "exact": "#/components/schemas/ExactSplit",
                 "itemized": "#/components/schemas/ItemizedSplit",
@@ -1684,6 +1737,9 @@
               },
               {
                 "$ref": "#/components/schemas/ItemizedSplit"
+              },
+              {
+                "$ref": "#/components/schemas/AdjustmentSplit"
               }
             ],
             "title": "Split"
@@ -1770,10 +1826,36 @@
             ],
             "title": "Notes"
           },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it happened; occurred_on must be its local date",
+            "title": "Occurred At"
+          },
           "occurred_on": {
             "format": "date",
             "title": "Occurred On",
             "type": "string"
+          },
+          "occurred_timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IANA zone of occurred_at (shown as 20:10 JST)",
+            "title": "Occurred Timezone"
           },
           "payers": {
             "items": {
@@ -1787,6 +1869,7 @@
           "split": {
             "discriminator": {
               "mapping": {
+                "adjustment": "#/components/schemas/AdjustmentSplit",
                 "equal": "#/components/schemas/EqualSplit",
                 "exact": "#/components/schemas/ExactSplit",
                 "itemized": "#/components/schemas/ItemizedSplit",
@@ -1810,6 +1893,9 @@
               },
               {
                 "$ref": "#/components/schemas/ItemizedSplit"
+              },
+              {
+                "$ref": "#/components/schemas/AdjustmentSplit"
               }
             ],
             "title": "Split"
@@ -5195,6 +5281,19 @@
             "title": "Category",
             "type": "string"
           },
+          "client_created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the device made the change (offline edits sync later)",
+            "title": "Client Created At"
+          },
           "commitment_id": {
             "anyOf": [
               {
@@ -5225,6 +5324,18 @@
             "title": "Description",
             "type": "string"
           },
+          "device_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The device of the session that wrote it",
+            "title": "Device Label"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -5241,10 +5352,33 @@
             ],
             "title": "Notes"
           },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At"
+          },
           "occurred_on": {
             "format": "date",
             "title": "Occurred On",
             "type": "string"
+          },
+          "occurred_timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred Timezone"
           },
           "payers": {
             "items": {
@@ -5252,6 +5386,11 @@
             },
             "title": "Payers",
             "type": "array"
+          },
+          "personal": {
+            "description": "One person paid and is the only one sharing it; it moves no balance",
+            "title": "Personal",
+            "type": "boolean"
           },
           "revision_number": {
             "title": "Revision Number",
@@ -5264,9 +5403,19 @@
             "title": "Shares",
             "type": "array"
           },
+          "source": {
+            "description": "Written online, or pushed by sync",
+            "enum": [
+              "http",
+              "sync"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
           "split": {
             "discriminator": {
               "mapping": {
+                "adjustment": "#/components/schemas/AdjustmentSplit",
                 "equal": "#/components/schemas/EqualSplit",
                 "exact": "#/components/schemas/ExactSplit",
                 "itemized": "#/components/schemas/ItemizedSplit",
@@ -5290,6 +5439,9 @@
               },
               {
                 "$ref": "#/components/schemas/ItemizedSplit"
+              },
+              {
+                "$ref": "#/components/schemas/AdjustmentSplit"
               }
             ],
             "title": "Split"
@@ -5305,6 +5457,8 @@
           "description",
           "category",
           "occurred_on",
+          "occurred_at",
+          "occurred_timezone",
           "notes",
           "amount_minor",
           "currency",
@@ -5312,8 +5466,12 @@
           "split",
           "split_algorithm",
           "shares",
+          "personal",
           "base",
           "commitment_id",
+          "source",
+          "client_created_at",
+          "device_label",
           "created_by_user_id",
           "created_at"
         ],
@@ -5888,6 +6046,27 @@
           "projected_minor"
         ],
         "title": "SpendResponse",
+        "type": "object"
+      },
+      "SplitAdjustment": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment_minor": {
+            "description": "Added to (or, when negative, taken off) this person's equal share",
+            "title": "Adjustment Minor",
+            "type": "integer"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "adjustment_minor"
+        ],
+        "title": "SplitAdjustment",
         "type": "object"
       },
       "SplitExtra": {

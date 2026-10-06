@@ -123,9 +123,9 @@ class Entry:
         connection.execute(
             "INSERT INTO finance.expense_revisions (id, plan_id, expense_id, revision_number, "
             "amount_minor, currency, description, category, occurred_on, split_method, "
-            "split_algorithm, split_input, base_currency, base_amount_minor, "
+            "split_algorithm, split_input, base_currency, base_amount_minor, source, "
             "created_by_user_id, created_at) VALUES (%s, %s, %s, 1, %s, 'USD', 'Dinner', "
-            "'food', '2026-10-06', 'exact', 'lr-v1', '{}', 'USD', %s, %s, now())",
+            "'food', '2026-10-06', 'exact', 'lr-v1', '{}', 'USD', %s, 'http', %s, now())",
             (revision, self.plan_id, expense, self.amount, self.amount, self.actor),
         )
         connection.execute(

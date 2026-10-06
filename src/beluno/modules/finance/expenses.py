@@ -10,8 +10,8 @@ each one bumps the expense version and appends a ``refund`` transaction.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -34,6 +34,7 @@ from beluno.db.models.finance import (
     LedgerTransaction,
     RefundShare,
 )
+from beluno.db.models.iam import AuthSession
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.commitments import link_expense, release_expense
 from beluno.modules.finance.errors import refund_exceeds_amount, split_invalid
@@ -59,6 +60,16 @@ from beluno.modules.iam.users import is_actor_account
 from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
 
 EXPENSE_ENTITY = "expense"
+HTTP = "http"
+SYNC = "sync"
+
+
+@dataclass(frozen=True)
+class RevisionOrigin:
+    """Where a revision came from, for readable history ("synced from Minh's phone")."""
+
+    source: str = HTTP
+    client_created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +86,10 @@ class ExpenseDraft:
     base_rate: RateInput | None = None
     # The cost commitment this expense now accounts for (converted atomically).
     commitment_id: UUID | None = None
+    # The instant and zone it happened in; ``occurred_on`` is its local date there.
+    occurred_at: datetime | None = None
+    occurred_timezone: str | None = None
+    origin: RevisionOrigin = field(default_factory=RevisionOrigin)
 
 
 @dataclass(frozen=True)
@@ -502,6 +517,8 @@ async def _append_revision(
         ledger.participant(share.participant_id, keep=kept)
     base_currency = ledger.access.plan.base_currency
     base_amount, snapshot = await _base_amount(ledger, draft, currency.exponent, base_currency)
+    actor = ctx.require_actor()
+    session = await ctx.session.get(AuthSession, actor.session_id)
     revision = ExpenseRevision(
         id=revision_id,
         plan_id=expense.plan_id,
@@ -512,6 +529,8 @@ async def _append_revision(
         description=draft.description,
         category=draft.category,
         occurred_on=draft.occurred_on,
+        occurred_at=draft.occurred_at,
+        occurred_timezone=draft.occurred_timezone,
         notes=draft.notes,
         split_method=draft.split.method.value,
         split_algorithm=SPLIT_ALGORITHM,
@@ -520,7 +539,10 @@ async def _append_revision(
         base_amount_minor=base_amount,
         base_fx_snapshot_id=snapshot.id if snapshot else None,
         commitment_id=draft.commitment_id,
-        created_by_user_id=ctx.require_actor().user_id,
+        source=draft.origin.source,
+        client_created_at=draft.origin.client_created_at,
+        device_label=session.device_label if session else None,
+        created_by_user_id=actor.user_id,
         created_at=ctx.now,
     )
     ctx.session.add(revision)

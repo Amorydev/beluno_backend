@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import (
     AfterValidator,
@@ -22,7 +23,7 @@ from pydantic import (
     model_validator,
 )
 
-from beluno.contracts.common import CurrencyCode, Label, LongText, clean_text
+from beluno.contracts.common import CurrencyCode, Label, LongText, TimezoneName, clean_text
 
 ExpenseCategory = Literal[
     "food", "lodging", "transport", "activities", "shopping", "groceries", "fees", "other"
@@ -91,6 +92,15 @@ class WeightShare(BaseModel):
     weight: StrictInt
 
 
+class SplitAdjustment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    participant_id: UUID
+    adjustment_minor: StrictInt = Field(
+        description="Added to (or, when negative, taken off) this person's equal share"
+    )
+
+
 class EqualSplit(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -147,8 +157,17 @@ class ItemizedSplit(BaseModel):
     extras: Annotated[list[SplitExtra], Field(max_length=10)] = Field(default_factory=list)
 
 
+class AdjustmentSplit(BaseModel):
+    """Equal shares after per-person adjustments; nobody may owe less than zero."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    method: Literal["adjustment"]
+    shares: Annotated[list[SplitAdjustment], Field(min_length=1, max_length=100)]
+
+
 Split = Annotated[
-    EqualSplit | ExactSplit | PercentageSplit | SharesSplit | ItemizedSplit,
+    EqualSplit | ExactSplit | PercentageSplit | SharesSplit | ItemizedSplit | AdjustmentSplit,
     Field(discriminator="method"),
 ]
 
@@ -161,6 +180,12 @@ class ExpenseRequest(BaseModel):
     description: Description
     category: ExpenseCategory = "other"
     occurred_on: date
+    occurred_at: AwareDatetime | None = Field(
+        default=None, description="When it happened; occurred_on must be its local date"
+    )
+    occurred_timezone: TimezoneName | None = Field(
+        default=None, description="IANA zone of occurred_at (shown as 20:10 JST)"
+    )
     notes: LongText | None = None
     amount_minor: StrictInt
     currency: CurrencyCode
@@ -174,6 +199,16 @@ class ExpenseRequest(BaseModel):
         default=None,
         description="The planned cost this expense pays for; it then counts once, as actual",
     )
+
+    @model_validator(mode="after")
+    def local_date_matches(self) -> Self:
+        if (self.occurred_at is None) != (self.occurred_timezone is None):
+            raise ValueError("send occurred_at and occurred_timezone together")
+        if self.occurred_at is not None and self.occurred_timezone is not None:
+            local = self.occurred_at.astimezone(ZoneInfo(self.occurred_timezone)).date()
+            if local != self.occurred_on:
+                raise ValueError("occurred_on must be the local date of occurred_at")
+        return self
 
 
 class ExpenseCreateRequest(ExpenseRequest):
@@ -250,6 +285,8 @@ class RevisionResponse(BaseModel):
     description: str
     category: ExpenseCategory
     occurred_on: date
+    occurred_at: datetime | None
+    occurred_timezone: str | None
     notes: str | None
     amount_minor: int
     currency: str
@@ -257,8 +294,16 @@ class RevisionResponse(BaseModel):
     split: Split
     split_algorithm: str
     shares: list[ShareResponse]
+    personal: bool = Field(
+        description="One person paid and is the only one sharing it; it moves no balance"
+    )
     base: BaseAmountResponse
     commitment_id: UUID | None
+    source: Literal["http", "sync"] = Field(description="Written online, or pushed by sync")
+    client_created_at: datetime | None = Field(
+        description="When the device made the change (offline edits sync later)"
+    )
+    device_label: str | None = Field(description="The device of the session that wrote it")
     created_by_user_id: UUID
     created_at: datetime
 

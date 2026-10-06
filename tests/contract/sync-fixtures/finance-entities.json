@@ -83,14 +83,18 @@
             "rate_source": "identity"
           },
           "category": "lodging",
+          "client_created_at": null,
           "commitment_id": "01a110e9-fd8a-7184-9d6b-25523dd0584b",
           "created_at": "2026-10-06T11:12:12.703121Z",
           "created_by_user_id": "01a110e9-fbba-7a1b-88a9-a0a38a2a90fa",
           "currency": "USD",
           "description": "Cabin",
+          "device_label": "Test device",
           "id": "01a110e9-fdac-7525-9d2e-301413774673",
           "notes": null,
+          "occurred_at": null,
           "occurred_on": "2026-10-06",
+          "occurred_timezone": null,
           "payers": [
             {
               "amount_minor": 3000,
@@ -98,6 +102,7 @@
               "participant_id": "01a110e9-fc94-792d-b26c-4552e8365801"
             }
           ],
+          "personal": false,
           "revision_number": 1,
           "shares": [
             {
@@ -109,6 +114,7 @@
               "participant_id": "01a110e9-fca6-7aaa-920f-c280d3ca2413"
             }
           ],
+          "source": "http",
           "split": {
             "method": "equal",
             "participant_ids": [
