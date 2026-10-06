@@ -16,6 +16,7 @@ wait on each other in a cycle.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from uuid import UUID
@@ -42,6 +43,7 @@ from beluno.modules.finance.errors import fund_insufficient, participant_not_eli
 from beluno.modules.finance.postings import FUND, Party, Postings, reversal_postings
 from beluno.modules.finance.states import LedgerStatus, SettlementStatus, next_ledger_status
 from beluno.modules.sync_audit.recorder import ChangeScope, record_change
+from beluno.observability.metrics import instruments
 
 LEDGER_ENTITY = "ledger"
 MAX_MERGE_DEPTH = 16
@@ -353,7 +355,9 @@ async def lock_head(ctx: CommandContext, plan_id: UUID) -> LedgerHead:
         .with_for_update()
         .execution_options(populate_existing=True)
     )
+    started = time.perf_counter()
     head = (await ctx.session.execute(statement)).scalar_one_or_none()
+    instruments().ledger_lock_wait.record((time.perf_counter() - started) * 1_000)
     if head is not None:
         return head
     head = LedgerHead(

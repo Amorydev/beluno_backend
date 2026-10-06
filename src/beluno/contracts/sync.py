@@ -46,6 +46,8 @@ class SyncFeatures(BaseModel):
     push_enabled: bool
     pull_enabled: bool
     disabled_commands: list[str]
+    # False while the finance kill switch is on: finance commands answer ``retry``.
+    finance_writes_enabled: bool = True
 
 
 class SyncLimits(BaseModel):

@@ -6,6 +6,7 @@ from uuid import UUID
 
 import procrastinate
 
+from beluno.modules.finance.maintenance import reconcile_ledgers
 from beluno.modules.iam.email_challenges import DELIVER_TASK_NAME, EMAIL_QUEUE, deliver_challenge
 from beluno.modules.iam.maintenance import purge_expired_auth_records
 from beluno.modules.plans.series import extend_all_series
@@ -94,3 +95,17 @@ async def report_queue_health(timestamp: int) -> dict[str, float]:
 
     del timestamp
     return (await queue_health(get_worker_runtime())).as_measurements()
+
+
+@app.periodic(cron="29 4 * * *", periodic_id="finance.reconcile_ledgers")
+@app.task(
+    name="finance.reconcile_ledgers",
+    queue="maintenance",
+    retry=3,
+    queueing_lock="finance:reconcile_ledgers",
+)
+async def reconcile_finance_ledgers(timestamp: int) -> int:
+    """Daily: recompute every plan ledger from postings; any finding is an incident."""
+
+    del timestamp
+    return await reconcile_ledgers(get_worker_runtime())

@@ -399,6 +399,7 @@ async def test_push_kill_switches(
         "push_enabled": False,
         "pull_enabled": True,
         "disabled_commands": ["plan.rsvp"],
+        "finance_writes_enabled": True,
     }
 
 

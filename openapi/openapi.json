@@ -6404,6 +6404,11 @@
             "title": "Disabled Commands",
             "type": "array"
           },
+          "finance_writes_enabled": {
+            "default": true,
+            "title": "Finance Writes Enabled",
+            "type": "boolean"
+          },
           "pull_enabled": {
             "title": "Pull Enabled",
             "type": "boolean"
