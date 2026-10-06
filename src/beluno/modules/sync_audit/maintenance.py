@@ -16,7 +16,7 @@ from sqlalchemy import text
 from beluno.modules.context import Runtime
 from beluno.observability.metrics import instruments
 
-COMPACT_SQL = text("SELECT sync_audit.compact_changes(:cutoff, :batch)")
+COMPACT_SQL = text("SELECT sync_audit.compact_changes(:cutoff, :batch, :window_days)")
 PURGE_SQL = text("SELECT sync_audit.purge_operations(:now, :batch)")
 BATCH_SIZE = 5_000
 MAX_BATCHES_PER_RUN = 200
@@ -25,12 +25,20 @@ MAX_BATCHES_PER_RUN = 200
 async def compact_changes(runtime: Runtime) -> int:
     """Remove change rows past retention, one committed batch at a time."""
 
-    cutoff = runtime.clock() - timedelta(days=runtime.settings.sync_change_retention_days)
+    settings = runtime.settings
+    cutoff = runtime.clock() - timedelta(days=settings.sync_change_retention_days)
     removed = 0
     for _ in range(MAX_BATCHES_PER_RUN):
         async with runtime.database.transaction() as session:
             batch = (
-                await session.execute(COMPACT_SQL, {"cutoff": cutoff, "batch": BATCH_SIZE})
+                await session.execute(
+                    COMPACT_SQL,
+                    {
+                        "cutoff": cutoff,
+                        "batch": BATCH_SIZE,
+                        "window_days": settings.sync_offline_window_days,
+                    },
+                )
             ).scalar_one()
         if not batch:
             break

@@ -17,6 +17,14 @@ Forward action:
   ``purge_operations`` (worker maintenance with enforced minimum retention).
 * Runtime roles lose direct INSERT on ``change_log``.
 
+Trust model: ``append_changes`` trusts its caller. It takes the scope from the
+input because legitimate writes cross scopes (an admin adding a member records a
+signal in that member's user scope; the worker materializes series on behalf of
+their creators), so it is not a tenant boundary; the application recorder is its
+only caller and derives every scope from the mutated row. Reads are fenced per
+scope by ``read_changes`` and the ``scope_heads`` policy. This matches the
+previous unscoped INSERT grant the runtime roles held on ``change_log``.
+
 Lock/scan risk: the backfill rewrites every ``change_log`` row and ``SET NOT NULL``
 plus the unique index build scan it under exclusive locks, so writes that record
 changes block for the duration. The table is small before launch; on a large table
@@ -205,17 +213,20 @@ $$;
 
 -- Retention: deletes change rows older than the cutoff and raises each scope's floor
 -- to the highest removed sequence, so older cursors must resync. The cutoff can never
--- reach inside the supported offline window.
-CREATE FUNCTION sync_audit.compact_changes(p_cutoff timestamptz, p_batch integer)
-    RETURNS integer
+-- reach inside the deployment's offline window (p_offline_window_days, never below
+-- the 90-day product floor), whatever the caller passes.
+CREATE FUNCTION sync_audit.compact_changes(
+    p_cutoff timestamptz, p_batch integer, p_offline_window_days integer
+) RETURNS integer
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     floors jsonb;
     removed integer;
     scope record;
+    window_days integer := greatest(coalesce(p_offline_window_days, 90), 90);
 BEGIN
-    IF p_cutoff > now() - interval '90 days' THEN
-        RAISE EXCEPTION 'change retention must cover the 90-day offline window'
+    IF p_cutoff > now() - make_interval(days => window_days) THEN
+        RAISE EXCEPTION 'change retention must cover the %-day offline window', window_days
             USING ERRCODE = 'invalid_parameter_value';
     END IF;
     IF p_batch NOT BETWEEN 1 AND 100000 THEN
@@ -300,7 +311,7 @@ REVOKE EXECUTE ON FUNCTION
     sync_audit.actor_can_view_scope(text, uuid),
     sync_audit.append_changes(jsonb),
     sync_audit.read_changes(text, uuid, bigint, bigint, integer),
-    sync_audit.compact_changes(timestamptz, integer),
+    sync_audit.compact_changes(timestamptz, integer, integer),
     sync_audit.purge_operations(timestamptz, integer)
     FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION sync_audit.actor_can_view_scope(text, uuid) TO api_runtime;
@@ -308,7 +319,7 @@ GRANT EXECUTE ON FUNCTION sync_audit.append_changes(jsonb) TO api_runtime, worke
 GRANT EXECUTE ON FUNCTION sync_audit.read_changes(text, uuid, bigint, bigint, integer)
     TO api_runtime;
 GRANT EXECUTE ON FUNCTION
-    sync_audit.compact_changes(timestamptz, integer),
+    sync_audit.compact_changes(timestamptz, integer, integer),
     sync_audit.purge_operations(timestamptz, integer)
     TO worker_runtime;
 """

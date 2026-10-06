@@ -46,8 +46,9 @@ and operator. Fix the cause before replaying a job that failed repeatedly.
 The daily `sync.compact_changes` job deletes change rows older than the
 retention cutoff in committed batches and raises `scope_heads.floor_seq`; a
 cursor below the floor receives `resync_required` and bootstraps again. The SQL
-gate refuses cutoffs inside the 90-day offline window. Never delete change,
-operation, or head rows by hand as a rollback.
+gate refuses cutoffs inside the configured offline window (and never accepts
+one under 90 days). Never delete change, operation, or head rows by hand as a
+rollback.
 
 ## Database restore
 

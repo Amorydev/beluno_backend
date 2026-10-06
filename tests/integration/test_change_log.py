@@ -281,7 +281,7 @@ async def test_runtime_roles_reach_change_rows_only_through_gates(
             "entity_type, entity_id, entity_version, operation) VALUES (now(), 'plan', "
             f"'{plan['id']}', 99, 'plan', '{plan['id']}', 9, 'upsert')",
             "UPDATE sync_audit.scope_heads SET last_seq = 0",
-            "SELECT sync_audit.compact_changes(now() - interval '1 year', 10)",
+            "SELECT sync_audit.compact_changes(now() - interval '1 year', 10, 90)",
         ):
             with pytest.raises(psycopg.errors.InsufficientPrivilege), connection.transaction():
                 connection.execute(statement)
@@ -336,11 +336,16 @@ async def test_compaction_keeps_the_offline_window_and_raises_the_floor(
         )
 
     with psycopg.connect(raw_dsn(live_settings.worker_database_dsn)) as worker:
-        with pytest.raises(psycopg.errors.InvalidParameterValue), worker.transaction():
-            worker.execute("SELECT sync_audit.compact_changes(now() - interval '30 days', 100)")
+        for cutoff_days, window_days in ((30, 90), (100, 120), (60, 1), (60, None)):
+            # Inside the configured window, and never below the 90-day product floor.
+            with pytest.raises(psycopg.errors.InvalidParameterValue), worker.transaction():
+                worker.execute(
+                    "SELECT sync_audit.compact_changes(now() - make_interval(days => %s), 100, %s)",
+                    (cutoff_days, window_days),
+                )
         with worker.transaction():
             removed = worker.execute(
-                "SELECT sync_audit.compact_changes(now() - interval '180 days', 100)"
+                "SELECT sync_audit.compact_changes(now() - interval '180 days', 100, 90)"
             ).fetchone()
     assert removed == (2,)
     assert [seq for seq, _, _ in scope_rows(admin, scope_id)] == [3]
