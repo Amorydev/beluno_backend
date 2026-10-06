@@ -32,6 +32,8 @@ class Database:
                 pool_size=5,
                 max_overflow=5,
                 pool_recycle=1_800,
+                # Statement parameters (amounts, notes, descriptions) never reach error text.
+                hide_parameters=True,
             )
             self._session_factory = async_sessionmaker(
                 self._engine,
