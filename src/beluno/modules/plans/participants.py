@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from beluno.authorization.access import (
@@ -21,8 +21,10 @@ from beluno.authorization.access import (
     require_plan,
 )
 from beluno.authorization.policy import (
+    CAPABILITY_ROLES,
     PLAN_MANAGERS,
     AccessState,
+    Capability,
     PlanAction,
     PlanRole,
     can_manage_participant,
@@ -42,6 +44,8 @@ from beluno.modules.context import CommandContext
 from beluno.modules.plans.changes import bump, record_participant_change, record_plan_change
 
 LIVE_STATES = (AccessState.ACTIVE.value, AccessState.PENDING_APPROVAL.value)
+# Default shares weight in hundredths: everyone counts once (1.0x).
+DEFAULT_SHARE = 100
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,19 @@ class Seed:
     participant_id: UUID | None = None
 
 
+# Member avatar colours in the order they are handed out (DESIGN.md member colours).
+AVATAR_COLORS = ("blue", "teal", "purple", "orange", "rose", "olive")
+
+
+async def next_avatar_color(ctx: CommandContext, plan_id: UUID) -> str:
+    """Hand out colours in join order so a small crew rarely repeats one."""
+
+    taken = await ctx.session.scalar(
+        select(func.count()).select_from(PlanParticipant).where(PlanParticipant.plan_id == plan_id)
+    )
+    return AVATAR_COLORS[(taken or 0) % len(AVATAR_COLORS)]
+
+
 def build_participant(
     ctx: CommandContext,
     *,
@@ -61,6 +78,7 @@ def build_participant(
     user_id: UUID | None,
     display_name: str,
     role: PlanRole,
+    avatar_color: str,
     access_state: AccessState = AccessState.ACTIVE,
     added_by_user_id: UUID | None = None,
     invite_id: UUID | None = None,
@@ -76,6 +94,9 @@ def build_participant(
         access_state=access_state.value,
         rsvp_status="invited",
         rsvp_updated_at=None,
+        default_share=DEFAULT_SHARE,
+        avatar_color=avatar_color,
+        capabilities=[],
         merged_into_participant_id=None,
         joined_via_invite_id=invite_id,
         added_by_user_id=added_by_user_id,
@@ -154,6 +175,7 @@ async def add_seeded_participant(
                 user_id=None,
                 display_name=seed.placeholder_name,
                 role=seed.role,
+                avatar_color=await next_avatar_color(ctx, plan.id),
                 added_by_user_id=actor_id,
                 participant_id=seed.participant_id,
             ),
@@ -177,6 +199,7 @@ async def add_seeded_participant(
             user_id=user.id,
             display_name=user.display_name,
             role=seed.role,
+            avatar_color=await next_avatar_color(ctx, plan.id),
             added_by_user_id=actor_id,
             participant_id=seed.participant_id,
         ),
@@ -212,26 +235,64 @@ async def add_participant(ctx: CommandContext, plan_id: UUID, seed: Seed) -> Pla
     return await add_seeded_participant(ctx, access.plan, seed)
 
 
-async def change_role(
+@dataclass(frozen=True)
+class ParticipantChanges:
+    role: PlanRole | None = None
+    default_share: int | None = None
+    capabilities: frozenset[Capability] | None = None
+    avatar_color: str | None = None
+
+    @property
+    def manager_fields(self) -> bool:
+        return (
+            self.role is not None or self.default_share is not None or self.capabilities is not None
+        )
+
+
+async def update_participant(
     ctx: CommandContext,
     plan_id: UUID,
     participant_id: UUID,
-    role: PlanRole,
+    changes: ParticipantChanges,
     expected_version: int,
 ) -> PlanParticipant:
+    """Managers change role, default share, and capabilities; people their own colour."""
+
     access = await load_plan(ctx, plan_id, for_update=True)
-    require_plan(access, PlanAction.CHANGE_PARTICIPANT_ROLE)
+    require_plan(access, PlanAction.VIEW_PARTICIPANTS)
     target = await _target(ctx, plan_id, participant_id, states=(AccessState.ACTIVE.value,))
+    own_row = access.participant is not None and access.participant.id == target.id
+    if changes.manager_fields or not own_row:
+        require_plan(access, PlanAction.CHANGE_PARTICIPANT_ROLE)
     if target.version != expected_version:
         raise version_conflict(target)
-    if not can_manage_participant(_role(access), PlanRole(target.role), new_role=role):
-        raise forbidden()
-    if target.identity_kind != "user" and role is PlanRole.ADMIN:
-        raise forbidden("Only registered participants can administer a plan")
-    target.role = role.value
+    actions: list[str] = []
+    if changes.role is not None:
+        if not can_manage_participant(_role(access), PlanRole(target.role), new_role=changes.role):
+            raise forbidden()
+        if target.identity_kind != "user" and changes.role is PlanRole.ADMIN:
+            raise forbidden("Only registered participants can administer a plan")
+        target.role = changes.role.value
+        actions.append("role")
+    if changes.capabilities is not None:
+        # Owners and admins hold every capability; viewers and guests get none.
+        if changes.capabilities and (
+            target.identity_kind != "user" or PlanRole(target.role) not in CAPABILITY_ROLES
+        ):
+            raise validation_error("capabilities apply to registered members")
+        target.capabilities = sorted(changes.capabilities)
+        actions.append("capabilities")
+    if changes.default_share is not None:
+        target.default_share = changes.default_share
+        actions.append("default_share")
+    if changes.avatar_color is not None:
+        target.avatar_color = changes.avatar_color
+        actions.append("avatar_color")
     bump(target, ctx)
     await ctx.session.flush()
-    await record_participant_change(ctx, target, "plan_participant.role_changed")
+    await record_participant_change(
+        ctx, target, "plan_participant.updated", {"changed": ",".join(actions)}
+    )
     return target
 
 

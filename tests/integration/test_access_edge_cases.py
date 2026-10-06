@@ -36,7 +36,7 @@ async def test_invalid_if_match_format_returns_422(
     owner = await sign_in(api, identity_provider)
     plan = await api.post(
         "/v1/plans",
-        json={"title": "Test", "base_currency": "USD"},
+        json={"type": "hangout", "title": "Test", "base_currency": "USD"},
         headers=owner.headers,
     )
     plan_id = plan.json()["id"]
@@ -59,7 +59,7 @@ async def test_pagination_cursor_round_trip_for_plans(
     for i in range(3):
         resp = await api.post(
             "/v1/plans",
-            json={"title": f"Plan {i}", "base_currency": "USD"},
+            json={"type": "hangout", "title": f"Plan {i}", "base_currency": "USD"},
             headers=owner.headers,
         )
         assert resp.status_code == 201
@@ -142,7 +142,7 @@ async def test_owner_transfer_to_non_registered_participant_fails(
     # Create plan
     plan = await api.post(
         "/v1/plans",
-        json={"title": "Test", "base_currency": "USD"},
+        json={"type": "hangout", "title": "Test", "base_currency": "USD"},
         headers=owner.headers,
     )
     plan_id = plan.json()["id"]
@@ -177,7 +177,7 @@ async def test_guest_cannot_be_promoted_to_admin(
     # Create plan
     plan = await api.post(
         "/v1/plans",
-        json={"title": "Test", "base_currency": "USD"},
+        json={"type": "hangout", "title": "Test", "base_currency": "USD"},
         headers=owner.headers,
     )
     plan_id = plan.json()["id"]
@@ -187,9 +187,9 @@ async def test_guest_cannot_be_promoted_to_admin(
     admin.execute(
         "INSERT INTO plans.plan_participants "
         "(id, plan_id, identity_kind, user_id, display_name, role, access_state, "
-        "rsvp_status, version, created_at, updated_at) "
-        "VALUES (%s, %s, 'placeholder', NULL, 'Guest', 'member', 'active', 'invited', 1, "
-        "now(), now())",
+        "rsvp_status, default_share, avatar_color, capabilities, version, created_at, "
+        "updated_at) VALUES (%s, %s, 'placeholder', NULL, 'Guest', 'member', 'active', "
+        "'invited', 100, 'teal', '{}', 1, now(), now())",
         guest_id,
         plan_id,
     )
@@ -211,7 +211,7 @@ async def test_stale_if_match_returns_412(
     owner = await sign_in(api, identity_provider)
     plan = await api.post(
         "/v1/plans",
-        json={"title": "Test", "base_currency": "USD"},
+        json={"type": "hangout", "title": "Test", "base_currency": "USD"},
         headers=owner.headers,
     )
     plan_id = plan.json()["id"]
@@ -247,7 +247,7 @@ async def test_archived_plan_rejects_participant_add(
     # Create plan
     plan = await api.post(
         "/v1/plans",
-        json={"title": "Test", "base_currency": "USD"},
+        json={"type": "hangout", "title": "Test", "base_currency": "USD"},
         headers=owner.headers,
     )
     plan_id = plan.json()["id"]
@@ -280,7 +280,7 @@ async def test_join_request_rejection_transitions_to_removed(
     # Create plan
     plan = await api.post(
         "/v1/plans",
-        json={"title": "Test Plan", "base_currency": "USD"},
+        json={"type": "hangout", "title": "Test Plan", "base_currency": "USD"},
         headers=owner.headers,
     )
     plan_id = plan.json()["id"]
@@ -290,9 +290,9 @@ async def test_join_request_rejection_transitions_to_removed(
     admin.execute(
         "INSERT INTO plans.plan_participants "
         "(id, plan_id, identity_kind, user_id, display_name, role, access_state, "
-        "rsvp_status, version, created_at, updated_at) "
-        "VALUES (%s, %s, 'user', %s, 'Requester', 'member', 'pending_approval', "
-        "'invited', 1, now(), now())",
+        "rsvp_status, default_share, avatar_color, capabilities, version, created_at, "
+        "updated_at) VALUES (%s, %s, 'user', %s, 'Requester', 'member', 'pending_approval', "
+        "'invited', 100, 'teal', '{}', 1, now(), now())",
         participant_id,
         plan_id,
         requester.user_id,
@@ -333,7 +333,7 @@ async def test_plan_invite_preview_rate_limiting_includes_retry_after(
     # Create plan and invite
     plan = await api.post(
         "/v1/plans",
-        json={"title": "Private", "base_currency": "USD"},
+        json={"type": "hangout", "title": "Private", "base_currency": "USD"},
         headers=owner.headers,
     )
     plan_id = plan.json()["id"]

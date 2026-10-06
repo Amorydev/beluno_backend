@@ -65,7 +65,7 @@ async def test_commands_sync_and_changes_are_measured(
     api, reader = metered_api
     owner = await sign_in(api, identity_provider, name="Owner")
     headers = {**owner.headers, "Idempotency-Key": "k"}
-    body = {"title": "Dinner", "base_currency": "USD"}
+    body = {"type": "hangout", "title": "Dinner", "base_currency": "USD"}
     created = await api.post("/v1/plans", json=body, headers=headers)
     replayed = await api.post("/v1/plans", json=body, headers=headers)
     assert created.status_code == replayed.status_code == 201

@@ -291,6 +291,7 @@ async def finance_plan_participant(
     response = await api.post(
         "/v1/plans",
         json={
+            "type": "hangout",
             "title": "Elsewhere",
             "base_currency": "USD",
             "participants": [{"placeholder_name": "X"}],
@@ -353,12 +354,16 @@ async def test_currency_catalog_and_plan_currencies_are_validated(
     exponents = {row["code"]: row["exponent"] for row in catalog.json()}
     assert (exponents["JPY"], exponents["USD"], exponents["KWD"]) == (0, 2, 3)
     unknown = await api.post(
-        "/v1/plans", json={"title": "X", "base_currency": "XYZ"}, headers=trip.owner.headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "X", "base_currency": "XYZ"},
+        headers=trip.owner.headers,
     )
     assert unknown.status_code == 422 and unknown.json()["code"] == "CURRENCY_NOT_SUPPORTED"
     # Without finance data the base currency may still change.
     fresh = await api.post(
-        "/v1/plans", json={"title": "Fresh", "base_currency": "USD"}, headers=trip.owner.headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Fresh", "base_currency": "USD"},
+        headers=trip.owner.headers,
     )
     moved = await api.patch(
         f"/v1/plans/{fresh.json()['id']}",

@@ -11,13 +11,13 @@ from beluno.api.presenters import (
     seed_of,
     timing_input,
 )
-from beluno.authorization.policy import PlanRole, PlanState
+from beluno.authorization.policy import Capability, PlanRole, PlanState
 from beluno.contracts.invites import InviteResponse
 from beluno.contracts.plans import (
     JoinRequestDecision,
     ParticipantAddRequest,
     ParticipantResponse,
-    ParticipantRoleRequest,
+    ParticipantUpdateRequest,
     PlanCreateRequest,
     PlanDuplicateRequest,
     PlanOwnershipTransferRequest,
@@ -36,11 +36,15 @@ from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_ve
 async def _create(ctx: CommandContext, call: CommandCall, body: PlanCreateRequest) -> PlanResponse:
     draft = service.PlanDraft(
         plan_id=body.id,
+        type=body.type,
         title=body.title,
-        kind=body.kind,
+        activity=body.activity,
         state=PlanState(body.state),
         timing=timing_input(body.timing),
         base_currency=body.base_currency,
+        destinations=tuple(item.model_dump(mode="json") for item in body.destinations),
+        pass_color=body.pass_color,
+        expected_size=body.expected_size,
         description=body.description,
         location_label=body.location_label,
         seeds=tuple(seed_of(seed) for seed in body.participants),
@@ -52,9 +56,16 @@ async def _update(ctx: CommandContext, call: CommandCall, body: PlanUpdateReques
     fields = body.model_fields_set
     changes = service.PlanChanges(
         title=body.title,
-        kind=body.kind,
+        activity=body.activity if "activity" in fields else service.UNSET,
         timing=timing_input(body.timing) if body.timing else None,
         base_currency=body.base_currency,
+        destinations=(
+            tuple(item.model_dump(mode="json") for item in body.destinations)
+            if body.destinations is not None
+            else None
+        ),
+        pass_color=body.pass_color,
+        expected_size=body.expected_size if "expected_size" in fields else service.UNSET,
         description=body.description if "description" in fields else service.UNSET,
         location_label=body.location_label if "location_label" in fields else service.UNSET,
     )
@@ -99,15 +110,21 @@ async def _add_participant(
     return participant_response(participant)
 
 
-async def _change_participant_role(
-    ctx: CommandContext, call: CommandCall, body: ParticipantRoleRequest
+async def _update_participant(
+    ctx: CommandContext, call: CommandCall, body: ParticipantUpdateRequest
 ) -> ParticipantResponse:
-    participant = await participant_service.change_role(
-        ctx,
-        call.id("plan_id"),
-        call.id("participant_id"),
-        PlanRole(body.role),
-        required_version(call),
+    changes = participant_service.ParticipantChanges(
+        role=PlanRole(body.role) if body.role else None,
+        default_share=body.default_share,
+        capabilities=(
+            frozenset(Capability(value) for value in body.capabilities)
+            if body.capabilities is not None
+            else None
+        ),
+        avatar_color=body.avatar_color,
+    )
+    participant = await participant_service.update_participant(
+        ctx, call.id("plan_id"), call.id("participant_id"), changes, required_version(call)
     )
     return participant_response(participant)
 
@@ -215,11 +232,11 @@ PLAN_PARTICIPANT_ADD = Command(
     target_fields=("plan_id",),
     status=201,
 )
-PLAN_PARTICIPANT_CHANGE_ROLE = Command(
-    name="plan.participant.change_role",
-    payload_model=ParticipantRoleRequest,
+PLAN_PARTICIPANT_UPDATE = Command(
+    name="plan.participant.update",
+    payload_model=ParticipantUpdateRequest,
     response_model=ParticipantResponse,
-    handler=_change_participant_role,
+    handler=_update_participant,
     target_fields=("plan_id", "participant_id"),
     versioned=True,
 )
@@ -279,7 +296,7 @@ COMMANDS: list[Command[Any, Any]] = [
     PLAN_RESTORE,
     PLAN_TRANSFER_OWNERSHIP,
     PLAN_PARTICIPANT_ADD,
-    PLAN_PARTICIPANT_CHANGE_ROLE,
+    PLAN_PARTICIPANT_UPDATE,
     PLAN_PARTICIPANT_REMOVE,
     PLAN_PARTICIPANT_REVIEW,
     PLAN_LEAVE,

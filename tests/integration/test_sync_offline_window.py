@@ -67,7 +67,9 @@ async def test_ninety_day_offline_device_catches_up_and_older_cursors_resync(
     owner = await sign_in(api, identity_provider, name="Owner")
     plan = (
         await api.post(
-            "/v1/plans", json={"title": "v1", "base_currency": "USD"}, headers=owner.headers
+            "/v1/plans",
+            json={"type": "hangout", "title": "v1", "base_currency": "USD"},
+            headers=owner.headers,
         )
     ).json()
     scope = f"plan:{plan['id']}"

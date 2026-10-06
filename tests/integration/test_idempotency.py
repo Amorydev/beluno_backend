@@ -28,7 +28,9 @@ pytestmark = pytest.mark.integration
 
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn, **body: object) -> dict:
     response = await api.post(
-        "/v1/plans", json={"title": "Dinner", "base_currency": "USD", **body}, headers=owner.headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Dinner", "base_currency": "USD", **body},
+        headers=owner.headers,
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -49,7 +51,7 @@ async def test_replay_returns_the_stored_outcome_without_a_second_mutation(
 ) -> None:
     owner = await sign_in(api, identity_provider, name="Owner")
     headers = {**owner.headers, "Idempotency-Key": "create-1"}
-    body = {"title": "Dinner", "base_currency": "USD"}
+    body = {"type": "hangout", "title": "Dinner", "base_currency": "USD"}
 
     first = await api.post("/v1/plans", json=body, headers=headers)
     second = await api.post("/v1/plans", json=body, headers=headers)
@@ -101,12 +103,16 @@ async def test_same_key_with_a_different_request_is_rejected(
     owner = await sign_in(api, identity_provider, name="Owner")
     headers = {**owner.headers, "Idempotency-Key": "k1"}
     first = await api.post(
-        "/v1/plans", json={"title": "Dinner", "base_currency": "USD"}, headers=headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Dinner", "base_currency": "USD"},
+        headers=headers,
     )
     assert first.status_code == 201
 
     reused = await api.post(
-        "/v1/plans", json={"title": "Breakfast", "base_currency": "USD"}, headers=headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Breakfast", "base_currency": "USD"},
+        headers=headers,
     )
     assert reused.status_code == 409
     assert reused.json()["code"] == "IDEMPOTENCY_KEY_REUSED"
@@ -120,7 +126,7 @@ async def test_same_key_with_a_different_request_is_rejected(
     stranger = await sign_in(api, identity_provider, name="Stranger")
     strangers = await api.post(
         "/v1/plans",
-        json={"title": "Breakfast", "base_currency": "USD"},
+        json={"type": "hangout", "title": "Breakfast", "base_currency": "USD"},
         headers={**stranger.headers, "Idempotency-Key": "k1"},
     )
     assert strangers.status_code == 201
@@ -131,7 +137,7 @@ async def test_concurrent_duplicates_execute_once(
 ) -> None:
     owner = await sign_in(api, identity_provider, name="Owner")
     headers = {**owner.headers, "Idempotency-Key": "burst"}
-    body = {"title": "Dinner", "base_currency": "USD"}
+    body = {"type": "hangout", "title": "Dinner", "base_currency": "USD"}
 
     responses = await asyncio.gather(
         *(api.post("/v1/plans", json=body, headers=headers) for _ in range(5))
@@ -199,7 +205,7 @@ async def test_client_generated_ids_are_honoured_and_duplicates_rejected(
 ) -> None:
     owner = await sign_in(api, identity_provider, name="Owner")
     plan_id = str(new_id())
-    body = {"id": plan_id, "title": "Dinner", "base_currency": "USD"}
+    body = {"id": plan_id, "type": "hangout", "title": "Dinner", "base_currency": "USD"}
     created = await api.post("/v1/plans", json=body, headers=owner.headers)
     assert created.status_code == 201, created.text
     assert created.json()["id"] == plan_id

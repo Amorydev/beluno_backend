@@ -12,6 +12,7 @@ import pytest
 from beluno.authorization.policy import (
     PLAN_RULES,
     AccessState,
+    Capability,
     Decision,
     PlanAction,
     PlanRole,
@@ -124,3 +125,35 @@ def test_participant_target_rules() -> None:
     assert not can_manage_participant(admin, PlanRole.ADMIN)
     assert not can_manage_participant(admin, member, new_role=PlanRole.ADMIN)
     assert not can_manage_participant(member, PlanRole.VIEWER)
+
+
+@pytest.mark.parametrize("role", list(PlanRole))
+def test_capabilities_only_extend_plain_members(role: PlanRole) -> None:
+    def subject(capabilities: frozenset[Capability]) -> PlanSubject:
+        return PlanSubject(
+            participant_role=role,
+            access_state=AccessState.ACTIVE,
+            plan_state=PlanState.PLANNING,
+            deletion_scheduled=False,
+            actor_is_guest=role is PlanRole.GUEST,
+            step_up_fresh=True,
+            capabilities=capabilities,
+        )
+
+    for action, capability in (
+        (PlanAction.MANAGE_EXPENSES, Capability.MANAGE_EXPENSES),
+        (PlanAction.MANAGE_BUDGETS, Capability.MANAGE_BUDGETS),
+    ):
+        without = decide_plan(action, subject(frozenset()))
+        granted = decide_plan(action, subject(frozenset({capability})))
+        other = decide_plan(action, subject(frozenset(Capability) - {capability}))
+        manager = role in (PlanRole.OWNER, PlanRole.ADMIN)
+        assert (without is Decision.ALLOW) == manager
+        assert (granted is Decision.ALLOW) == (manager or role is PlanRole.MEMBER)
+        assert other == without
+    # Capabilities never unlock anything beyond their own action.
+    every = frozenset(Capability)
+    for action in PlanAction:
+        if action in (PlanAction.MANAGE_EXPENSES, PlanAction.MANAGE_BUDGETS):
+            continue
+        assert decide_plan(action, subject(every)) == decide_plan(action, subject(frozenset()))

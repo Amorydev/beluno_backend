@@ -36,6 +36,7 @@ def profile_response(user: User) -> UserProfileResponse:
             "email": user.email,
             "locale": user.locale,
             "timezone": user.timezone,
+            "default_currency": user.default_currency,
             "version": user.version,
         }
     )
@@ -74,6 +75,9 @@ def participant_response(participant: PlanParticipant) -> ParticipantResponse:
             "access_state": participant.access_state,
             "rsvp_status": participant.rsvp_status,
             "rsvp_updated_at": participant.rsvp_updated_at,
+            "default_share": participant.default_share,
+            "avatar_color": participant.avatar_color,
+            "capabilities": sorted(participant.capabilities),
             "merged_into_participant_id": participant.merged_into_participant_id,
             "joined_at": participant.joined_at,
             "version": participant.version,
@@ -101,11 +105,15 @@ def plan_response(view: plan_service.PlanView) -> PlanResponse:
     return PlanResponse.model_validate(
         {
             "id": plan.id,
+            "type": plan.type,
             "title": plan.title,
-            "kind": plan.kind,
+            "activity": plan.activity,
             "state": plan.state,
             "timing": timing_contract(plan_service.timing_of(plan)),
             "base_currency": plan.base_currency,
+            "destinations": plan.destinations,
+            "pass_color": plan.pass_color,
+            "expected_size": plan.expected_size,
             "description": plan.description,
             "location_label": plan.location_label,
             "deletion_scheduled_at": plan.deletion_scheduled_at,

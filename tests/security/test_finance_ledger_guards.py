@@ -46,6 +46,7 @@ async def tenant(api: httpx.AsyncClient, identity_provider: IdentityProviderStub
         response = await api.post(
             "/v1/plans",
             json={
+                "type": "hangout",
                 "title": "Trip",
                 "base_currency": "USD",
                 "participants": [{"placeholder_name": "Friend"}],

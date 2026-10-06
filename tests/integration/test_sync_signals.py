@@ -35,7 +35,9 @@ async def drain(
 
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn) -> dict[str, Any]:
     response = await api.post(
-        "/v1/plans", json={"title": "Dinner", "base_currency": "USD"}, headers=owner.headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Dinner", "base_currency": "USD"},
+        headers=owner.headers,
     )
     assert response.status_code == 201, response.text
     plan: dict[str, Any] = response.json()

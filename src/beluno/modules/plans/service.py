@@ -1,7 +1,7 @@
-"""Plans: creation with participant snapshots, updates, lifecycle, deletion.
+"""Plans: trips and hangouts, creation with participant snapshots, updates, lifecycle.
 
-``kind`` only selects presentation defaults; no field required here is
-travel-specific.
+A plan is a ``trip`` (destinations, budgets, the fund) or a light ``hangout``
+(one activity icon, expenses and settling only). The type is fixed at creation.
 """
 
 from __future__ import annotations
@@ -31,7 +31,12 @@ from beluno.modules.finance.currencies import require_supported_currency
 from beluno.modules.finance.errors import base_currency_locked
 from beluno.modules.finance.ledger import ledger_exists
 from beluno.modules.plans.changes import bump, record_participant_change, record_plan_change
-from beluno.modules.plans.participants import Seed, add_seeded_participant, build_participant
+from beluno.modules.plans.participants import (
+    AVATAR_COLORS,
+    Seed,
+    add_seeded_participant,
+    build_participant,
+)
 from beluno.modules.plans.timing import check_transition, require_aware
 
 UNSET: Any = object()
@@ -47,14 +52,23 @@ class Timing:
     timezone: str | None = None
 
 
+TRIP = "trip"
+HANGOUT = "hangout"
+PASS_COLORS = ("indigo", "plum", "sea", "forest", "rust", "slate", "wine", "moss")
+
+
 @dataclass(frozen=True)
 class PlanDraft:
     plan_id: UUID | None
+    type: str
     title: str
-    kind: str
+    activity: str | None
     state: PlanState
     timing: Timing
-    base_currency: str
+    base_currency: str | None
+    destinations: tuple[dict[str, Any], ...]
+    pass_color: str | None
+    expected_size: int | None
     description: str | None
     location_label: str | None
     seeds: tuple[Seed, ...]
@@ -63,9 +77,12 @@ class PlanDraft:
 @dataclass(frozen=True)
 class PlanChanges:
     title: str | None = None
-    kind: str | None = None
+    activity: str | None = UNSET
     timing: Timing | None = None
     base_currency: str | None = None
+    destinations: tuple[dict[str, Any], ...] | None = None
+    pass_color: str | None = None
+    expected_size: int | None = UNSET
     description: str | None = UNSET
     location_label: str | None = UNSET
 
@@ -101,24 +118,47 @@ def require_registered(ctx: CommandContext) -> None:
         raise forbidden("Sign in with an account to create plans")
 
 
+def check_shape(plan_type: str, activity: str | None, destinations: object) -> None:
+    """Trips carry destinations; hangouts carry an activity icon. Never the other way."""
+
+    if plan_type == TRIP and activity is not None:
+        raise validation_error("activity is for hangouts")
+    if plan_type == HANGOUT and destinations:
+        raise validation_error("destinations are for trips")
+
+
+def default_pass_color(plan_id: UUID) -> str:
+    return PASS_COLORS[plan_id.int % len(PASS_COLORS)]
+
+
 def new_plan(
     ctx: CommandContext,
     *,
     plan_id: UUID | None,
+    plan_type: str,
     title: str,
-    kind: str,
+    activity: str | None,
     state: PlanState,
     timing: Timing,
     base_currency: str,
+    destinations: tuple[dict[str, Any], ...] = (),
+    pass_color: str | None = None,
+    expected_size: int | None = None,
     description: str | None,
     location_label: str | None,
 ) -> Plan:
+    check_shape(plan_type, activity, destinations)
+    identity = plan_id or new_id()
     plan = Plan(
-        id=plan_id or new_id(),
+        id=identity,
+        type=plan_type,
         title=title,
-        kind=kind,
+        activity=activity,
         state=state.value,
         base_currency=base_currency,
+        destinations=list(destinations),
+        pass_color=pass_color or default_pass_color(identity),
+        expected_size=expected_size,
         description=description,
         location_label=location_label,
         duplicated_from_plan_id=None,
@@ -145,6 +185,7 @@ async def insert_plan_with_owner(ctx: CommandContext, plan: Plan) -> PlanPartici
         user_id=creator.id,
         display_name=creator.display_name,
         role=PlanRole.OWNER,
+        avatar_color=AVATAR_COLORS[0],
     )
     try:
         async with ctx.savepoint():
@@ -159,20 +200,29 @@ async def insert_plan_with_owner(ctx: CommandContext, plan: Plan) -> PlanPartici
 
 async def create_plan(ctx: CommandContext, draft: PlanDraft) -> PlanView:
     require_registered(ctx)
-    await require_supported_currency(ctx, draft.base_currency)
+    creator = await ctx.session.get(User, ctx.require_actor().user_id)
+    assert creator is not None
+    currency = draft.base_currency or creator.default_currency
+    if currency is None:
+        raise validation_error("base_currency is required without a default currency")
+    await require_supported_currency(ctx, currency)
     plan = new_plan(
         ctx,
         plan_id=draft.plan_id,
+        plan_type=draft.type,
         title=draft.title,
-        kind=draft.kind,
+        activity=draft.activity,
         state=draft.state,
         timing=draft.timing,
-        base_currency=draft.base_currency,
+        base_currency=currency,
+        destinations=draft.destinations,
+        pass_color=draft.pass_color,
+        expected_size=draft.expected_size,
         description=draft.description,
         location_label=draft.location_label,
     )
     owner = await insert_plan_with_owner(ctx, plan)
-    await record_plan_change(ctx, plan, "plan.created", {"kind": plan.kind})
+    await record_plan_change(ctx, plan, "plan.created", {"type": plan.type})
     await record_participant_change(ctx, owner, "plan_participant.added")
     seeds = list(draft.seeds)
     seeded_user_ids = [seed.user_id for seed in seeds if seed.user_id is not None]
@@ -223,8 +273,15 @@ async def update_plan(
     plan = access.plan
     if changes.title is not None:
         plan.title = changes.title
-    if changes.kind is not None:
-        plan.kind = changes.kind
+    if changes.activity is not UNSET:
+        plan.activity = changes.activity
+    if changes.destinations is not None:
+        plan.destinations = list(changes.destinations)
+    check_shape(plan.type, plan.activity, plan.destinations)
+    if changes.pass_color is not None:
+        plan.pass_color = changes.pass_color
+    if changes.expected_size is not UNSET:
+        plan.expected_size = changes.expected_size
     if changes.timing is not None:
         apply_timing(plan, changes.timing)
     if changes.base_currency is not None and changes.base_currency != plan.base_currency:

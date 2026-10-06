@@ -270,7 +270,7 @@ async def run_example(
             plan = (
                 await api.post(
                     "/v1/plans",
-                    json={"title": "Trip", "base_currency": "USD"},
+                    json={"type": "hangout", "title": "Trip", "base_currency": "USD"},
                     headers=owner.headers,
                 )
             ).json()

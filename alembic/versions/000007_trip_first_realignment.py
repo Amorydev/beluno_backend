@@ -1,4 +1,4 @@
-"""Trip-first realignment: remove groups, plan series, travel details, and plan visibility.
+"""Trip-first realignment: trips and hangouts replace groups, series, travel, and visibility.
 
 Revision ID: 000007_trip_first_realignment
 Revises: 000006_merged_guest_authorship
@@ -25,6 +25,17 @@ group-visible plans go away.
   ``CASCADE``.
 * Queued ``plans.extend_series_horizons`` jobs are removed (the task no longer
   exists).
+* ``plans.plans.kind`` becomes ``type`` (``trip`` | ``hangout``) plus an
+  optional hangout ``activity`` (``kind = 'trip'`` maps to trips, every other
+  kind to a hangout activity). Plans gain ``destinations`` (JSONB array of at
+  most 10, trips only), ``pass_color`` (backfilled from the plan ID), and
+  ``expected_size``.
+* ``plans.plan_participants`` gains ``default_share`` (hundredths, default
+  100), ``avatar_color`` (backfilled by join order), and ``capabilities``
+  (``expenses.manage``, ``budgets.manage``). The participant write guard lets
+  non-managers change only their own avatar colour; capabilities and default
+  shares are a manager's call, and a self-inserted row carries none.
+* ``iam.users`` gains ``default_currency``.
 
 Dependents were listed before writing this migration with:
     SELECT n.nspname || '.' || p.proname FROM pg_proc p
@@ -46,6 +57,8 @@ Validation:
       AND table_name = 'plans'
       AND column_name IN ('group_id', 'series_id', 'visibility');              -- 0
     SELECT count(*) FROM sync_audit.change_log WHERE scope_type = 'group';     -- 0
+    SELECT count(*) FROM plans.plans WHERE type IS NULL OR pass_color IS NULL;  -- 0
+    SELECT count(*) FROM plans.plan_participants WHERE avatar_color IS NULL;   -- 0
 
 Compatibility: breaking by design and accepted before launch (the client has
 not integrated groups, series, travel, or visibility). The API and worker must
@@ -164,10 +177,148 @@ $$;
 """
 
 
+PASS_COLORS = "('indigo', 'plum', 'sea', 'forest', 'rust', 'slate', 'wine', 'moss')"
+AVATAR_COLORS = "('blue', 'teal', 'purple', 'orange', 'rose', 'olive')"
+ACTIVITIES = "('dinner', 'drinks', 'karaoke', 'coffee', 'movie', 'sport', 'birthday', 'other')"
+
+ADD_SQL = f"""
+-- Backfill updates fire the deferred owner checks; run them now so no trigger
+-- events are pending when the following ALTER TABLE statements need the tables.
+SET CONSTRAINTS ALL IMMEDIATE;
+ALTER TABLE plans.plans
+    ADD COLUMN type text,
+    ADD COLUMN activity text CHECK (activity IN {ACTIVITIES}),
+    ADD COLUMN destinations jsonb NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN pass_color text CHECK (pass_color IN {PASS_COLORS}),
+    ADD COLUMN expected_size integer CHECK (expected_size BETWEEN 1 AND 50);
+UPDATE plans.plans SET
+    type = CASE WHEN kind = 'trip' THEN 'trip' ELSE 'hangout' END,
+    activity = CASE kind
+        WHEN 'trip' THEN NULL
+        WHEN 'dinner' THEN 'dinner'
+        WHEN 'coffee' THEN 'coffee'
+        WHEN 'movie' THEN 'movie'
+        WHEN 'sport' THEN 'sport'
+        WHEN 'birthday' THEN 'birthday'
+        ELSE 'other'
+    END,
+    pass_color = (ARRAY{PASS_COLORS.replace("(", "[").replace(")", "]")})[
+        1 + mod(abs(hashtextextended(id::text, 0)), 8)::integer
+    ];
+ALTER TABLE plans.plans
+    ALTER COLUMN type SET NOT NULL,
+    ALTER COLUMN pass_color SET NOT NULL,
+    ALTER COLUMN destinations DROP DEFAULT,
+    ADD CONSTRAINT plans_type_check CHECK (type IN ('trip', 'hangout')),
+    ADD CONSTRAINT plans_activity_for_hangouts CHECK (type = 'hangout' OR activity IS NULL),
+    ADD CONSTRAINT plans_destinations_shape CHECK (
+        jsonb_typeof(destinations) = 'array' AND jsonb_array_length(destinations) <= 10
+    ),
+    ADD CONSTRAINT plans_destinations_for_trips CHECK (
+        type = 'trip' OR jsonb_array_length(destinations) = 0
+    ),
+    DROP COLUMN kind;
+
+ALTER TABLE plans.plan_participants
+    ADD COLUMN default_share integer NOT NULL DEFAULT 100
+        CHECK (default_share BETWEEN 1 AND 10000),
+    ADD COLUMN avatar_color text CHECK (avatar_color IN {AVATAR_COLORS}),
+    ADD COLUMN capabilities text[] NOT NULL DEFAULT '{{}}'
+        CHECK (capabilities <@ ARRAY['expenses.manage', 'budgets.manage']);
+UPDATE plans.plan_participants AS p SET avatar_color = (ARRAY{AVATAR_COLORS.replace("(", "[").replace(")", "]")})[
+    1 + mod(ordered.position - 1, 6)::integer
+]
+FROM (
+    SELECT id, row_number() OVER (PARTITION BY plan_id ORDER BY created_at, id) AS position
+    FROM plans.plan_participants
+) AS ordered
+WHERE ordered.id = p.id;
+ALTER TABLE plans.plan_participants
+    ALTER COLUMN avatar_color SET NOT NULL,
+    ALTER COLUMN default_share DROP DEFAULT,
+    ALTER COLUMN capabilities DROP DEFAULT;
+
+ALTER TABLE iam.users ADD COLUMN default_currency char(3) CHECK (default_currency ~ '^[A-Z]{{3}}$');
+"""
+
+PARTICIPANT_GUARD_SQL = """
+CREATE OR REPLACE FUNCTION plans.participant_write_guard() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    actor uuid := iam.actor_id();
+    actor_role text;
+    invite_role text;
+    claim_target uuid;
+BEGIN
+    IF NOT iam.is_guarded_runtime() THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP = 'UPDATE' AND (NEW.id <> OLD.id OR NEW.plan_id <> OLD.plan_id) THEN
+        RAISE EXCEPTION 'participant scope is immutable' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    actor_role := plans.actor_plan_role(NEW.plan_id);
+    IF TG_OP = 'UPDATE' AND (NEW.role = 'owner') <> (OLD.role = 'owner')
+       AND actor_role IS DISTINCT FROM 'owner'
+       AND NOT (NEW.role = 'owner' AND actor_role = 'admin'
+                AND plans.owner_seat_vacant(NEW.plan_id)) THEN
+        RAISE EXCEPTION 'only the owner can move ownership' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF actor_role IN ('owner', 'admin')
+       OR (TG_OP = 'INSERT' AND plans.actor_is_unowned_plan_creator(NEW.plan_id)) THEN
+        RETURN NEW;
+    END IF;
+    invite_role := plans.actor_held_invite_role(NEW.plan_id);
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.user_id IS DISTINCT FROM actor
+           OR NEW.role NOT IN ('member', 'guest', coalesce(invite_role, 'member'))
+           OR NEW.access_state NOT IN ('active', 'pending_approval')
+           OR NEW.capabilities <> '{}' OR NEW.default_share <> 100 THEN
+            RAISE EXCEPTION 'participant insert not allowed'
+                USING ERRCODE = 'insufficient_privilege';
+        END IF;
+        RETURN NEW;
+    END IF;
+    claim_target := plans.actor_held_claim_target(NEW.plan_id);
+    IF OLD.user_id IS DISTINCT FROM actor
+       AND NOT (OLD.id = claim_target AND OLD.identity_kind = 'placeholder') THEN
+        RAISE EXCEPTION 'participant update not allowed' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NEW.capabilities IS DISTINCT FROM OLD.capabilities
+       OR NEW.default_share IS DISTINCT FROM OLD.default_share THEN
+        RAISE EXCEPTION 'participant settings are a manager''s call'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NEW.role <> OLD.role
+       AND NEW.role NOT IN ('member', 'guest', coalesce(invite_role, 'member')) THEN
+        RAISE EXCEPTION 'participant role change not allowed'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NEW.access_state <> OLD.access_state AND NOT (
+        NEW.access_state IN ('left', 'merged')
+        OR (OLD.access_state = 'left'
+            AND NEW.access_state IN ('active', 'pending_approval')
+            AND (invite_role IS NOT NULL OR plans.actor_can_view_plan(NEW.plan_id)))
+    ) THEN
+        RAISE EXCEPTION 'participant access change not allowed'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NEW.user_id IS DISTINCT FROM OLD.user_id
+       AND OLD.identity_kind NOT IN ('guest', 'placeholder') THEN
+        RAISE EXCEPTION 'participant identity change not allowed'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+"""
+
+
 def upgrade() -> None:
     op.execute(REWRITE_SQL)
     op.execute(SYNC_SQL)
     op.execute(DROP_SQL)
+    op.execute(ADD_SQL)
+    op.execute(PARTICIPANT_GUARD_SQL)
 
 
 def downgrade() -> None:

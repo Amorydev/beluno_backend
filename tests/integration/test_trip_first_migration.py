@@ -104,7 +104,18 @@ def test_upgrade_drops_groups_series_and_travel_but_keeps_plans(
     assert sorted(admin.fetch("SELECT id::text FROM plans.plans")) == sorted(
         [(ids["trip"],), (ids["occurrence"],)]
     )
-    assert admin.scalar("SELECT count(*) FROM plans.plan_participants") == 2
+    shapes = dict(
+        (row[0], row[1:])
+        for row in admin.fetch(
+            "SELECT id::text, type, activity, destinations::text, pass_color IS NOT NULL "
+            "FROM plans.plans"
+        )
+    )
+    assert shapes[ids["trip"]] == ("trip", None, "[]", True)
+    assert shapes[ids["occurrence"]] == ("hangout", "sport", "[]", True)
+    assert admin.fetch(
+        "SELECT DISTINCT default_share, avatar_color, capabilities FROM plans.plan_participants"
+    ) == [(100, "blue", [])]
     assert admin.fetch("SELECT scope_type, scope_seq FROM sync_audit.change_log") == [("plan", 1)]
     assert admin.fetch("SELECT scope_type FROM sync_audit.scope_heads") == [("plan",)]
     assert admin.scalar("SELECT count(*) FROM sync_audit.audit_events") == 1

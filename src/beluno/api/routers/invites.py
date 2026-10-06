@@ -166,8 +166,12 @@ async def preview_invite(
         plan=PlanInvitePreview.model_validate(
             {
                 "title": plan.title,
-                "kind": plan.kind,
+                "type": plan.type,
+                "activity": plan.activity,
                 "timing": timing_contract(plan_service.timing_of(plan)),
+                "destination_names": [item["name"] for item in plan.destinations],
+                "pass_color": plan.pass_color,
+                "participant_count": preview.plan.participant_count,
                 "organizer_name": preview.plan.organizer_name,
             }
         ),
@@ -197,6 +201,7 @@ async def redeem_invite(
             display_name=body.display_name,
             merge_existing=body.merge_existing,
             device=device_info(body.device),
+            avatar_color=body.avatar_color,
         )
     participant = redemption.plan.participant
     active = participant.access_state == AccessState.ACTIVE.value

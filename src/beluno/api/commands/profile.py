@@ -21,8 +21,10 @@ async def _update(
         display_name=body.display_name,
         locale=body.locale,
         timezone=body.timezone,
+        default_currency=body.default_currency,
         clear_locale="locale" in fields and body.locale is None,
         clear_timezone="timezone" in fields and body.timezone is None,
+        clear_default_currency="default_currency" in fields and body.default_currency is None,
     )
     user = await users.update_profile(ctx, changes, required_version(call))
     return profile_response(user)

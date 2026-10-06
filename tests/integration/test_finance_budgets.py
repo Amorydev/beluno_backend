@@ -317,7 +317,5 @@ async def test_the_first_budget_publishes_the_ledger_to_synced_devices(
     changes, _, status = await pull_all(api, trip.owner, scope, cursor)
     assert status == "ok"
     ledger = [item for item in changes if item["entity_type"] == "ledger"]
-    assert [(item["entity_id"], item["operation"]) for item in ledger] == [
-        (trip.plan_id, "upsert")
-    ]
+    assert [(item["entity_id"], item["operation"]) for item in ledger] == [(trip.plan_id, "upsert")]
     assert ledger[0]["data"]["ledger_seq"] == 0

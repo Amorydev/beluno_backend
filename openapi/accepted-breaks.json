@@ -116,6 +116,11 @@
       "release": "1"
     },
     {
+      "break": "POST /v1/plans: response property removed 201:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
       "break": "POST /v1/plans: response property removed 201:occurrence_key",
       "reason": "Recurring plan series are removed (ADR 0008).",
       "release": "1"
@@ -131,8 +136,8 @@
       "release": "1"
     },
     {
-      "break": "POST /v1/plans: newly required body:base_currency",
-      "reason": "Without a group default, a plan names its base currency (ADR 0008).",
+      "break": "POST /v1/plans: newly required body:type",
+      "reason": "Every plan states whether it is a trip or a hangout (ADR 0008).",
       "release": "1"
     },
     {
@@ -143,6 +148,11 @@
     {
       "break": "GET /v1/plans/{plan_id}: response property removed 200:is_series_exception",
       "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/plans/{plan_id}: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
       "release": "1"
     },
     {
@@ -171,6 +181,11 @@
       "release": "1"
     },
     {
+      "break": "DELETE /v1/plans/{plan_id}: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
       "break": "DELETE /v1/plans/{plan_id}: response property removed 200:occurrence_key",
       "reason": "Recurring plan series are removed (ADR 0008).",
       "release": "1"
@@ -196,6 +211,11 @@
       "release": "1"
     },
     {
+      "break": "PATCH /v1/plans/{plan_id}: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
       "break": "PATCH /v1/plans/{plan_id}: response property removed 200:occurrence_key",
       "reason": "Recurring plan series are removed (ADR 0008).",
       "release": "1"
@@ -218,6 +238,11 @@
     {
       "break": "POST /v1/plans/{plan_id}/duplicate: response property removed 201:is_series_exception",
       "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/duplicate: response property removed 201:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
       "release": "1"
     },
     {
@@ -251,6 +276,11 @@
       "release": "1"
     },
     {
+      "break": "POST /v1/plans/{plan_id}/ownership-transfer: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
       "break": "POST /v1/plans/{plan_id}/ownership-transfer: response property removed 200:occurrence_key",
       "reason": "Recurring plan series are removed (ADR 0008).",
       "release": "1"
@@ -276,6 +306,11 @@
       "release": "1"
     },
     {
+      "break": "POST /v1/plans/{plan_id}/restore: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
       "break": "POST /v1/plans/{plan_id}/restore: response property removed 200:occurrence_key",
       "reason": "Recurring plan series are removed (ADR 0008).",
       "release": "1"
@@ -298,6 +333,11 @@
     {
       "break": "POST /v1/plans/{plan_id}/state: response property removed 200:is_series_exception",
       "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/state: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
       "release": "1"
     },
     {

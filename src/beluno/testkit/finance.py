@@ -38,6 +38,7 @@ async def finance_plan(
     plan = await api.post(
         "/v1/plans",
         json={
+            "type": "trip",
             "title": "Trip",
             "base_currency": currency,
             "participants": [{"placeholder_name": name} for name in placeholders],

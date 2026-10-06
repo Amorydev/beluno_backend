@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from beluno.contracts.common import DisplayName, LocaleTag, TimezoneName
+from beluno.contracts.common import CurrencyCode, DisplayName, LocaleTag, TimezoneName
 
 EMAIL_PATTERN = r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$"
 
@@ -80,6 +80,7 @@ class UserProfileResponse(BaseModel):
     email: str | None
     locale: str | None
     timezone: str | None
+    default_currency: str | None = Field(description="Default currency for new hangouts")
     version: int
 
 
@@ -100,6 +101,7 @@ class ProfileUpdateRequest(BaseModel):
     display_name: DisplayName | None = None
     locale: LocaleTag | None = None
     timezone: TimezoneName | None = None
+    default_currency: CurrencyCode | None = None
 
 
 class SessionResponse(BaseModel):

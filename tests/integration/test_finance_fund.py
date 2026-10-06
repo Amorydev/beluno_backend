@@ -256,7 +256,9 @@ async def test_guest_balances_follow_the_account_they_merge_into(
     member = await sign_in(api, identity_provider, subject="bea-sub", name="Bea")
     plan = (
         await api.post(
-            "/v1/plans", json={"title": "Trip", "base_currency": "USD"}, headers=owner.headers
+            "/v1/plans",
+            json={"type": "hangout", "title": "Trip", "base_currency": "USD"},
+            headers=owner.headers,
         )
     ).json()
 

@@ -95,7 +95,9 @@ async def test_api_mutations_get_contiguous_sequences_per_scope(
     owner = await sign_in(api, identity_provider, name="Owner")
     created = [
         await api.post(
-            "/v1/plans", json={"title": title, "base_currency": "USD"}, headers=owner.headers
+            "/v1/plans",
+            json={"type": "hangout", "title": title, "base_currency": "USD"},
+            headers=owner.headers,
         )
         for title in ("Trip", "Dinner")
     ]
@@ -266,7 +268,9 @@ async def test_runtime_roles_reach_change_rows_only_through_gates(
     outsider = await sign_in(api, identity_provider, name="Outsider")
     plan = (
         await api.post(
-            "/v1/plans", json={"title": "Private", "base_currency": "USD"}, headers=owner.headers
+            "/v1/plans",
+            json={"type": "hangout", "title": "Private", "base_currency": "USD"},
+            headers=owner.headers,
         )
     ).json()
 

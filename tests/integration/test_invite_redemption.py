@@ -21,7 +21,12 @@ pytestmark = pytest.mark.integration
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn) -> dict:
     response = await api.post(
         "/v1/plans",
-        json={"title": "Birthday", "kind": "birthday", "base_currency": "EUR"},
+        json={
+            "type": "hangout",
+            "title": "Birthday",
+            "activity": "birthday",
+            "base_currency": "EUR",
+        },
         headers=owner.headers,
     )
     assert response.status_code == 201, response.text
@@ -65,7 +70,8 @@ async def test_invite_is_hashed_previewed_minimally_and_redeemed_once(
     assert preview.status_code == 200
     assert preview.json()["plan"] == {
         "title": "Birthday",
-        "kind": "birthday",
+        "type": "hangout",
+        "activity": "birthday",
         "timing": {
             "mode": "undecided",
             "start_date": None,
@@ -74,6 +80,9 @@ async def test_invite_is_hashed_previewed_minimally_and_redeemed_once(
             "ends_at": None,
             "timezone": None,
         },
+        "destination_names": [],
+        "pass_color": plan["pass_color"],
+        "participant_count": 1,
         "organizer_name": "Organizer",
     }
     assert "id" not in preview.json()["plan"]

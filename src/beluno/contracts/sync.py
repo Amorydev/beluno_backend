@@ -221,11 +221,15 @@ class PlanEntity(BaseModel):
     ``my_participant`` snapshot, which the ``plan_participant`` entity carries instead."""
 
     id: UUID
+    type: str
     title: str
-    kind: str
+    activity: str | None
     state: str
     timing: dict[str, Any]
     base_currency: str
+    destinations: list[dict[str, Any]]
+    pass_color: str
+    expected_size: int | None
     description: str | None
     location_label: str | None
     deletion_scheduled_at: datetime | None

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import LargeBinary, Text
+from sqlalchemy import ARRAY, LargeBinary, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from beluno.db.models.base import Base
@@ -17,7 +19,8 @@ class Plan(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(Text)
-    kind: Mapped[str] = mapped_column(Text)
+    type: Mapped[str] = mapped_column(Text)
+    activity: Mapped[str | None] = mapped_column(Text)
     state: Mapped[str] = mapped_column(Text)
     timing_mode: Mapped[str] = mapped_column(Text)
     start_date: Mapped[date | None]
@@ -28,6 +31,9 @@ class Plan(Base):
     base_currency: Mapped[str] = mapped_column(Text)
     description: Mapped[str | None] = mapped_column(Text)
     location_label: Mapped[str | None] = mapped_column(Text)
+    destinations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    pass_color: Mapped[str] = mapped_column(Text)
+    expected_size: Mapped[int | None]
     duplicated_from_plan_id: Mapped[UUID | None]
     created_by_user_id: Mapped[UUID]
     deletion_scheduled_at: Mapped[datetime | None]
@@ -51,6 +57,9 @@ class PlanParticipant(Base):
     access_state: Mapped[str] = mapped_column(Text)
     rsvp_status: Mapped[str] = mapped_column(Text)
     rsvp_updated_at: Mapped[datetime | None]
+    default_share: Mapped[int]
+    avatar_color: Mapped[str] = mapped_column(Text)
+    capabilities: Mapped[list[str]] = mapped_column(ARRAY(Text))
     merged_into_participant_id: Mapped[UUID | None]
     joined_via_invite_id: Mapped[UUID | None]
     added_by_user_id: Mapped[UUID | None]

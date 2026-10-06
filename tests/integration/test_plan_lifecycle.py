@@ -16,7 +16,13 @@ pytestmark = pytest.mark.integration
 
 
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn, **body: object) -> dict:
-    payload = {"title": "Dinner", "kind": "dinner", "base_currency": "VND", **body}
+    payload = {
+        "type": "hangout",
+        "title": "Dinner",
+        "activity": "dinner",
+        "base_currency": "VND",
+        **body,
+    }
     response = await api.post("/v1/plans", json=payload, headers=owner.headers)
     assert response.status_code == 201, response.text
     return response.json()
@@ -32,7 +38,7 @@ async def test_movie_plan_needs_no_travel_fields(
     api: httpx.AsyncClient, identity_provider: IdentityProviderStub
 ) -> None:
     owner = await sign_in(api, identity_provider, name="Owner")
-    plan = await make_plan(api, owner, title="Movie night", kind="movie")
+    plan = await make_plan(api, owner, title="Movie night", activity="movie")
 
     assert plan["timing"] == {
         "mode": "undecided",
@@ -69,6 +75,7 @@ async def test_plan_validation(
     bad_timing = await api.post(
         "/v1/plans",
         json={
+            "type": "hangout",
             "title": "Coffee",
             "base_currency": "USD",
             "timing": {"mode": "date", "start_date": "2026-10-10", "end_date": "2026-10-01"},
@@ -102,6 +109,7 @@ async def test_new_plans_seed_people_from_shared_plans_and_placeholders(
     unknown = await api.post(
         "/v1/plans",
         json={
+            "type": "hangout",
             "title": "Dinner",
             "base_currency": "VND",
             "participants": [{"user_id": stranger.user_id}],

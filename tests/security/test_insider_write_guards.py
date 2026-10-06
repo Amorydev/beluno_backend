@@ -44,7 +44,9 @@ def run_as(
 
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn, **body: object) -> dict:
     response = await api.post(
-        "/v1/plans", json={"title": "Plan", "base_currency": "USD", **body}, headers=owner.headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Plan", "base_currency": "USD", **body},
+        headers=owner.headers,
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -114,9 +116,9 @@ async def test_insiders_cannot_promote_reactivate_or_move_rows(
             api_connection,
             stranger.user_id,
             "INSERT INTO plans.plan_participants (id, plan_id, identity_kind, user_id, "
-            "display_name, role, access_state, rsvp_status, version, created_at, updated_at) "
-            "VALUES (gen_random_uuid(), %s, 'user', %s, 'x', 'admin', 'active', 'invited', 1, "
-            "now(), now())",
+            "display_name, role, access_state, rsvp_status, default_share, avatar_color, "
+            "capabilities, version, created_at, updated_at) VALUES (gen_random_uuid(), %s, "
+            "'user', %s, 'x', 'admin', 'active', 'invited', 100, 'blue', '{}', 1, now(), now())",
             plan["id"],
             stranger.user_id,
             invite_hash=digest,
@@ -179,6 +181,7 @@ async def test_bearer_links_never_grant_management_rights(
     admin_placeholder = await api.post(
         "/v1/plans",
         json={
+            "type": "hangout",
             "title": "Plan",
             "base_currency": "USD",
             "participants": [{"placeholder_name": "Boss", "role": "admin"}],
@@ -237,6 +240,7 @@ async def test_rotation_and_input_hardening(
     naive_time = await api.post(
         "/v1/plans",
         json={
+            "type": "hangout",
             "title": "Dinner",
             "base_currency": "USD",
             "timing": {

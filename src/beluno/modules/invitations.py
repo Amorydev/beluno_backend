@@ -53,6 +53,7 @@ async def redeem_invite(
     display_name: str | None,
     merge_existing: bool,
     device: DeviceInfo,
+    avatar_color: str | None = None,
 ) -> InviteRedemption:
     digest = await _digest(ctx, raw_token)
     plan_invite = await plan_invites.find_by_digest(ctx, digest, for_update=True)
@@ -64,6 +65,7 @@ async def redeem_invite(
             display_name=display_name,
             merge_existing=merge_existing,
             device=device,
+            avatar_color=avatar_color,
         )
         return InviteRedemption(plan=redemption)
     log_unavailable("unknown", "redeem")

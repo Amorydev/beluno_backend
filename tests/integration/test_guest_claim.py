@@ -16,7 +16,13 @@ pytestmark = pytest.mark.integration
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn, **body: object) -> dict:
     response = await api.post(
         "/v1/plans",
-        json={"title": "Dinner", "kind": "dinner", "base_currency": "VND", **body},
+        json={
+            "type": "hangout",
+            "title": "Dinner",
+            "activity": "dinner",
+            "base_currency": "VND",
+            **body,
+        },
         headers=owner.headers,
     )
     assert response.status_code == 201, response.text
@@ -57,7 +63,9 @@ async def test_guest_joins_with_limited_rights(
     )
     assert rsvp.status_code == 200
     denied_plan = await api.post(
-        "/v1/plans", json={"title": "Mine", "base_currency": "USD"}, headers=guest.headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Mine", "base_currency": "USD"},
+        headers=guest.headers,
     )
     assert denied_plan.status_code == 403
     denied_invite = await api.post(

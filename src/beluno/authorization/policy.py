@@ -39,6 +39,13 @@ class AccessState(StrEnum):
     MERGED = "merged"
 
 
+class Capability(StrEnum):
+    """Per-member grants on top of the role ("Edit others' expenses: Admins + Quân")."""
+
+    MANAGE_EXPENSES = "expenses.manage"
+    MANAGE_BUDGETS = "budgets.manage"
+
+
 class PlanState(StrEnum):
     DRAFT = "draft"
     PLANNING = "planning"
@@ -92,6 +99,11 @@ RSVP_PLAN_STATES = frozenset({PlanState.DRAFT, PlanState.PLANNING, PlanState.ACT
 SETTLEMENT_PLAN_STATES = EDITABLE_PLAN_STATES | {PlanState.COMPLETED}
 
 
+# Only plain members hold capabilities; managers already have them and viewers and
+# guests cannot be granted management.
+CAPABILITY_ROLES = frozenset({PlanRole.MEMBER})
+
+
 @dataclass(frozen=True)
 class Rule:
     roles: frozenset[str]
@@ -99,6 +111,8 @@ class Rule:
     registered_only: bool = False
     step_up: bool = False
     allowed_during_deletion: bool = False
+    # A member holding this capability passes as if their role were listed.
+    capability: Capability | None = None
 
 
 PLAN_RULES: dict[PlanAction, Rule] = {
@@ -125,12 +139,16 @@ PLAN_RULES: dict[PlanAction, Rule] = {
     PlanAction.MANAGE_INVITES: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES, registered_only=True),
     PlanAction.VIEW_FINANCE: Rule(ALL_PLAN_ROLES, allowed_during_deletion=True),
     PlanAction.CREATE_EXPENSE: Rule(FINANCE_CONTRIBUTORS, EDITABLE_PLAN_STATES),
-    PlanAction.MANAGE_EXPENSES: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
+    PlanAction.MANAGE_EXPENSES: Rule(
+        PLAN_MANAGERS, EDITABLE_PLAN_STATES, capability=Capability.MANAGE_EXPENSES
+    ),
     PlanAction.RECORD_SETTLEMENT: Rule(FINANCE_CONTRIBUTORS, SETTLEMENT_PLAN_STATES),
     PlanAction.MANAGE_SETTLEMENTS: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
     # Whoever was paid confirms or disputes it, whatever their role.
     PlanAction.ANSWER_SETTLEMENT: Rule(ALL_PLAN_ROLES, SETTLEMENT_PLAN_STATES),
-    PlanAction.MANAGE_BUDGETS: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
+    PlanAction.MANAGE_BUDGETS: Rule(
+        PLAN_MANAGERS, EDITABLE_PLAN_STATES, capability=Capability.MANAGE_BUDGETS
+    ),
     PlanAction.CONTRIBUTE_FUND: Rule(FINANCE_CONTRIBUTORS, EDITABLE_PLAN_STATES),
     PlanAction.MANAGE_FUND: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
     PlanAction.ADJUST_LEDGER: Rule(
@@ -149,39 +167,28 @@ class PlanSubject:
     deletion_scheduled: bool
     actor_is_guest: bool
     step_up_fresh: bool
+    capabilities: frozenset[Capability] = frozenset()
 
 
 def decide_plan(action: PlanAction, subject: PlanSubject) -> Decision:
-    if subject.access_state is AccessState.ACTIVE and subject.participant_role is not None:
-        return _apply_rule(
-            PLAN_RULES[action],
-            role=subject.participant_role,
-            actor_is_guest=subject.actor_is_guest,
-            deletion_scheduled=subject.deletion_scheduled,
-            plan_state=subject.plan_state,
-            step_up_fresh=subject.step_up_fresh,
-        )
-    return Decision.HIDDEN
-
-
-def _apply_rule(
-    rule: Rule,
-    *,
-    role: str,
-    actor_is_guest: bool,
-    deletion_scheduled: bool,
-    plan_state: PlanState | None,
-    step_up_fresh: bool,
-) -> Decision:
-    if role not in rule.roles:
+    if subject.access_state is not AccessState.ACTIVE or subject.participant_role is None:
+        return Decision.HIDDEN
+    rule = PLAN_RULES[action]
+    role = subject.participant_role
+    granted = (
+        rule.capability is not None
+        and rule.capability in subject.capabilities
+        and role in CAPABILITY_ROLES
+    )
+    if role not in rule.roles and not granted:
         return Decision.FORBIDDEN
-    if rule.registered_only and actor_is_guest:
+    if rule.registered_only and subject.actor_is_guest:
         return Decision.FORBIDDEN
-    if deletion_scheduled and not rule.allowed_during_deletion:
+    if subject.deletion_scheduled and not rule.allowed_during_deletion:
         return Decision.FORBIDDEN
-    if rule.plan_states is not None and plan_state not in rule.plan_states:
+    if rule.plan_states is not None and subject.plan_state not in rule.plan_states:
         return Decision.FORBIDDEN
-    if rule.step_up and not step_up_fresh:
+    if rule.step_up and not subject.step_up_fresh:
         return Decision.STEP_UP_REQUIRED
     return Decision.ALLOW
 

@@ -29,7 +29,7 @@ from beluno.contracts.plans import (
     JoinRequestDecision,
     ParticipantAddRequest,
     ParticipantResponse,
-    ParticipantRoleRequest,
+    ParticipantUpdateRequest,
     PlanCreateRequest,
     PlanDuplicateRequest,
     PlanOwnershipTransferRequest,
@@ -203,10 +203,10 @@ async def add_participant(
     response_model=ParticipantResponse,
     responses=WRITE_ERRORS,
 )
-async def change_participant_role(
+async def update_participant(
     plan_id: UUID,
     participant_id: UUID,
-    body: ParticipantRoleRequest,
+    body: ParticipantUpdateRequest,
     runner: RunnerDep,
     actor: ActorDep,
     response: Response,
@@ -216,7 +216,7 @@ async def change_participant_role(
     call = command_call(
         idempotency_key, if_match=if_match, plan_id=plan_id, participant_id=participant_id
     )
-    result = await runner.run(actor, commands.PLAN_PARTICIPANT_CHANGE_ROLE, call, body)
+    result = await runner.run(actor, commands.PLAN_PARTICIPANT_UPDATE, call, body)
     return finish(response, result)
 
 

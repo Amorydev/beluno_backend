@@ -18,7 +18,7 @@ pytestmark = pytest.mark.integration
 
 
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn, **body: Any) -> dict[str, Any]:
-    payload = {"title": "Dinner", "base_currency": "USD", **body}
+    payload = {"type": "hangout", "title": "Dinner", "base_currency": "USD", **body}
     response = await api.post("/v1/plans", json=payload, headers=owner.headers)
     assert response.status_code == 201, response.text
     return response.json()

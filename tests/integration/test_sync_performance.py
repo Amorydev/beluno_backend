@@ -55,7 +55,12 @@ async def test_bootstrap_and_catch_up_timings(
     plan = (
         await api.post(
             "/v1/plans",
-            json={"title": "Big trip", "base_currency": "USD", "participants": seeds},
+            json={
+                "type": "hangout",
+                "title": "Big trip",
+                "base_currency": "USD",
+                "participants": seeds,
+            },
             headers=owner.headers,
         )
     ).json()
@@ -66,7 +71,7 @@ async def test_bootstrap_and_catch_up_timings(
     batch = [
         {
             "operation_id": str(new_id()),
-            "command": "plan.participant.change_role",
+            "command": "plan.participant.update",
             "target": {"plan_id": plan["id"], "participant_id": person["id"]},
             "expected_version": 1,
             "payload": {"role": "viewer"},

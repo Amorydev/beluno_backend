@@ -1069,6 +1069,72 @@
         "title": "DaySpend",
         "type": "object"
       },
+      "Destination": {
+        "additionalProperties": false,
+        "description": "One stop of a trip (\"Tokyo\"); dates are optional (nights per city).",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{1,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "e.g. TYO",
+            "title": "Code"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Destination",
+        "type": "object"
+      },
       "DeviceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2771,6 +2837,34 @@
             "title": "Access State",
             "type": "string"
           },
+          "avatar_color": {
+            "enum": [
+              "blue",
+              "teal",
+              "purple",
+              "orange",
+              "rose",
+              "olive"
+            ],
+            "title": "Avatar Color",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "enum": [
+                "expenses.manage",
+                "budgets.manage"
+              ],
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "default_share": {
+            "description": "Default shares weight in hundredths (100 = 1x)",
+            "title": "Default Share",
+            "type": "integer"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -2878,30 +2972,14 @@
           "access_state",
           "rsvp_status",
           "rsvp_updated_at",
+          "default_share",
+          "avatar_color",
+          "capabilities",
           "merged_into_participant_id",
           "joined_at",
           "version"
         ],
         "title": "ParticipantResponse",
-        "type": "object"
-      },
-      "ParticipantRoleRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "role": {
-            "enum": [
-              "admin",
-              "member",
-              "viewer"
-            ],
-            "title": "Role",
-            "type": "string"
-          }
-        },
-        "required": [
-          "role"
-        ],
-        "title": "ParticipantRoleRequest",
         "type": "object"
       },
       "ParticipantSeed": {
@@ -2957,6 +3035,81 @@
           }
         },
         "title": "ParticipantSeed",
+        "type": "object"
+      },
+      "ParticipantUpdateRequest": {
+        "additionalProperties": false,
+        "description": "Managers change role, default share, and capabilities; anyone their own colour.",
+        "properties": {
+          "avatar_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "blue",
+                  "teal",
+                  "purple",
+                  "orange",
+                  "rose",
+                  "olive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Color"
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "expenses.manage",
+                    "budgets.manage"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capabilities"
+          },
+          "default_share": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Share"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "admin",
+                  "member",
+                  "viewer"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "title": "ParticipantUpdateRequest",
         "type": "object"
       },
       "PayerRequest": {
@@ -3070,11 +3223,41 @@
       },
       "PlanCreateRequest": {
         "additionalProperties": false,
+        "description": "A trip or a hangout. ``base_currency`` defaults to the creator's default currency.",
         "properties": {
+          "activity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dinner",
+                  "drinks",
+                  "karaoke",
+                  "coffee",
+                  "movie",
+                  "sport",
+                  "birthday",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hangouts only",
+            "title": "Activity"
+          },
           "base_currency": {
-            "pattern": "^[A-Z]{3}$",
-            "title": "Base Currency",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Currency"
           },
           "description": {
             "anyOf": [
@@ -3088,6 +3271,28 @@
             ],
             "title": "Description"
           },
+          "destinations": {
+            "description": "Trips only",
+            "items": {
+              "$ref": "#/components/schemas/Destination"
+            },
+            "maxItems": 10,
+            "title": "Destinations",
+            "type": "array"
+          },
+          "expected_size": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Size"
+          },
           "id": {
             "anyOf": [
               {
@@ -3099,21 +3304,6 @@
               }
             ],
             "title": "Id"
-          },
-          "kind": {
-            "default": "custom",
-            "enum": [
-              "dinner",
-              "coffee",
-              "movie",
-              "sport",
-              "birthday",
-              "outing",
-              "trip",
-              "custom"
-            ],
-            "title": "Kind",
-            "type": "string"
           },
           "location_label": {
             "anyOf": [
@@ -3135,6 +3325,27 @@
             "title": "Participants",
             "type": "array"
           },
+          "pass_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "indigo",
+                  "plum",
+                  "sea",
+                  "forest",
+                  "rust",
+                  "slate",
+                  "wine",
+                  "moss"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Color"
+          },
           "state": {
             "default": "planning",
             "enum": [
@@ -3152,11 +3363,19 @@
             "minLength": 1,
             "title": "Title",
             "type": "string"
+          },
+          "type": {
+            "enum": [
+              "trip",
+              "hangout"
+            ],
+            "title": "Type",
+            "type": "string"
           }
         },
         "required": [
-          "title",
-          "base_currency"
+          "type",
+          "title"
         ],
         "title": "PlanCreateRequest",
         "type": "object"
@@ -3273,19 +3492,34 @@
       },
       "PlanInvitePreview": {
         "properties": {
-          "kind": {
-            "enum": [
-              "dinner",
-              "coffee",
-              "movie",
-              "sport",
-              "birthday",
-              "outing",
-              "trip",
-              "custom"
+          "activity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dinner",
+                  "drinks",
+                  "karaoke",
+                  "coffee",
+                  "movie",
+                  "sport",
+                  "birthday",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Kind",
-            "type": "string"
+            "title": "Activity"
+          },
+          "destination_names": {
+            "description": "City-level names only, never addresses",
+            "items": {
+              "type": "string"
+            },
+            "title": "Destination Names",
+            "type": "array"
           },
           "organizer_name": {
             "anyOf": [
@@ -3298,18 +3532,48 @@
             ],
             "title": "Organizer Name"
           },
+          "participant_count": {
+            "title": "Participant Count",
+            "type": "integer"
+          },
+          "pass_color": {
+            "enum": [
+              "indigo",
+              "plum",
+              "sea",
+              "forest",
+              "rust",
+              "slate",
+              "wine",
+              "moss"
+            ],
+            "title": "Pass Color",
+            "type": "string"
+          },
           "timing": {
             "$ref": "#/components/schemas/PlanTiming"
           },
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "type": {
+            "enum": [
+              "trip",
+              "hangout"
+            ],
+            "title": "Type",
+            "type": "string"
           }
         },
         "required": [
           "title",
-          "kind",
+          "type",
+          "activity",
           "timing",
+          "destination_names",
+          "pass_color",
+          "participant_count",
           "organizer_name"
         ],
         "title": "PlanInvitePreview",
@@ -3332,6 +3596,27 @@
       },
       "PlanResponse": {
         "properties": {
+          "activity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dinner",
+                  "drinks",
+                  "karaoke",
+                  "coffee",
+                  "movie",
+                  "sport",
+                  "birthday",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity"
+          },
           "base_currency": {
             "title": "Base Currency",
             "type": "string"
@@ -3364,23 +3649,27 @@
             ],
             "title": "Description"
           },
+          "destinations": {
+            "items": {
+              "$ref": "#/components/schemas/Destination"
+            },
+            "title": "Destinations",
+            "type": "array"
+          },
+          "expected_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Size"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "enum": [
-              "dinner",
-              "coffee",
-              "movie",
-              "sport",
-              "birthday",
-              "outing",
-              "trip",
-              "custom"
-            ],
-            "title": "Kind",
             "type": "string"
           },
           "location_label": {
@@ -3404,6 +3693,20 @@
               }
             ]
           },
+          "pass_color": {
+            "enum": [
+              "indigo",
+              "plum",
+              "sea",
+              "forest",
+              "rust",
+              "slate",
+              "wine",
+              "moss"
+            ],
+            "title": "Pass Color",
+            "type": "string"
+          },
           "state": {
             "enum": [
               "draft",
@@ -3424,6 +3727,14 @@
             "title": "Title",
             "type": "string"
           },
+          "type": {
+            "enum": [
+              "trip",
+              "hangout"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -3436,11 +3747,15 @@
         },
         "required": [
           "id",
+          "type",
           "title",
-          "kind",
+          "activity",
           "state",
           "timing",
           "base_currency",
+          "destinations",
+          "pass_color",
+          "expected_size",
           "description",
           "location_label",
           "deletion_scheduled_at",
@@ -3557,6 +3872,27 @@
         "additionalProperties": false,
         "description": "Omitted fields stay unchanged; ``null`` clears description or location.",
         "properties": {
+          "activity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dinner",
+                  "drinks",
+                  "karaoke",
+                  "coffee",
+                  "movie",
+                  "sport",
+                  "birthday",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity"
+          },
           "base_currency": {
             "anyOf": [
               {
@@ -3581,26 +3917,33 @@
             ],
             "title": "Description"
           },
-          "kind": {
+          "destinations": {
             "anyOf": [
               {
-                "enum": [
-                  "dinner",
-                  "coffee",
-                  "movie",
-                  "sport",
-                  "birthday",
-                  "outing",
-                  "trip",
-                  "custom"
-                ],
-                "type": "string"
+                "items": {
+                  "$ref": "#/components/schemas/Destination"
+                },
+                "maxItems": 10,
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Kind"
+            "title": "Destinations"
+          },
+          "expected_size": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Size"
           },
           "location_label": {
             "anyOf": [
@@ -3613,6 +3956,27 @@
               }
             ],
             "title": "Location Label"
+          },
+          "pass_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "indigo",
+                  "plum",
+                  "sea",
+                  "forest",
+                  "rust",
+                  "slate",
+                  "wine",
+                  "moss"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Color"
           },
           "timing": {
             "anyOf": [
@@ -3680,6 +4044,18 @@
       "ProfileUpdateRequest": {
         "additionalProperties": false,
         "properties": {
+          "default_currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Currency"
+          },
           "display_name": {
             "anyOf": [
               {
@@ -4274,6 +4650,26 @@
       "RedeemInviteRequest": {
         "additionalProperties": false,
         "properties": {
+          "avatar_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "blue",
+                  "teal",
+                  "purple",
+                  "orange",
+                  "rose",
+                  "olive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The colour the person picks for themselves in this plan.",
+            "title": "Avatar Color"
+          },
           "device": {
             "anyOf": [
               {
@@ -5762,6 +6158,18 @@
       },
       "UserProfileResponse": {
         "properties": {
+          "default_currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default currency for new hangouts",
+            "title": "Default Currency"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -5824,6 +6232,7 @@
           "email",
           "locale",
           "timezone",
+          "default_currency",
           "version"
         ],
         "title": "UserProfileResponse",
@@ -12437,7 +12846,7 @@
         ]
       },
       "patch": {
-        "operationId": "change_participant_role_v1_plans__plan_id__participants__participant_id__patch",
+        "operationId": "update_participant_v1_plans__plan_id__participants__participant_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -12501,7 +12910,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ParticipantRoleRequest"
+                "$ref": "#/components/schemas/ParticipantUpdateRequest"
               }
             }
           },
@@ -12604,7 +13013,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Change Participant Role",
+        "summary": "Update Participant",
         "tags": [
           "plans"
         ]

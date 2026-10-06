@@ -10,7 +10,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from beluno.contracts.common import DisplayName
 from beluno.contracts.iam import EMAIL_PATTERN, DeviceRequest, TokenResponse
-from beluno.contracts.plans import ParticipantResponse, PlanKind, PlanResponse, PlanTiming
+from beluno.contracts.plans import (
+    AvatarColor,
+    HangoutActivity,
+    ParticipantResponse,
+    PassColor,
+    PlanResponse,
+    PlanTiming,
+    PlanType,
+)
 
 ExpiresInHours = Field(default=168, ge=1, le=720)
 
@@ -63,13 +71,20 @@ class RedeemInviteRequest(InviteTokenRequest):
         default=None, description="Required when joining as a guest without an account."
     )
     merge_existing: bool = False
+    avatar_color: AvatarColor | None = Field(
+        default=None, description="The colour the person picks for themselves in this plan."
+    )
     device: DeviceRequest | None = None
 
 
 class PlanInvitePreview(BaseModel):
     title: str
-    kind: PlanKind
+    type: PlanType
+    activity: HangoutActivity | None
     timing: PlanTiming
+    destination_names: list[str] = Field(description="City-level names only, never addresses")
+    pass_color: PassColor
+    participant_count: int
     organizer_name: str | None
 
 

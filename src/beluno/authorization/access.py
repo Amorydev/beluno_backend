@@ -15,6 +15,7 @@ from sqlalchemy import Select, select
 
 from beluno.authorization.policy import (
     AccessState,
+    Capability,
     Decision,
     PlanAction,
     PlanRole,
@@ -97,6 +98,9 @@ async def load_plan(
             deletion_scheduled=plan.deletion_scheduled_at is not None,
             actor_is_guest=actor.is_guest,
             step_up_fresh=ctx.step_up_is_fresh,
+            capabilities=frozenset(
+                Capability(value) for value in (participant.capabilities if participant else [])
+            ),
         ),
     )
 

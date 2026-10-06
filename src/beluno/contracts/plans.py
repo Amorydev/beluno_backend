@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from beluno.contracts.common import (
     CurrencyCode,
@@ -15,9 +23,19 @@ from beluno.contracts.common import (
     LongText,
     TimezoneName,
     Title,
+    clean_text,
 )
 
-PlanKind = Literal["dinner", "coffee", "movie", "sport", "birthday", "outing", "trip", "custom"]
+PlanType = Literal["trip", "hangout"]
+HangoutActivity = Literal[
+    "dinner", "drinks", "karaoke", "coffee", "movie", "sport", "birthday", "other"
+]
+PassColor = Literal["indigo", "plum", "sea", "forest", "rust", "slate", "wine", "moss"]
+AvatarColor = Literal["blue", "teal", "purple", "orange", "rose", "olive"]
+Capability = Literal["expenses.manage", "budgets.manage"]
+DestinationName = Annotated[
+    str, AfterValidator(clean_text), StringConstraints(min_length=1, max_length=80)
+]
 PlanStateName = Literal[
     "draft", "planning", "active", "settling", "completed", "archived", "cancelled"
 ]
@@ -83,18 +101,53 @@ class ParticipantSeed(BaseModel):
         return self
 
 
+class Destination(BaseModel):
+    """One stop of a trip ("Tokyo"); dates are optional (nights per city)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: DestinationName
+    code: str | None = Field(default=None, pattern=r"^[A-Z]{1,5}$", description="e.g. TYO")
+    country_code: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
+    start_date: date | None = None
+    end_date: date | None = None
+
+    @model_validator(mode="after")
+    def ordered_dates(self) -> Self:
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date must not be before start_date")
+        return self
+
+
+Destinations = Annotated[list[Destination], Field(max_length=10)]
+
+
 class PlanCreateRequest(BaseModel):
+    """A trip or a hangout. ``base_currency`` defaults to the creator's default currency."""
+
     model_config = ConfigDict(extra="forbid")
 
     id: UUID | None = None
+    type: PlanType
     title: Title
-    kind: PlanKind = "custom"
+    activity: HangoutActivity | None = Field(default=None, description="Hangouts only")
     state: Literal["draft", "planning"] = "planning"
     timing: PlanTiming = Field(default_factory=PlanTiming)
-    base_currency: CurrencyCode
+    base_currency: CurrencyCode | None = None
+    destinations: Destinations = Field(default_factory=list, description="Trips only")
+    pass_color: PassColor | None = None
+    expected_size: int | None = Field(default=None, ge=1, le=50)
     description: LongText | None = None
     location_label: Label | None = None
     participants: list[ParticipantSeed] = Field(default_factory=list, max_length=100)
+
+    @model_validator(mode="after")
+    def fields_fit_the_type(self) -> Self:
+        if self.type == "trip" and self.activity is not None:
+            raise ValueError("activity is for hangouts")
+        if self.type == "hangout" and self.destinations:
+            raise ValueError("destinations are for trips")
+        return self
 
 
 class PlanUpdateRequest(BaseModel):
@@ -103,9 +156,12 @@ class PlanUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: Title | None = None
-    kind: PlanKind | None = None
+    activity: HangoutActivity | None = None
     timing: PlanTiming | None = None
     base_currency: CurrencyCode | None = None
+    destinations: Destinations | None = None
+    pass_color: PassColor | None = None
+    expected_size: int | None = Field(default=None, ge=1, le=50)
     description: LongText | None = None
     location_label: Label | None = None
 
@@ -126,6 +182,9 @@ class ParticipantResponse(BaseModel):
     access_state: Literal["pending_approval", "active", "left", "removed", "merged"]
     rsvp_status: Literal["invited", "going", "maybe", "declined"]
     rsvp_updated_at: datetime | None
+    default_share: int = Field(description="Default shares weight in hundredths (100 = 1x)")
+    avatar_color: AvatarColor
+    capabilities: list[Capability]
     merged_into_participant_id: UUID | None
     joined_at: datetime | None
     version: int
@@ -133,11 +192,15 @@ class ParticipantResponse(BaseModel):
 
 class PlanResponse(BaseModel):
     id: UUID
+    type: PlanType
     title: str
-    kind: PlanKind
+    activity: HangoutActivity | None
     state: PlanStateName
     timing: PlanTiming
     base_currency: str
+    destinations: list[Destination]
+    pass_color: PassColor
+    expected_size: int | None
     description: str | None
     location_label: str | None
     deletion_scheduled_at: datetime | None
@@ -151,10 +214,23 @@ class ParticipantAddRequest(ParticipantSeed):
     pass
 
 
-class ParticipantRoleRequest(BaseModel):
+class ParticipantUpdateRequest(BaseModel):
+    """Managers change role, default share, and capabilities; anyone their own colour."""
+
     model_config = ConfigDict(extra="forbid")
 
-    role: AssignablePlanRole
+    role: AssignablePlanRole | None = None
+    default_share: int | None = Field(default=None, ge=1, le=10_000)
+    capabilities: list[Capability] | None = Field(default=None, max_length=2)
+    avatar_color: AvatarColor | None = None
+
+    @model_validator(mode="after")
+    def something_changes(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("send at least one field to change")
+        if self.capabilities is not None and len(set(self.capabilities)) != len(self.capabilities):
+            raise ValueError("capabilities must not repeat")
+        return self
 
 
 class RsvpRequest(BaseModel):

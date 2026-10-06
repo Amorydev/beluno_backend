@@ -54,7 +54,9 @@ async def tenant(api: httpx.AsyncClient, identity_provider: IdentityProviderStub
     outsider = await sign_in(api, identity_provider)
     plan = (
         await api.post(
-            "/v1/plans", json={"title": "Secret", "base_currency": "USD"}, headers=owner.headers
+            "/v1/plans",
+            json={"type": "hangout", "title": "Secret", "base_currency": "USD"},
+            headers=owner.headers,
         )
     ).json()
     invite = (
@@ -93,16 +95,17 @@ def test_outsider_writes_are_rejected_by_rls(
     statements = [
         (
             "INSERT INTO plans.plan_participants (id, plan_id, identity_kind, user_id, "
-            "display_name, role, access_state, rsvp_status, version, created_at, updated_at) "
-            "VALUES (%s, %s, 'user', %s, 'Intruder', 'admin', 'active', 'invited', 1, "
-            "now(), now())",
+            "display_name, role, access_state, rsvp_status, default_share, avatar_color, "
+            "capabilities, version, created_at, updated_at) VALUES (%s, %s, 'user', %s, "
+            "'Intruder', 'admin', 'active', 'invited', 100, 'blue', '{}', 1, now(), now())",
             (str(uuid4()), tenant["plan"], tenant["outsider"]),
         ),
         (
             # A plan created in someone else's name.
-            "INSERT INTO plans.plans (id, title, kind, state, timing_mode, base_currency, "
-            "created_by_user_id, version, created_at, updated_at) VALUES (%s, 'x', 'custom', "
-            "'planning', 'undecided', 'USD', %s, 1, now(), now())",
+            "INSERT INTO plans.plans (id, type, title, state, timing_mode, base_currency, "
+            "destinations, pass_color, created_by_user_id, version, created_at, updated_at) "
+            "VALUES (%s, 'hangout', 'x', 'planning', 'undecided', 'USD', '[]', 'slate', %s, 1, "
+            "now(), now())",
             (str(uuid4()), tenant["owner"]),
         ),
     ]

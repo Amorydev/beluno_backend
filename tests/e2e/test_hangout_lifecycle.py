@@ -70,8 +70,9 @@ async def test_hangout_access_spine(
         await api.post(
             "/v1/plans",
             json={
+                "type": "hangout",
                 "title": "Hotpot",
-                "kind": "dinner",
+                "activity": "dinner",
                 "base_currency": "VND",
                 "timing": {"mode": "date", "start_date": "2026-10-17"},
             },
