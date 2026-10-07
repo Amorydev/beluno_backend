@@ -28,6 +28,7 @@ from beluno.modules.sync_audit.recorder import ChangeScope, record_activity
 
 PLACE_ENTITY = "place"
 SHORTLIST = "shortlist"
+POLL_WINNER = "poll_winner"
 
 
 @dataclass(frozen=True)
@@ -59,13 +60,20 @@ async def get_place(ctx: CommandContext, plan_id: UUID, place_id: UUID) -> Place
 
 
 async def create_place(
-    ctx: CommandContext, plan_id: UUID, place_id: UUID | None, draft: PlaceDraft
+    ctx: CommandContext,
+    plan_id: UUID,
+    place_id: UUID | None,
+    draft: PlaceDraft,
+    *,
+    status: str = SHORTLIST,
 ) -> PlaceView:
+    """``status`` is ``poll_winner`` when a poll's winning option becomes the place."""
+
     await planning_access(ctx, plan_id, PlanAction.CONTRIBUTE_PLANNING)
     place = Place(
         id=place_id or new_id(),
         plan_id=plan_id,
-        status=SHORTLIST,
+        status=status,
         saved_by_user_id=ctx.require_actor().user_id,
         version=1,
         created_at=ctx.now,
@@ -259,3 +267,13 @@ async def _record(
         operation=operation,
         activity=activity,
     )
+
+
+async def mark_poll_winner(ctx: CommandContext, plan_id: UUID, place_id: UUID) -> PlaceView:
+    """The place won a poll: it keeps that status even when items come and go."""
+
+    place = await _find(ctx, plan_id, place_id, for_update=True)
+    if place.status != POLL_WINNER:
+        place.status = POLL_WINNER
+        await _bump(ctx, place, "planning.place_won_poll")
+    return (await place_views(ctx, [place]))[0]

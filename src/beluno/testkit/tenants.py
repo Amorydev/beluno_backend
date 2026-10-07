@@ -24,7 +24,7 @@ async def full_tenant(
 ) -> FullTenant:
     """A used trip (see ``exercise_money_and_members``) plus a commitment, kitty
     settings, a ledger confirmation, join and claim links, a crew, a wanted place, and an
-    itinerary item with a cost and an answer."""
+    itinerary item with a cost and an answer, and a decided poll."""
 
     trip = await exercise_money_and_members(api, provider, admin)
     owner = trip.owner
@@ -82,6 +82,27 @@ async def full_tenant(
         headers=owner.headers,
     )
     assert going.status_code == 200, going.text
+    poll = await created(
+        trip.path("/polls"),
+        {
+            "question": "Where first?",
+            "options": [{"label": "Temple", "place_id": place["id"]}, {"label": "Market"}],
+        },
+    )
+    voted = await api.put(
+        trip.path(f"/polls/{poll['id']}/vote"),
+        json={"option_id": poll["options"][0]["id"]},
+        headers=owner.headers,
+    )
+    assert voted.status_code == 200, voted.text
+    closed = await api.post(trip.path(f"/polls/{poll['id']}/close"), headers=owner.headers)
+    assert closed.status_code == 200, closed.text
+    applied = await api.post(
+        trip.path(f"/polls/{poll['id']}/outcome"),
+        json={"action": "save_place"},
+        headers=owner.headers,
+    )
+    assert applied.status_code == 200, applied.text
     budgets = (await api.get(trip.path("/budgets"), headers=owner.headers)).json()["budgets"]
     assert budgets
     return FullTenant(
@@ -99,5 +120,6 @@ async def full_tenant(
             "session_id": owner.session_id,
             "place_id": place["id"],
             "item_id": stop["id"],
+            "poll_id": poll["id"],
         },
     )

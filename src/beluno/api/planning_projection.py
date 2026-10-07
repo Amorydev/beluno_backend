@@ -1,4 +1,7 @@
-"""Trip planning as REST responses and plan-scope sync entities (``place``, ``itinerary_item``)."""
+"""Trip planning as REST responses and plan-scope sync entities.
+
+``place``, ``itinerary_item``, and ``poll``.
+"""
 
 from __future__ import annotations
 
@@ -7,15 +10,25 @@ from uuid import UUID
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from beluno.contracts.planning import AttendanceResponse, ItineraryItemResponse, PlaceResponse
+from beluno.contracts.planning import (
+    AttendanceResponse,
+    ItineraryItemResponse,
+    PlaceResponse,
+    PollOptionResponse,
+    PollOutcomeResponse,
+    PollResponse,
+    PollResultResponse,
+)
+from beluno.db.models.decisions import Poll
 from beluno.db.models.schedule_places import ItineraryItem, Place
 from beluno.modules.context import CommandContext
 from beluno.modules.planning.itinerary import ItemView, item_views
 from beluno.modules.planning.places import PlaceView, place_views
+from beluno.modules.planning.polls import PollView, poll_views
 from beluno.sync.pull import SnapshotRow
 from beluno.sync.scopes import AccessLevel, ScopeKey
 
-PLANNING_TYPES = ("place", "itinerary_item")
+PLANNING_TYPES = ("place", "itinerary_item", "poll")
 
 
 def place_response(view: PlaceView) -> PlaceResponse:
@@ -67,6 +80,60 @@ def item_response(view: ItemView) -> ItineraryItemResponse:
     )
 
 
+def poll_response(view: PollView) -> PollResponse:
+    poll, result = view.poll, view.result
+    voters: dict[UUID, list[UUID]] = {}
+    for ballot in view.votes:
+        voters.setdefault(ballot.option_id, []).append(ballot.participant_id)
+    return PollResponse(
+        id=poll.id,
+        plan_id=poll.plan_id,
+        kind=poll.kind,  # type: ignore[arg-type]
+        question=poll.question,
+        options=[
+            PollOptionResponse(
+                id=option.id,
+                label=option.label,
+                place_id=option.place_id,
+                answer=option.answer,  # type: ignore[arg-type]
+                position=option.position,
+                voter_ids=voters.get(option.id, []),
+            )
+            for option in view.options
+        ],
+        deadline_at=poll.deadline_at,
+        quorum=poll.quorum,
+        allow_vote_change=poll.allow_vote_change,
+        status=poll.status,  # type: ignore[arg-type]
+        eligible=view.eligible,
+        result=PollResultResponse(
+            version=result.version,
+            outcome=result.outcome,  # type: ignore[arg-type]
+            winner_option_id=result.winner_option_id,
+            tied_option_ids=list(result.tied_option_ids),
+            counts={key: int(value) for key, value in result.counts.items()},
+            eligible=result.eligible,
+            voted=result.voted,
+            closed_at=result.closed_at,
+            closed_by_user_id=result.closed_by_user_id,
+        )
+        if result is not None
+        else None,
+        outcomes=[
+            PollOutcomeResponse(
+                action=outcome.action,  # type: ignore[arg-type]
+                option_id=outcome.option_id,
+                created_entity_id=outcome.created_entity_id,
+            )
+            for outcome in view.outcomes
+        ],
+        created_by_user_id=poll.created_by_user_id,
+        version=poll.version,
+        created_at=poll.created_at,
+        updated_at=poll.updated_at,
+    )
+
+
 async def present_planning_current(ctx: CommandContext, entity: object) -> BaseModel | None:
     """The current row behind a version conflict, as the caller would read it."""
 
@@ -74,6 +141,8 @@ async def present_planning_current(ctx: CommandContext, entity: object) -> BaseM
         return place_response((await place_views(ctx, [entity]))[0])
     if isinstance(entity, ItineraryItem):
         return item_response((await item_views(ctx, [entity]))[0])
+    if isinstance(entity, Poll):
+        return poll_response((await poll_views(ctx, [entity]))[0])
     return None
 
 
@@ -122,4 +191,26 @@ async def page_items(
     return [
         SnapshotRow(view.item.id, view.item.version, item_response(view))
         for view in await item_views(ctx, rows)
+    ]
+
+
+async def load_poll(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID
+) -> BaseModel | None:
+    poll = await ctx.session.get(Poll, id)
+    if poll is None or poll.plan_id != scope.scope_id or poll.deleted_at is not None:
+        return None
+    return poll_response((await poll_views(ctx, [poll]))[0])
+
+
+async def page_polls(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(Poll).where(Poll.plan_id == scope.scope_id, Poll.deleted_at.is_(None))
+    if after is not None:
+        statement = statement.where(Poll.id > after)
+    rows = list((await ctx.session.execute(statement.order_by(Poll.id).limit(limit))).scalars())
+    return [
+        SnapshotRow(view.poll.id, view.poll.version, poll_response(view))
+        for view in await poll_views(ctx, rows)
     ]

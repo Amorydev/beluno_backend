@@ -1,10 +1,10 @@
-"""Trip planning commands: places and the itinerary."""
+"""Trip planning commands: places, the itinerary, and polls."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from beluno.api.planning_projection import item_response, place_response
+from beluno.api.planning_projection import item_response, place_response, poll_response
 from beluno.contracts.planning import (
     AddPlaceToPlanRequest,
     AttendanceRequest,
@@ -15,10 +15,14 @@ from beluno.contracts.planning import (
     PlaceReactionRequest,
     PlaceRequest,
     PlaceResponse,
+    PollCreateRequest,
+    PollOutcomeRequest,
+    PollResponse,
+    VoteRequest,
 )
 from beluno.modules.context import CommandContext
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
-from beluno.modules.planning import itinerary, places
+from beluno.modules.planning import itinerary, places, polls
 from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
 
 
@@ -116,7 +120,50 @@ async def _item_attend(
     return item_response(view)
 
 
+async def _poll_create(
+    ctx: CommandContext, call: CommandCall, body: PollCreateRequest
+) -> PollResponse:
+    draft = polls.PollDraft(
+        kind=body.kind,
+        question=body.question,
+        options=[polls.OptionDraft(option.label, option.place_id) for option in body.options],
+        deadline_at=body.deadline_at,
+        quorum=body.quorum,
+        allow_vote_change=body.allow_vote_change,
+    )
+    return poll_response(await polls.create_poll(ctx, call.id("plan_id"), body.id, draft))
+
+
+async def _poll_vote(ctx: CommandContext, call: CommandCall, body: VoteRequest) -> PollResponse:
+    view = await polls.vote(ctx, call.id("plan_id"), call.id("poll_id"), body.option_id)
+    return poll_response(view)
+
+
+async def _poll_close(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> PollResponse:
+    return poll_response(await polls.close_poll(ctx, call.id("plan_id"), call.id("poll_id")))
+
+
+async def _poll_delete(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> None:
+    await polls.delete_poll(ctx, call.id("plan_id"), call.id("poll_id"))
+
+
+async def _poll_apply(
+    ctx: CommandContext, call: CommandCall, body: PollOutcomeRequest
+) -> PollResponse:
+    request = polls.OutcomeRequest(
+        action=body.action,
+        result_version=body.result_version,
+        option_id=body.option_id,
+        day=body.day,
+        start_time=body.start_time,
+        timezone=body.timezone,
+    )
+    view = await polls.apply_outcome(ctx, call.id("plan_id"), call.id("poll_id"), request)
+    return poll_response(view)
+
+
 PLACE = ("plan_id", "place_id")
+POLL = ("plan_id", "poll_id")
 ITEM = ("plan_id", "item_id")
 
 PLACE_CREATE = Command(
@@ -206,6 +253,51 @@ ITEM_ATTEND = Command(
     etag=version_of,
 )
 
+POLL_CREATE = Command(
+    name="poll.create",
+    payload_model=PollCreateRequest,
+    response_model=PollResponse,
+    handler=_poll_create,
+    target_fields=("plan_id",),
+    status=201,
+    etag=version_of,
+)
+POLL_VOTE = Command(
+    name="poll.vote",
+    payload_model=VoteRequest,
+    response_model=PollResponse,
+    handler=_poll_vote,
+    target_fields=POLL,
+    etag=version_of,
+)
+POLL_CLOSE = Command(
+    name="poll.close",
+    payload_model=EmptyPayload,
+    response_model=PollResponse,
+    handler=_poll_close,
+    target_fields=POLL,
+    etag=version_of,
+)
+POLL_DELETE = Command(
+    name="poll.delete",
+    payload_model=EmptyPayload,
+    response_model=None,
+    handler=_poll_delete,
+    target_fields=POLL,
+    status=204,
+)
+POLL_APPLY_OUTCOME = Command(
+    name="poll.apply_outcome",
+    payload_model=PollOutcomeRequest,
+    response_model=PollResponse,
+    handler=_poll_apply,
+    target_fields=POLL,
+    etag=version_of,
+    # Putting the winner on the itinerary may record a cost later: same write limit.
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
 COMMANDS: list[Command[Any, Any]] = [
     PLACE_CREATE,
     PLACE_UPDATE,
@@ -216,4 +308,9 @@ COMMANDS: list[Command[Any, Any]] = [
     ITEM_UPDATE,
     ITEM_DELETE,
     ITEM_ATTEND,
+    POLL_CREATE,
+    POLL_VOTE,
+    POLL_CLOSE,
+    POLL_DELETE,
+    POLL_APPLY_OUTCOME,
 ]

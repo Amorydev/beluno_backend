@@ -182,6 +182,18 @@ async def delete_item(ctx: CommandContext, plan_id: UUID, item_id: UUID) -> None
     await sync_place_status(ctx, plan_id, entry.place_id)
 
 
+async def attach_place(ctx: CommandContext, plan_id: UUID, item_id: UUID, place_id: UUID) -> None:
+    """Point an item at a place saved after it was planned (a poll's free-text winner)."""
+
+    entry = await _find(ctx, plan_id, item_id, for_update=True)
+    if entry.place_id == place_id:
+        return
+    await _require_place(ctx, plan_id, place_id)
+    entry.place_id = place_id
+    await _bump(ctx, entry, "planning.item_updated")
+    await sync_place_status(ctx, plan_id, place_id)
+
+
 async def attend(ctx: CommandContext, plan_id: UUID, item_id: UUID, status: str) -> ItemView:
     """Set the caller's own "going / not going"; the same answer again changes nothing."""
 
