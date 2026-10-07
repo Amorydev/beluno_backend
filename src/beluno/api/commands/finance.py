@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from beluno.api.commands.groups import required_version
 from beluno.api.finance_presenters import (
     adjustment_draft,
     budget_response,
@@ -45,7 +44,7 @@ from beluno.contracts.finance import (
 from beluno.modules.context import CommandContext
 from beluno.modules.finance import budgets, commitments, expenses, funds, settlements, views
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
-from beluno.sync.commands import Command, CommandCall, EmptyPayload, version_of
+from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
 
 FINANCE_FEATURE = "finance"
 

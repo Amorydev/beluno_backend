@@ -3,8 +3,8 @@
 Decisions are pure functions of the caller's *current* relationship state, which
 the API loads from PostgreSQL on every request; JWT claims never carry roles.
 
-    decision = actor kind x membership/participant state x role
-               x plan/group state x visibility x step-up freshness x action
+    decision = actor kind x participant state x role x plan state
+               x step-up freshness x action
 
 A caller with no viewing relationship gets ``HIDDEN`` (rendered as 404) so the
 response never confirms that a resource exists.
@@ -23,24 +23,6 @@ class Decision(StrEnum):
     STEP_UP_REQUIRED = "step_up_required"
 
 
-class GroupRole(StrEnum):
-    OWNER = "owner"
-    ADMIN = "admin"
-    MEMBER = "member"
-
-
-class MembershipState(StrEnum):
-    INVITED = "invited"
-    ACTIVE = "active"
-    LEFT = "left"
-    REMOVED = "removed"
-
-
-class GroupState(StrEnum):
-    ACTIVE = "active"
-    DELETION_SCHEDULED = "deletion_scheduled"
-
-
 class PlanRole(StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
@@ -57,6 +39,13 @@ class AccessState(StrEnum):
     MERGED = "merged"
 
 
+class Capability(StrEnum):
+    """Per-member grants on top of the role ("Edit others' expenses: Admins + Quân")."""
+
+    MANAGE_EXPENSES = "expenses.manage"
+    MANAGE_BUDGETS = "budgets.manage"
+
+
 class PlanState(StrEnum):
     DRAFT = "draft"
     PLANNING = "planning"
@@ -67,32 +56,12 @@ class PlanState(StrEnum):
     CANCELLED = "cancelled"
 
 
-class Visibility(StrEnum):
-    GROUP = "group"
-    PARTICIPANTS = "participants"
-
-
-class GroupAction(StrEnum):
-    VIEW = "group.view"
-    UPDATE = "group.update"
-    DELETE = "group.delete"
-    VIEW_MEMBERS = "group.members.view"
-    ADD_MEMBER = "group.members.add"
-    REMOVE_MEMBER = "group.members.remove"
-    CHANGE_MEMBER_ROLE = "group.members.change_role"
-    TRANSFER_OWNERSHIP = "group.ownership.transfer"
-    RESPOND_INVITATION = "group.invitation.respond"
-    LEAVE = "group.leave"
-    CREATE_PLAN = "group.plans.create"
-
-
 class PlanAction(StrEnum):
     VIEW = "plan.view"
     UPDATE = "plan.update"
     CHANGE_STATE = "plan.state.change"
     DELETE = "plan.delete"
     DUPLICATE = "plan.duplicate"
-    JOIN = "plan.join"
     VIEW_PARTICIPANTS = "plan.participants.view"
     ADD_PARTICIPANT = "plan.participants.add"
     REMOVE_PARTICIPANT = "plan.participants.remove"
@@ -102,8 +71,6 @@ class PlanAction(StrEnum):
     LEAVE = "plan.leave"
     RESPOND_RSVP = "plan.rsvp.respond"
     MANAGE_INVITES = "plan.invites.manage"
-    VIEW_TRAVEL = "plan.travel.view"
-    MANAGE_TRAVEL = "plan.travel.manage"
     VIEW_FINANCE = "plan.finance.view"
     CREATE_EXPENSE = "plan.expenses.create"
     MANAGE_EXPENSES = "plan.expenses.manage"
@@ -121,8 +88,6 @@ PLAN_MANAGERS = frozenset({PlanRole.OWNER, PlanRole.ADMIN})
 PLAN_CONTRIBUTORS = frozenset({PlanRole.OWNER, PlanRole.ADMIN, PlanRole.MEMBER})
 # Guests can split costs: the money they spent or owe is theirs to record.
 FINANCE_CONTRIBUTORS = PLAN_CONTRIBUTORS | {PlanRole.GUEST}
-ALL_GROUP_ROLES = frozenset(GroupRole)
-GROUP_MANAGERS = frozenset({GroupRole.OWNER, GroupRole.ADMIN})
 
 # Plan content can change while the plan is being organised or settled.
 EDITABLE_PLAN_STATES = frozenset(
@@ -134,6 +99,11 @@ RSVP_PLAN_STATES = frozenset({PlanState.DRAFT, PlanState.PLANNING, PlanState.ACT
 SETTLEMENT_PLAN_STATES = EDITABLE_PLAN_STATES | {PlanState.COMPLETED}
 
 
+# Only plain members hold capabilities; managers already have them and viewers and
+# guests cannot be granted management.
+CAPABILITY_ROLES = frozenset({PlanRole.MEMBER})
+
+
 @dataclass(frozen=True)
 class Rule:
     roles: frozenset[str]
@@ -141,6 +111,8 @@ class Rule:
     registered_only: bool = False
     step_up: bool = False
     allowed_during_deletion: bool = False
+    # A member holding this capability passes as if their role were listed.
+    capability: Capability | None = None
 
 
 PLAN_RULES: dict[PlanAction, Rule] = {
@@ -165,54 +137,24 @@ PLAN_RULES: dict[PlanAction, Rule] = {
     PlanAction.LEAVE: Rule(ALL_PLAN_ROLES, allowed_during_deletion=True),
     PlanAction.RESPOND_RSVP: Rule(ALL_PLAN_ROLES, RSVP_PLAN_STATES),
     PlanAction.MANAGE_INVITES: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES, registered_only=True),
-    PlanAction.VIEW_TRAVEL: Rule(ALL_PLAN_ROLES, allowed_during_deletion=True),
-    PlanAction.MANAGE_TRAVEL: Rule(PLAN_CONTRIBUTORS, EDITABLE_PLAN_STATES),
     PlanAction.VIEW_FINANCE: Rule(ALL_PLAN_ROLES, allowed_during_deletion=True),
     PlanAction.CREATE_EXPENSE: Rule(FINANCE_CONTRIBUTORS, EDITABLE_PLAN_STATES),
-    PlanAction.MANAGE_EXPENSES: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
+    PlanAction.MANAGE_EXPENSES: Rule(
+        PLAN_MANAGERS, EDITABLE_PLAN_STATES, capability=Capability.MANAGE_EXPENSES
+    ),
     PlanAction.RECORD_SETTLEMENT: Rule(FINANCE_CONTRIBUTORS, SETTLEMENT_PLAN_STATES),
     PlanAction.MANAGE_SETTLEMENTS: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
     # Whoever was paid confirms or disputes it, whatever their role.
     PlanAction.ANSWER_SETTLEMENT: Rule(ALL_PLAN_ROLES, SETTLEMENT_PLAN_STATES),
-    PlanAction.MANAGE_BUDGETS: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
+    PlanAction.MANAGE_BUDGETS: Rule(
+        PLAN_MANAGERS, EDITABLE_PLAN_STATES, capability=Capability.MANAGE_BUDGETS
+    ),
     PlanAction.CONTRIBUTE_FUND: Rule(FINANCE_CONTRIBUTORS, EDITABLE_PLAN_STATES),
     PlanAction.MANAGE_FUND: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
     PlanAction.ADJUST_LEDGER: Rule(
         frozenset({PlanRole.OWNER}), EDITABLE_PLAN_STATES, registered_only=True, step_up=True
     ),
 }
-
-# Active group members who are not participants of a group-visible plan may read
-# it and join it; nothing else.
-GROUP_VISIBLE_READ_ACTIONS = frozenset(
-    {PlanAction.VIEW, PlanAction.VIEW_PARTICIPANTS, PlanAction.VIEW_TRAVEL}
-)
-
-GROUP_RULES: dict[GroupAction, Rule] = {
-    GroupAction.VIEW: Rule(ALL_GROUP_ROLES, allowed_during_deletion=True),
-    GroupAction.UPDATE: Rule(GROUP_MANAGERS),
-    GroupAction.DELETE: Rule(
-        frozenset({GroupRole.OWNER}), step_up=True, allowed_during_deletion=True
-    ),
-    GroupAction.VIEW_MEMBERS: Rule(ALL_GROUP_ROLES, allowed_during_deletion=True),
-    GroupAction.ADD_MEMBER: Rule(GROUP_MANAGERS),
-    GroupAction.REMOVE_MEMBER: Rule(GROUP_MANAGERS),
-    GroupAction.CHANGE_MEMBER_ROLE: Rule(frozenset({GroupRole.OWNER})),
-    GroupAction.TRANSFER_OWNERSHIP: Rule(frozenset({GroupRole.OWNER}), step_up=True),
-    GroupAction.LEAVE: Rule(ALL_GROUP_ROLES, allowed_during_deletion=True),
-    GroupAction.CREATE_PLAN: Rule(ALL_GROUP_ROLES),
-}
-
-
-@dataclass(frozen=True)
-class GroupSubject:
-    """The caller's current relationship to one group."""
-
-    role: GroupRole | None
-    membership_state: MembershipState | None
-    group_state: GroupState
-    actor_is_guest: bool
-    step_up_fresh: bool
 
 
 @dataclass(frozen=True)
@@ -221,99 +163,34 @@ class PlanSubject:
 
     participant_role: PlanRole | None
     access_state: AccessState | None
-    group_member_active: bool
-    visibility: Visibility
     plan_state: PlanState
     deletion_scheduled: bool
     actor_is_guest: bool
     step_up_fresh: bool
-
-
-def decide_group(action: GroupAction, subject: GroupSubject) -> Decision:
-    state = subject.membership_state
-    if state is MembershipState.INVITED:
-        if action in (GroupAction.VIEW, GroupAction.RESPOND_INVITATION):
-            return Decision.ALLOW
-        return Decision.FORBIDDEN
-    if state is not MembershipState.ACTIVE or subject.role is None:
-        return Decision.HIDDEN
-    if action is GroupAction.RESPOND_INVITATION:
-        return Decision.FORBIDDEN
-    rule = GROUP_RULES[action]
-    return _apply_rule(
-        rule,
-        role=subject.role,
-        actor_is_guest=subject.actor_is_guest,
-        deletion_scheduled=subject.group_state is GroupState.DELETION_SCHEDULED,
-        plan_state=None,
-        step_up_fresh=subject.step_up_fresh,
-    )
+    capabilities: frozenset[Capability] = frozenset()
 
 
 def decide_plan(action: PlanAction, subject: PlanSubject) -> Decision:
-    if subject.access_state is AccessState.ACTIVE and subject.participant_role is not None:
-        if action is PlanAction.JOIN:
-            return Decision.FORBIDDEN
-        return _apply_rule(
-            PLAN_RULES[action],
-            role=subject.participant_role,
-            actor_is_guest=subject.actor_is_guest,
-            deletion_scheduled=subject.deletion_scheduled,
-            plan_state=subject.plan_state,
-            step_up_fresh=subject.step_up_fresh,
-        )
-    if subject.visibility is Visibility.GROUP and subject.group_member_active:
-        if action in GROUP_VISIBLE_READ_ACTIONS:
-            return Decision.ALLOW
-        if action is PlanAction.JOIN:
-            joinable = (
-                not subject.actor_is_guest
-                and not subject.deletion_scheduled
-                and subject.plan_state in EDITABLE_PLAN_STATES
-                and subject.access_state in (None, AccessState.LEFT)
-            )
-            return Decision.ALLOW if joinable else Decision.FORBIDDEN
+    if subject.access_state is not AccessState.ACTIVE or subject.participant_role is None:
+        return Decision.HIDDEN
+    rule = PLAN_RULES[action]
+    role = subject.participant_role
+    granted = (
+        rule.capability is not None
+        and rule.capability in subject.capabilities
+        and role in CAPABILITY_ROLES
+    )
+    if role not in rule.roles and not granted:
         return Decision.FORBIDDEN
-    return Decision.HIDDEN
-
-
-def _apply_rule(
-    rule: Rule,
-    *,
-    role: str,
-    actor_is_guest: bool,
-    deletion_scheduled: bool,
-    plan_state: PlanState | None,
-    step_up_fresh: bool,
-) -> Decision:
-    if role not in rule.roles:
+    if rule.registered_only and subject.actor_is_guest:
         return Decision.FORBIDDEN
-    if rule.registered_only and actor_is_guest:
+    if subject.deletion_scheduled and not rule.allowed_during_deletion:
         return Decision.FORBIDDEN
-    if deletion_scheduled and not rule.allowed_during_deletion:
+    if rule.plan_states is not None and subject.plan_state not in rule.plan_states:
         return Decision.FORBIDDEN
-    if rule.plan_states is not None and plan_state not in rule.plan_states:
-        return Decision.FORBIDDEN
-    if rule.step_up and not step_up_fresh:
+    if rule.step_up and not subject.step_up_fresh:
         return Decision.STEP_UP_REQUIRED
     return Decision.ALLOW
-
-
-def can_manage_group_member(
-    actor_role: GroupRole,
-    target_role: GroupRole,
-    *,
-    new_role: GroupRole | None = None,
-) -> bool:
-    """Owners manage everyone but themselves; admins manage plain members only."""
-
-    if target_role is GroupRole.OWNER or new_role is GroupRole.OWNER:
-        return False
-    if actor_role is GroupRole.OWNER:
-        return True
-    if actor_role is GroupRole.ADMIN:
-        return target_role is GroupRole.MEMBER and new_role in (None, GroupRole.MEMBER)
-    return False
 
 
 def can_manage_participant(

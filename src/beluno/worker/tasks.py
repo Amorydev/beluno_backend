@@ -9,14 +9,13 @@ import procrastinate
 from beluno.modules.finance.maintenance import reconcile_ledgers
 from beluno.modules.iam.email_challenges import DELIVER_TASK_NAME, EMAIL_QUEUE, deliver_challenge
 from beluno.modules.iam.maintenance import purge_expired_auth_records
-from beluno.modules.plans.series import extend_all_series
 from beluno.modules.sync_audit.maintenance import compact_changes, purge_operations
 from beluno.worker.deadletter import queue_health
 from beluno.worker.runtime import get_email_sender, get_worker_runtime
 
 app = procrastinate.App(connector=procrastinate.PsycopgConnector())
 
-WORKER_QUEUES = ["maintenance", EMAIL_QUEUE, "plans"]
+WORKER_QUEUES = ["maintenance", EMAIL_QUEUE]
 
 
 @app.task(queue="maintenance", retry=3, queueing_lock="maintenance:heartbeat")
@@ -44,20 +43,6 @@ async def deliver_email_challenge(challenge_id: str, payload_version: int = 1) -
 async def purge_expired_auth(timestamp: int) -> int:
     del timestamp
     return await purge_expired_auth_records(get_worker_runtime())
-
-
-@app.periodic(cron="5 * * * *", periodic_id="plans.extend_series_horizons")
-@app.task(
-    name="plans.extend_series_horizons",
-    queue="plans",
-    retry=3,
-    queueing_lock="plans:extend_series_horizons",
-)
-async def extend_series_horizons(timestamp: int) -> int:
-    """Hourly: materialize newly-in-horizon occurrences; idempotent by occurrence key."""
-
-    del timestamp
-    return await extend_all_series(get_worker_runtime())
 
 
 @app.periodic(cron="41 3 * * *", periodic_id="sync.compact_changes")

@@ -21,16 +21,14 @@ from beluno import __version__
 from beluno.api.commands import build_registry
 from beluno.api.routers import (
     auth,
+    crews,
     finance,
-    groups,
     health,
     internal,
     invites,
     me,
-    plan_series,
     plans,
     sync,
-    travel,
 )
 from beluno.auth import AccessTokenCodec
 from beluno.config import Settings, get_settings
@@ -158,13 +156,11 @@ def create_app(
         internal.router,
         auth.router,
         me.router,
-        groups.router,
+        crews.router,
         plans.router,
-        travel.router,
         finance.currency_router,
         finance.router,
         invites.router,
-        plan_series.router,
         sync.router,
     ):
         app.include_router(router)

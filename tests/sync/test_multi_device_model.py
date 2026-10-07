@@ -31,8 +31,9 @@ from beluno.testkit.identity import IdentityProviderStub
 
 pytestmark = pytest.mark.integration
 
-ACTIONS = ("edit", "rsvp", "add_segment", "delete_segment", "push", "pull")
+ACTIONS = ("edit", "rsvp", "add_budget", "delete_budget", "push", "pull")
 FAULTS = ("ok", "lost", "duplicate")
+CATEGORIES = ("food", "lodging", "transport", "activities")
 Step = tuple[int, str, str, int]
 
 steps = st.lists(
@@ -109,30 +110,25 @@ class Scenario:
     def rsvp(self, device: Device, seed: int) -> None:
         self.enqueue(device, "plan.rsvp", {"status": ("going", "maybe", "declined")[seed % 3]})
 
-    def add_segment(self, device: Device, seed: int) -> None:
+    def add_budget(self, device: Device, seed: int) -> None:
+        # Category budgets are unique per category, so some adds collide and are refused.
         self.enqueue(
             device,
-            "travel.segment.add",
+            "budget.create",
             {
                 "id": str(new_id()),
-                "segment_type": "car",
-                "timing_mode": "date",
-                "start_date": "2026-12-01",
-                "sort_order": seed,
+                "scope": "category",
+                "category": CATEGORIES[seed % len(CATEGORIES)],
+                "limit_minor": 1_000 + seed,
             },
         )
 
-    def delete_segment(self, device: Device, seed: int) -> None:
-        segments = sorted(
-            entity_id for (kind, entity_id) in device.view if kind == "travel_segment"
-        )
-        if not segments:
+    def delete_budget(self, device: Device, seed: int) -> None:
+        budgets = sorted(entity_id for (kind, entity_id) in device.view if kind == "budget")
+        if not budgets:
             return
         self.enqueue(
-            device,
-            "travel.segment.delete",
-            {},
-            target={"segment_id": segments[seed % len(segments)]},
+            device, "budget.delete", {}, target={"budget_id": budgets[seed % len(budgets)]}
         )
 
     # --- transport with faults ----------------------------------------------------
@@ -173,10 +169,10 @@ class Scenario:
             device.apply([self.item("plan", body["id"], body)])
         elif command == "plan.rsvp":
             device.apply([self.item("plan_participant", body["id"], body)])
-        elif command == "travel.segment.add":
-            device.apply([self.item("travel_segment", body["id"], body)])
-        elif command == "travel.segment.delete":
-            key = ("travel_segment", operation["target"]["segment_id"])
+        elif command == "budget.create":
+            device.apply([self.item("budget", body["id"], body)])
+        elif command == "budget.delete":
+            key = ("budget", operation["target"]["budget_id"])
             deleted = device.view.pop(key, None)
             if deleted is not None:
                 device.tombstones[key] = max(device.tombstones.get(key, 0), deleted["version"])
@@ -233,7 +229,7 @@ def shared_state(view: dict[tuple[str, str], dict[str, Any]]) -> dict[str, Any]:
     return {
         "title": plan["title"],
         "version": plan["version"],
-        "segments": sorted(entity_id for (kind, entity_id) in view if kind == "travel_segment"),
+        "budgets": sorted(entity_id for (kind, entity_id) in view if kind == "budget"),
         "participants": sorted(
             (entity_id, data["rsvp_status"], data["version"])
             for (kind, entity_id), data in view.items()
@@ -274,7 +270,7 @@ async def run_example(
             plan = (
                 await api.post(
                     "/v1/plans",
-                    json={"title": "Trip", "base_currency": "USD"},
+                    json={"type": "hangout", "title": "Trip", "base_currency": "USD"},
                     headers=owner.headers,
                 )
             ).json()
@@ -287,9 +283,6 @@ async def run_example(
                 headers=partner.headers,
             )
             assert joined.status_code == 200, joined.text
-            assert (
-                await api.put(f"/v1/plans/{plan['id']}/travel", json={}, headers=owner.headers)
-            ).status_code == 200
             devices = [Device("owner-phone", owner), Device("partner-phone", partner)]
             scenario = Scenario(api, plan["id"], devices)
             for device in devices:
@@ -305,17 +298,15 @@ async def run_example(
     finally:
         await database.close()
 
-    # No operation applied twice: segments on the server equal adds minus deletes.
+    # No operation applied twice: budgets on the server equal adds minus deletes.
     adds = admin.scalar(
-        "SELECT count(*) FROM sync_audit.operations WHERE command = 'travel.segment.add'"
+        "SELECT count(*) FROM sync_audit.operations WHERE command = 'budget.create'"
     )
     deletes = admin.scalar(
-        "SELECT count(*) FROM sync_audit.operations WHERE command = 'travel.segment.delete'"
+        "SELECT count(*) FROM sync_audit.operations WHERE command = 'budget.delete'"
     )
-    live_segments = admin.scalar(
-        "SELECT count(*) FROM plans.travel_segments WHERE deleted_at IS NULL"
-    )
-    assert live_segments == adds - deletes
+    live_budgets = admin.scalar("SELECT count(*) FROM finance.budgets WHERE deleted_at IS NULL")
+    assert live_budgets == adds - deletes
     assert (
         admin.scalar(
             "SELECT count(*) FROM sync_audit.operations "
@@ -355,7 +346,7 @@ def test_handwritten_lost_ack_and_duplicate_pages_converge(
 ) -> None:
     script: list[Step] = [
         (0, "edit", "ok", 1),
-        (0, "add_segment", "ok", 2),
+        (0, "add_budget", "ok", 2),
         (0, "push", "lost", 0),
         (1, "pull", "duplicate", 0),
         (1, "edit", "ok", 3),
@@ -363,7 +354,7 @@ def test_handwritten_lost_ack_and_duplicate_pages_converge(
         (0, "push", "ok", 0),
         (0, "pull", "lost", 0),
         (0, "pull", "ok", 0),
-        (1, "delete_segment", "ok", 0),
+        (1, "delete_budget", "ok", 0),
         (1, "push", "lost", 0),
         (1, "push", "ok", 0),
         (0, "rsvp", "ok", 4),

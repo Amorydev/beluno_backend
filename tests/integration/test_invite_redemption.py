@@ -21,7 +21,12 @@ pytestmark = pytest.mark.integration
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn) -> dict:
     response = await api.post(
         "/v1/plans",
-        json={"title": "Birthday", "kind": "birthday", "base_currency": "EUR"},
+        json={
+            "type": "hangout",
+            "title": "Birthday",
+            "activity": "birthday",
+            "base_currency": "EUR",
+        },
         headers=owner.headers,
     )
     assert response.status_code == 201, response.text
@@ -65,7 +70,8 @@ async def test_invite_is_hashed_previewed_minimally_and_redeemed_once(
     assert preview.status_code == 200
     assert preview.json()["plan"] == {
         "title": "Birthday",
-        "kind": "birthday",
+        "type": "hangout",
+        "activity": "birthday",
         "timing": {
             "mode": "undecided",
             "start_date": None,
@@ -74,6 +80,9 @@ async def test_invite_is_hashed_previewed_minimally_and_redeemed_once(
             "ends_at": None,
             "timezone": None,
         },
+        "destination_names": [],
+        "pass_color": plan["pass_color"],
+        "participant_count": 1,
         "organizer_name": "Organizer",
     }
     assert "id" not in preview.json()["plan"]
@@ -214,36 +223,6 @@ async def test_role_limits_removed_users_and_rotation(
     ).status_code == 404
     preview = await api.post("/v1/invites/preview", json={"token": rotated.json()["token"]})
     assert preview.status_code == 200
-
-
-async def test_group_invite_links_add_registered_members(
-    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
-) -> None:
-    owner = await sign_in(api, identity_provider)
-    friend = await sign_in(api, identity_provider, name="Friend")
-    group = (
-        await api.post(
-            "/v1/groups",
-            json={"name": "Hikers", "default_currency": "USD", "default_timezone": "UTC"},
-            headers=owner.headers,
-        )
-    ).json()
-    invite = await api.post(f"/v1/groups/{group['id']}/invites", json={}, headers=owner.headers)
-    token = invite.json()["token"]
-
-    preview = await api.post("/v1/invites/preview", json={"token": token})
-    assert preview.json()["group"] == {"name": "Hikers"}
-    assert (await redeem(api, token, display_name="Guest")).status_code == 401
-    joined = await redeem(api, token, friend)
-    assert joined.json()["group"]["my_role"] == "member"
-    members = await api.get(f"/v1/groups/{group['id']}/members", headers=owner.headers)
-    assert {member["display_name"] for member in members.json()} == {"Test Member", "Friend"}
-
-    await api.delete(
-        f"/v1/groups/{group['id']}/invites/{invite.json()['id']}", headers=owner.headers
-    )
-    late = await sign_in(api, identity_provider)
-    assert (await redeem(api, token, late)).status_code == 404
 
 
 @pytest.fixture

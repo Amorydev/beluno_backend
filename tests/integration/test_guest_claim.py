@@ -16,7 +16,13 @@ pytestmark = pytest.mark.integration
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn, **body: object) -> dict:
     response = await api.post(
         "/v1/plans",
-        json={"title": "Dinner", "kind": "dinner", "base_currency": "VND", **body},
+        json={
+            "type": "hangout",
+            "title": "Dinner",
+            "activity": "dinner",
+            "base_currency": "VND",
+            **body,
+        },
         headers=owner.headers,
     )
     assert response.status_code == 201, response.text
@@ -57,19 +63,15 @@ async def test_guest_joins_with_limited_rights(
     )
     assert rsvp.status_code == 200
     denied_plan = await api.post(
-        "/v1/plans", json={"title": "Mine", "base_currency": "USD"}, headers=guest.headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Mine", "base_currency": "USD"},
+        headers=guest.headers,
     )
     assert denied_plan.status_code == 403
     denied_invite = await api.post(
         f"/v1/plans/{plan['id']}/invites", json={}, headers=guest.headers
     )
     assert denied_invite.status_code == 403
-    group = await api.post(
-        "/v1/groups",
-        json={"name": "x", "default_currency": "USD", "default_timezone": "UTC"},
-        headers=guest.headers,
-    )
-    assert group.status_code == 403
 
 
 async def test_invites_without_guest_access_require_sign_in(

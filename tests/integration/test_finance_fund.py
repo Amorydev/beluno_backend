@@ -256,7 +256,9 @@ async def test_guest_balances_follow_the_account_they_merge_into(
     member = await sign_in(api, identity_provider, subject="bea-sub", name="Bea")
     plan = (
         await api.post(
-            "/v1/plans", json={"title": "Trip", "base_currency": "USD"}, headers=owner.headers
+            "/v1/plans",
+            json={"type": "hangout", "title": "Trip", "base_currency": "USD"},
+            headers=owner.headers,
         )
     ).json()
 
@@ -276,7 +278,7 @@ async def test_guest_balances_follow_the_account_they_merge_into(
     guest_row = redeemed.json()["participant"]["id"]
     roster = (await api.get(f"/v1/plans/{plan['id']}/participants", headers=owner.headers)).json()
     ann = next(p["id"] for p in roster if p["display_name"] == "Ann")
-    trip = FinancePlan(plan_id=plan["id"], group_id="", owner=owner, members={}, people={})
+    trip = FinancePlan(plan_id=plan["id"], owner=owner, members={}, people={})
     await add_expense(api, guest, trip, equal_expense(1000, guest_row, [ann, guest_row]))
     merged = await api.post(
         "/v1/auth/google",

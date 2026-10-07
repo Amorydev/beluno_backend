@@ -9,9 +9,16 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from beluno.contracts.common import DisplayName
-from beluno.contracts.groups import GroupResponse
 from beluno.contracts.iam import EMAIL_PATTERN, DeviceRequest, TokenResponse
-from beluno.contracts.plans import ParticipantResponse, PlanKind, PlanResponse, PlanTiming
+from beluno.contracts.plans import (
+    AvatarColor,
+    HangoutActivity,
+    ParticipantResponse,
+    PassColor,
+    PlanResponse,
+    PlanTiming,
+    PlanType,
+)
 
 ExpiresInHours = Field(default=168, ge=1, le=720)
 
@@ -33,17 +40,9 @@ class ClaimInviteCreateRequest(BaseModel):
     expires_in_hours: int = ExpiresInHours
 
 
-class GroupInviteCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    role: Literal["admin", "member"] = "member"
-    max_uses: int | None = Field(default=None, ge=1, le=1_000)
-    expires_in_hours: int = ExpiresInHours
-
-
 class InviteResponse(BaseModel):
     id: UUID
-    kind: Literal["plan", "group"]
+    kind: Literal["plan"]
     purpose: Literal["join", "claim"]
     role: str
     allow_guests: bool
@@ -72,41 +71,42 @@ class RedeemInviteRequest(InviteTokenRequest):
         default=None, description="Required when joining as a guest without an account."
     )
     merge_existing: bool = False
+    avatar_color: AvatarColor | None = Field(
+        default=None, description="The colour the person picks for themselves in this plan."
+    )
     device: DeviceRequest | None = None
 
 
 class PlanInvitePreview(BaseModel):
     title: str
-    kind: PlanKind
+    type: PlanType
+    activity: HangoutActivity | None
     timing: PlanTiming
+    destination_names: list[str] = Field(description="City-level names only, never addresses")
+    pass_color: PassColor
+    participant_count: int
     organizer_name: str | None
-
-
-class GroupInvitePreview(BaseModel):
-    name: str
 
 
 class InvitePreviewResponse(BaseModel):
     """Deliberately minimal: no members, balances, bookings, or locations."""
 
-    kind: Literal["plan", "group"]
+    kind: Literal["plan"]
     purpose: Literal["join", "claim"]
     requires_approval: bool
     allow_guests: bool
     placeholder_name: str | None
     expires_at: datetime
-    plan: PlanInvitePreview | None
-    group: GroupInvitePreview | None
+    plan: PlanInvitePreview
 
 
 class RedeemInviteResponse(BaseModel):
-    kind: Literal["plan", "group"]
+    kind: Literal["plan"]
     status: Literal["active", "pending_approval"]
     plan: PlanResponse | None = Field(
         default=None, description="Present once access is active (not while pending approval)."
     )
     participant: ParticipantResponse | None = None
-    group: GroupResponse | None = None
     session: TokenResponse | None = Field(
         default=None, description="Guest session created for a caller without an account."
     )

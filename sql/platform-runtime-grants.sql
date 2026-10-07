@@ -8,7 +8,7 @@ DECLARE
     schema_name text;
 BEGIN
     FOREACH schema_name IN ARRAY ARRAY[
-        'iam', 'groups', 'plans', 'sync_audit', 'finance', 'decisions',
+        'iam', 'plans', 'people', 'sync_audit', 'finance', 'decisions',
         'schedule_places', 'coordination', 'bookings', 'media_memories',
         'engagement', 'search_export', 'billing', 'analytics_ops', 'jobs'
     ]

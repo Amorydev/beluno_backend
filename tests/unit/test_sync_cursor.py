@@ -26,7 +26,7 @@ def test_cursor_round_trips_every_field() -> None:
     scope = ScopeKey(ChangeScope.PLAN, uuid4())
     for cursor in (
         Cursor(user_id, scope, 3, AccessLevel.MANAGER, "changes", 41, watermark=50),
-        Cursor(user_id, scope, 1, AccessLevel.READER, "changes", 0),
+        Cursor(user_id, scope, 1, AccessLevel.MEMBER, "changes", 0),
         Cursor.snapshot_start(user_id, scope, 2, AccessLevel.MEMBER, 17).continue_snapshot(
             2, uuid4()
         ),
@@ -40,7 +40,7 @@ def test_tampered_and_foreign_cursors_are_rejected() -> None:
     codec = CursorCodec(HASHER)
     user_id = uuid4()
     cursor = Cursor(
-        user_id, ScopeKey(ChangeScope.GROUP, uuid4()), 1, AccessLevel.MEMBER, "changes", 5
+        user_id, ScopeKey(ChangeScope.PLAN, uuid4()), 1, AccessLevel.MEMBER, "changes", 5
     )
     token = codec.encode(cursor)
 

@@ -2,7 +2,7 @@
 
 Every operation gets its own result. Client order is preserved: after a
 transient failure (rate limit, disabled feature, exhausted retries) the later
-operations that address the same plan, group, or series are skipped so they
+operations that address the same plan are skipped so they
 cannot overtake the failed one; a permanent failure only skips operations that
 declared a dependency on it. Replays of already-applied operations come back
 with their stored response and never count as new work.
@@ -32,7 +32,7 @@ from beluno.sync.commands import Command, CommandCall
 from beluno.sync.executor import CommandRunner
 from beluno.sync.idempotency import key_reused
 
-ORDERING_FIELDS = ("plan_id", "group_id", "series_id")
+ORDERING_FIELDS = ("plan_id",)
 TRANSIENT_STATUSES = frozenset({429, 503})
 PERMANENT_CONFLICT_STATUSES = frozenset({409, 412})
 

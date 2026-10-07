@@ -12,6 +12,7 @@ from beluno.contracts.errors import conflict, version_conflict
 from beluno.db.ids import new_id
 from beluno.db.models.iam import User, UserIdentity
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.currencies import require_supported_currency
 from beluno.modules.iam.external_identity import IdentityProvider, VerifiedIdentity
 from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
 
@@ -94,6 +95,7 @@ async def create_registered_user(ctx: CommandContext, identity: VerifiedIdentity
         email_verified_at=ctx.now if email else None,
         locale=None,
         timezone=None,
+        default_currency=None,
         merged_into_user_id=None,
         version=1,
         created_at=ctx.now,
@@ -118,6 +120,7 @@ async def create_guest_user(ctx: CommandContext, display_name: str) -> User:
         email_verified_at=None,
         locale=None,
         timezone=None,
+        default_currency=None,
         merged_into_user_id=None,
         version=1,
         created_at=ctx.now,
@@ -207,8 +210,10 @@ class ProfileChanges:
     display_name: str | None = None
     locale: str | None = None
     timezone: str | None = None
+    default_currency: str | None = None
     clear_locale: bool = False
     clear_timezone: bool = False
+    clear_default_currency: bool = False
 
 
 async def update_profile(
@@ -226,6 +231,10 @@ async def update_profile(
         user.locale = changes.locale
     if changes.timezone is not None or changes.clear_timezone:
         user.timezone = changes.timezone
+    if changes.default_currency is not None:
+        await require_supported_currency(ctx, changes.default_currency)
+    if changes.default_currency is not None or changes.clear_default_currency:
+        user.default_currency = changes.default_currency
     user.version += 1
     user.updated_at = ctx.now
     await ctx.session.flush()

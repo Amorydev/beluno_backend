@@ -1,0 +1,384 @@
+{
+  "accepted": [
+    {
+      "break": "GET /v1/groups: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/groups: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/groups/{group_id}: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/groups/{group_id}: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PATCH /v1/groups/{group_id}: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/groups/{group_id}/invitation: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/groups/{group_id}/invites: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/groups/{group_id}/invites: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/groups/{group_id}/invites/{invite_id}: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/groups/{group_id}/members: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/groups/{group_id}/members: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/groups/{group_id}/members/{user_id}: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PATCH /v1/groups/{group_id}/members/{user_id}: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/groups/{group_id}/ownership-transfer: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/groups/{group_id}/restore: operation removed",
+      "reason": "Groups are removed: the app is trip-first and uses crews (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/invites/preview: response property removed 200:group",
+      "reason": "Group invites are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/invites/redeem: response property removed 200:group",
+      "reason": "Group invites are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plan-series: operation removed",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/plan-series/{series_id}: operation removed",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plan-series/{series_id}/cancel: operation removed",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plan-series/{series_id}/split: operation removed",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans: response property removed 201:group_id",
+      "reason": "Plans no longer belong to groups (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans: response property removed 201:is_series_exception",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans: response property removed 201:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans: response property removed 201:occurrence_key",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans: response property removed 201:series_id",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans: response property removed 201:visibility",
+      "reason": "Plans are visible to their participants only (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans: newly required body:type",
+      "reason": "Every plan states whether it is a trip or a hangout (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/plans/{plan_id}: response property removed 200:group_id",
+      "reason": "Group invites are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/plans/{plan_id}: response property removed 200:is_series_exception",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/plans/{plan_id}: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/plans/{plan_id}: response property removed 200:occurrence_key",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/plans/{plan_id}: response property removed 200:series_id",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/plans/{plan_id}: response property removed 200:visibility",
+      "reason": "Plans are visible to their participants only (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/plans/{plan_id}: response property removed 200:group_id",
+      "reason": "Group invites are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/plans/{plan_id}: response property removed 200:is_series_exception",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/plans/{plan_id}: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/plans/{plan_id}: response property removed 200:occurrence_key",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/plans/{plan_id}: response property removed 200:series_id",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/plans/{plan_id}: response property removed 200:visibility",
+      "reason": "Plans are visible to their participants only (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PATCH /v1/plans/{plan_id}: response property removed 200:group_id",
+      "reason": "Group invites are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PATCH /v1/plans/{plan_id}: response property removed 200:is_series_exception",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PATCH /v1/plans/{plan_id}: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PATCH /v1/plans/{plan_id}: response property removed 200:occurrence_key",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PATCH /v1/plans/{plan_id}: response property removed 200:series_id",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PATCH /v1/plans/{plan_id}: response property removed 200:visibility",
+      "reason": "Plans are visible to their participants only (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/duplicate: response property removed 201:group_id",
+      "reason": "Plans no longer belong to groups (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/duplicate: response property removed 201:is_series_exception",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/duplicate: response property removed 201:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/duplicate: response property removed 201:occurrence_key",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/duplicate: response property removed 201:series_id",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/duplicate: response property removed 201:visibility",
+      "reason": "Plans are visible to their participants only (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/join: operation removed",
+      "reason": "Group-visible plans are removed, so self-join goes away (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/ownership-transfer: response property removed 200:group_id",
+      "reason": "Group invites are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/ownership-transfer: response property removed 200:is_series_exception",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/ownership-transfer: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/ownership-transfer: response property removed 200:occurrence_key",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/ownership-transfer: response property removed 200:series_id",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/ownership-transfer: response property removed 200:visibility",
+      "reason": "Plans are visible to their participants only (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/restore: response property removed 200:group_id",
+      "reason": "Group invites are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/restore: response property removed 200:is_series_exception",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/restore: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/restore: response property removed 200:occurrence_key",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/restore: response property removed 200:series_id",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/restore: response property removed 200:visibility",
+      "reason": "Plans are visible to their participants only (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/state: response property removed 200:group_id",
+      "reason": "Group invites are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/state: response property removed 200:is_series_exception",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/state: response property removed 200:kind",
+      "reason": "Plan kind becomes type plus hangout activity (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/state: response property removed 200:occurrence_key",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/state: response property removed 200:series_id",
+      "reason": "Recurring plan series are removed (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/state: response property removed 200:visibility",
+      "reason": "Plans are visible to their participants only (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "GET /v1/plans/{plan_id}/travel: operation removed",
+      "reason": "The travel extension is removed; destinations and bookings replace it (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PUT /v1/plans/{plan_id}/travel: operation removed",
+      "reason": "The travel extension is removed; destinations and bookings replace it (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "POST /v1/plans/{plan_id}/travel/segments: operation removed",
+      "reason": "The travel extension is removed; destinations and bookings replace it (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "PUT /v1/plans/{plan_id}/travel/segments/{segment_id}: operation removed",
+      "reason": "The travel extension is removed; destinations and bookings replace it (ADR 0008).",
+      "release": "1"
+    },
+    {
+      "break": "DELETE /v1/plans/{plan_id}/travel/segments/{segment_id}: operation removed",
+      "reason": "The travel extension is removed; destinations and bookings replace it (ADR 0008).",
+      "release": "1"
+    }
+  ]
+}

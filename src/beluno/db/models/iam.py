@@ -23,6 +23,7 @@ class User(Base):
     email_verified_at: Mapped[datetime | None]
     locale: Mapped[str | None] = mapped_column(Text)
     timezone: Mapped[str | None] = mapped_column(Text)
+    default_currency: Mapped[str | None] = mapped_column(Text)
     merged_into_user_id: Mapped[UUID | None]
     version: Mapped[int]
     created_at: Mapped[datetime]

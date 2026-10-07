@@ -930,10 +930,7 @@
             "type": "string"
           },
           "kind": {
-            "enum": [
-              "plan",
-              "group"
-            ],
+            "const": "plan",
             "title": "Kind",
             "type": "string"
           },
@@ -1013,6 +1010,191 @@
         "title": "CreatedInviteResponse",
         "type": "object"
       },
+      "CrewCreateRequest": {
+        "additionalProperties": false,
+        "description": "Name the people directly, or save a plan's registered people (\"Saved from Friday hotpot\").\n\nRegistered accounts only; guests are never listed and join plans through invite links.",
+        "properties": {
+          "from_plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Plan Id"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "member_user_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member User Ids"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CrewCreateRequest",
+        "type": "object"
+      },
+      "CrewMemberResponse": {
+        "properties": {
+          "addable": {
+            "description": "A registered person you share an active plan with: a new plan can add them directly. Others join through an invite link.",
+            "title": "Addable",
+            "type": "boolean"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null once the person shares no plan with you",
+            "title": "Display Name"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "addable"
+        ],
+        "title": "CrewMemberResponse",
+        "type": "object"
+      },
+      "CrewResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/CrewMemberResponse"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source_plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Plan Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "members",
+          "source_plan_id",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CrewResponse",
+        "type": "object"
+      },
+      "CrewUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "member_user_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member User Ids"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "CrewUpdateRequest",
+        "type": "object"
+      },
       "CurrencyResponse": {
         "properties": {
           "code": {
@@ -1070,6 +1252,72 @@
           "actual_minor"
         ],
         "title": "DaySpend",
+        "type": "object"
+      },
+      "Destination": {
+        "additionalProperties": false,
+        "description": "One stop of a trip (\"Tokyo\"); dates are optional (nights per city).",
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{1,5}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "e.g. TYO",
+            "title": "Code"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Destination",
         "type": "object"
       },
       "DeviceRequest": {
@@ -2106,242 +2354,6 @@
         "title": "FundSettingsResponse",
         "type": "object"
       },
-      "GroupCreateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "default_currency": {
-            "pattern": "^[A-Z]{3}$",
-            "title": "Default Currency",
-            "type": "string"
-          },
-          "default_timezone": {
-            "maxLength": 64,
-            "title": "Default Timezone",
-            "type": "string"
-          },
-          "id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Id"
-          },
-          "name": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "default_currency",
-          "default_timezone"
-        ],
-        "title": "GroupCreateRequest",
-        "type": "object"
-      },
-      "GroupInviteCreateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "expires_in_hours": {
-            "default": 168,
-            "maximum": 720.0,
-            "minimum": 1.0,
-            "title": "Expires In Hours",
-            "type": "integer"
-          },
-          "max_uses": {
-            "anyOf": [
-              {
-                "maximum": 1000.0,
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Uses"
-          },
-          "role": {
-            "default": "member",
-            "enum": [
-              "admin",
-              "member"
-            ],
-            "title": "Role",
-            "type": "string"
-          }
-        },
-        "title": "GroupInviteCreateRequest",
-        "type": "object"
-      },
-      "GroupInvitePreview": {
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "GroupInvitePreview",
-        "type": "object"
-      },
-      "GroupResponse": {
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "default_currency": {
-            "title": "Default Currency",
-            "type": "string"
-          },
-          "default_timezone": {
-            "title": "Default Timezone",
-            "type": "string"
-          },
-          "deletion_scheduled_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Deletion Scheduled At"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "my_membership_state": {
-            "anyOf": [
-              {
-                "enum": [
-                  "invited",
-                  "active",
-                  "left",
-                  "removed"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "My Membership State"
-          },
-          "my_role": {
-            "anyOf": [
-              {
-                "enum": [
-                  "owner",
-                  "admin",
-                  "member"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "My Role"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "state": {
-            "enum": [
-              "active",
-              "deletion_scheduled"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "default_currency",
-          "default_timezone",
-          "state",
-          "deletion_scheduled_at",
-          "my_role",
-          "my_membership_state",
-          "version",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "GroupResponse",
-        "type": "object"
-      },
-      "GroupUpdateRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "default_currency": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Z]{3}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Currency"
-          },
-          "default_timezone": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Timezone"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "maxLength": 80,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          }
-        },
-        "title": "GroupUpdateRequest",
-        "type": "object"
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2458,20 +2470,6 @@
         "title": "HealthResponse",
         "type": "object"
       },
-      "InvitationAnswerRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "accept": {
-            "title": "Accept",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "accept"
-        ],
-        "title": "InvitationAnswerRequest",
-        "type": "object"
-      },
       "InvitePreviewResponse": {
         "description": "Deliberately minimal: no members, balances, bookings, or locations.",
         "properties": {
@@ -2484,21 +2482,8 @@
             "title": "Expires At",
             "type": "string"
           },
-          "group": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/GroupInvitePreview"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "kind": {
-            "enum": [
-              "plan",
-              "group"
-            ],
+            "const": "plan",
             "title": "Kind",
             "type": "string"
           },
@@ -2514,14 +2499,7 @@
             "title": "Placeholder Name"
           },
           "plan": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PlanInvitePreview"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/PlanInvitePreview"
           },
           "purpose": {
             "enum": [
@@ -2543,8 +2521,7 @@
           "allow_guests",
           "placeholder_name",
           "expires_at",
-          "plan",
-          "group"
+          "plan"
         ],
         "title": "InvitePreviewResponse",
         "type": "object"
@@ -2575,10 +2552,7 @@
             "type": "string"
           },
           "kind": {
-            "enum": [
-              "plan",
-              "group"
-            ],
+            "const": "plan",
             "title": "Kind",
             "type": "string"
           },
@@ -2828,121 +2802,6 @@
         "title": "LedgerResponse",
         "type": "object"
       },
-      "MemberAddRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "role": {
-            "default": "member",
-            "enum": [
-              "admin",
-              "member"
-            ],
-            "title": "Role",
-            "type": "string"
-          },
-          "user_id": {
-            "format": "uuid",
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "user_id"
-        ],
-        "title": "MemberAddRequest",
-        "type": "object"
-      },
-      "MemberResponse": {
-        "properties": {
-          "display_name": {
-            "title": "Display Name",
-            "type": "string"
-          },
-          "joined_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Joined At"
-          },
-          "role": {
-            "enum": [
-              "owner",
-              "admin",
-              "member"
-            ],
-            "title": "Role",
-            "type": "string"
-          },
-          "state": {
-            "enum": [
-              "invited",
-              "active",
-              "left",
-              "removed"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "user_id": {
-            "format": "uuid",
-            "title": "User Id",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "user_id",
-          "display_name",
-          "role",
-          "state",
-          "joined_at",
-          "version"
-        ],
-        "title": "MemberResponse",
-        "type": "object"
-      },
-      "MemberRoleChangeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "role": {
-            "enum": [
-              "admin",
-              "member"
-            ],
-            "title": "Role",
-            "type": "string"
-          }
-        },
-        "required": [
-          "role"
-        ],
-        "title": "MemberRoleChangeRequest",
-        "type": "object"
-      },
-      "OwnershipTransferRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "new_owner_user_id": {
-            "format": "uuid",
-            "title": "New Owner User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "new_owner_user_id"
-        ],
-        "title": "OwnershipTransferRequest",
-        "type": "object"
-      },
       "Page_ExpenseResponse_": {
         "properties": {
           "items": {
@@ -2995,33 +2854,6 @@
           "items"
         ],
         "title": "Page[FundMovementResponse]",
-        "type": "object"
-      },
-      "Page_GroupResponse_": {
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/GroupResponse"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "next_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Cursor"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "title": "Page[GroupResponse]",
         "type": "object"
       },
       "Page_PlanResponse_": {
@@ -3190,6 +3022,34 @@
             "title": "Access State",
             "type": "string"
           },
+          "avatar_color": {
+            "enum": [
+              "blue",
+              "teal",
+              "purple",
+              "orange",
+              "rose",
+              "olive"
+            ],
+            "title": "Avatar Color",
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "enum": [
+                "expenses.manage",
+                "budgets.manage"
+              ],
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "default_share": {
+            "description": "Default shares weight in hundredths (100 = 1x)",
+            "title": "Default Share",
+            "type": "integer"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -3297,30 +3157,14 @@
           "access_state",
           "rsvp_status",
           "rsvp_updated_at",
+          "default_share",
+          "avatar_color",
+          "capabilities",
           "merged_into_participant_id",
           "joined_at",
           "version"
         ],
         "title": "ParticipantResponse",
-        "type": "object"
-      },
-      "ParticipantRoleRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "role": {
-            "enum": [
-              "admin",
-              "member",
-              "viewer"
-            ],
-            "title": "Role",
-            "type": "string"
-          }
-        },
-        "required": [
-          "role"
-        ],
-        "title": "ParticipantRoleRequest",
         "type": "object"
       },
       "ParticipantSeed": {
@@ -3376,6 +3220,81 @@
           }
         },
         "title": "ParticipantSeed",
+        "type": "object"
+      },
+      "ParticipantUpdateRequest": {
+        "additionalProperties": false,
+        "description": "Managers change role, default share, and capabilities; anyone their own colour.",
+        "properties": {
+          "avatar_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "blue",
+                  "teal",
+                  "purple",
+                  "orange",
+                  "rose",
+                  "olive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Color"
+          },
+          "capabilities": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "expenses.manage",
+                    "budgets.manage"
+                  ],
+                  "type": "string"
+                },
+                "maxItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capabilities"
+          },
+          "default_share": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Share"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "admin",
+                  "member",
+                  "viewer"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "title": "ParticipantUpdateRequest",
         "type": "object"
       },
       "PayerRequest": {
@@ -3489,7 +3408,30 @@
       },
       "PlanCreateRequest": {
         "additionalProperties": false,
+        "description": "A trip or a hangout. ``base_currency`` defaults to the creator's default currency.",
         "properties": {
+          "activity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dinner",
+                  "drinks",
+                  "karaoke",
+                  "coffee",
+                  "movie",
+                  "sport",
+                  "birthday",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hangouts only",
+            "title": "Activity"
+          },
           "base_currency": {
             "anyOf": [
               {
@@ -3514,17 +3456,27 @@
             ],
             "title": "Description"
           },
-          "group_id": {
+          "destinations": {
+            "description": "Trips only",
+            "items": {
+              "$ref": "#/components/schemas/Destination"
+            },
+            "maxItems": 10,
+            "title": "Destinations",
+            "type": "array"
+          },
+          "expected_size": {
             "anyOf": [
               {
-                "format": "uuid",
-                "type": "string"
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Group Id"
+            "title": "Expected Size"
           },
           "id": {
             "anyOf": [
@@ -3537,26 +3489,6 @@
               }
             ],
             "title": "Id"
-          },
-          "include_all_group_members": {
-            "default": false,
-            "title": "Include All Group Members",
-            "type": "boolean"
-          },
-          "kind": {
-            "default": "custom",
-            "enum": [
-              "dinner",
-              "coffee",
-              "movie",
-              "sport",
-              "birthday",
-              "outing",
-              "trip",
-              "custom"
-            ],
-            "title": "Kind",
-            "type": "string"
           },
           "location_label": {
             "anyOf": [
@@ -3578,6 +3510,27 @@
             "title": "Participants",
             "type": "array"
           },
+          "pass_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "indigo",
+                  "plum",
+                  "sea",
+                  "forest",
+                  "rust",
+                  "slate",
+                  "wine",
+                  "moss"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Color"
+          },
           "state": {
             "default": "planning",
             "enum": [
@@ -3596,23 +3549,17 @@
             "title": "Title",
             "type": "string"
           },
-          "visibility": {
-            "anyOf": [
-              {
-                "enum": [
-                  "group",
-                  "participants"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "type": {
+            "enum": [
+              "trip",
+              "hangout"
             ],
-            "title": "Visibility"
+            "title": "Type",
+            "type": "string"
           }
         },
         "required": [
+          "type",
           "title"
         ],
         "title": "PlanCreateRequest",
@@ -3620,20 +3567,8 @@
       },
       "PlanDuplicateRequest": {
         "additionalProperties": false,
-        "description": "Copies only the allowlisted structure; see the ``plan-copy-v1`` manifest.\n\nOmit ``group_id`` to keep the source group; send ``null`` for no group.\n``participant_ids`` omitted copies every active registered participant;\nan empty list copies none.",
+        "description": "Copies only the allowlisted structure; see the ``plan-copy-v1`` manifest.\n\n``participant_ids`` omitted copies every active registered participant;\nan empty list copies none.",
         "properties": {
-          "group_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
-          },
           "include_description": {
             "default": true,
             "title": "Include Description",
@@ -3642,11 +3577,6 @@
           "include_location": {
             "default": false,
             "title": "Include Location",
-            "type": "boolean"
-          },
-          "include_travel_details": {
-            "default": true,
-            "title": "Include Travel Details",
             "type": "boolean"
           },
           "participant_ids": {
@@ -3747,19 +3677,34 @@
       },
       "PlanInvitePreview": {
         "properties": {
-          "kind": {
-            "enum": [
-              "dinner",
-              "coffee",
-              "movie",
-              "sport",
-              "birthday",
-              "outing",
-              "trip",
-              "custom"
+          "activity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dinner",
+                  "drinks",
+                  "karaoke",
+                  "coffee",
+                  "movie",
+                  "sport",
+                  "birthday",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Kind",
-            "type": "string"
+            "title": "Activity"
+          },
+          "destination_names": {
+            "description": "City-level names only, never addresses",
+            "items": {
+              "type": "string"
+            },
+            "title": "Destination Names",
+            "type": "array"
           },
           "organizer_name": {
             "anyOf": [
@@ -3772,18 +3717,48 @@
             ],
             "title": "Organizer Name"
           },
+          "participant_count": {
+            "title": "Participant Count",
+            "type": "integer"
+          },
+          "pass_color": {
+            "enum": [
+              "indigo",
+              "plum",
+              "sea",
+              "forest",
+              "rust",
+              "slate",
+              "wine",
+              "moss"
+            ],
+            "title": "Pass Color",
+            "type": "string"
+          },
           "timing": {
             "$ref": "#/components/schemas/PlanTiming"
           },
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "type": {
+            "enum": [
+              "trip",
+              "hangout"
+            ],
+            "title": "Type",
+            "type": "string"
           }
         },
         "required": [
           "title",
-          "kind",
+          "type",
+          "activity",
           "timing",
+          "destination_names",
+          "pass_color",
+          "participant_count",
           "organizer_name"
         ],
         "title": "PlanInvitePreview",
@@ -3806,6 +3781,27 @@
       },
       "PlanResponse": {
         "properties": {
+          "activity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dinner",
+                  "drinks",
+                  "karaoke",
+                  "coffee",
+                  "movie",
+                  "sport",
+                  "birthday",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity"
+          },
           "base_currency": {
             "title": "Base Currency",
             "type": "string"
@@ -3838,39 +3834,27 @@
             ],
             "title": "Description"
           },
-          "group_id": {
+          "destinations": {
+            "items": {
+              "$ref": "#/components/schemas/Destination"
+            },
+            "title": "Destinations",
+            "type": "array"
+          },
+          "expected_size": {
             "anyOf": [
               {
-                "format": "uuid",
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Group Id"
+            "title": "Expected Size"
           },
           "id": {
             "format": "uuid",
             "title": "Id",
-            "type": "string"
-          },
-          "is_series_exception": {
-            "title": "Is Series Exception",
-            "type": "boolean"
-          },
-          "kind": {
-            "enum": [
-              "dinner",
-              "coffee",
-              "movie",
-              "sport",
-              "birthday",
-              "outing",
-              "trip",
-              "custom"
-            ],
-            "title": "Kind",
             "type": "string"
           },
           "location_label": {
@@ -3894,28 +3878,19 @@
               }
             ]
           },
-          "occurrence_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "pass_color": {
+            "enum": [
+              "indigo",
+              "plum",
+              "sea",
+              "forest",
+              "rust",
+              "slate",
+              "wine",
+              "moss"
             ],
-            "title": "Occurrence Key"
-          },
-          "series_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Series Id"
+            "title": "Pass Color",
+            "type": "string"
           },
           "state": {
             "enum": [
@@ -3937,6 +3912,14 @@
             "title": "Title",
             "type": "string"
           },
+          "type": {
+            "enum": [
+              "trip",
+              "hangout"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -3945,28 +3928,19 @@
           "version": {
             "title": "Version",
             "type": "integer"
-          },
-          "visibility": {
-            "enum": [
-              "group",
-              "participants"
-            ],
-            "title": "Visibility",
-            "type": "string"
           }
         },
         "required": [
           "id",
-          "group_id",
-          "series_id",
-          "occurrence_key",
-          "is_series_exception",
+          "type",
           "title",
-          "kind",
+          "activity",
           "state",
           "timing",
           "base_currency",
-          "visibility",
+          "destinations",
+          "pass_color",
+          "expected_size",
           "description",
           "location_label",
           "deletion_scheduled_at",
@@ -4083,6 +4057,27 @@
         "additionalProperties": false,
         "description": "Omitted fields stay unchanged; ``null`` clears description or location.",
         "properties": {
+          "activity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dinner",
+                  "drinks",
+                  "karaoke",
+                  "coffee",
+                  "movie",
+                  "sport",
+                  "birthday",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity"
+          },
           "base_currency": {
             "anyOf": [
               {
@@ -4107,26 +4102,33 @@
             ],
             "title": "Description"
           },
-          "kind": {
+          "destinations": {
             "anyOf": [
               {
-                "enum": [
-                  "dinner",
-                  "coffee",
-                  "movie",
-                  "sport",
-                  "birthday",
-                  "outing",
-                  "trip",
-                  "custom"
-                ],
-                "type": "string"
+                "items": {
+                  "$ref": "#/components/schemas/Destination"
+                },
+                "maxItems": 10,
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Kind"
+            "title": "Destinations"
+          },
+          "expected_size": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Size"
           },
           "location_label": {
             "anyOf": [
@@ -4139,6 +4141,27 @@
               }
             ],
             "title": "Location Label"
+          },
+          "pass_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "indigo",
+                  "plum",
+                  "sea",
+                  "forest",
+                  "rust",
+                  "slate",
+                  "wine",
+                  "moss"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Color"
           },
           "timing": {
             "anyOf": [
@@ -4162,21 +4185,6 @@
               }
             ],
             "title": "Title"
-          },
-          "visibility": {
-            "anyOf": [
-              {
-                "enum": [
-                  "group",
-                  "participants"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Visibility"
           }
         },
         "title": "PlanUpdateRequest",
@@ -4221,6 +4229,18 @@
       "ProfileUpdateRequest": {
         "additionalProperties": false,
         "properties": {
+          "default_currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Currency"
+          },
           "display_name": {
             "anyOf": [
               {
@@ -4432,7 +4452,7 @@
           },
           "scope": {
             "maxLength": 48,
-            "pattern": "^(user|group|plan):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "pattern": "^(user|plan):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
             "title": "Scope",
             "type": "string"
           }
@@ -4815,6 +4835,26 @@
       "RedeemInviteRequest": {
         "additionalProperties": false,
         "properties": {
+          "avatar_color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "blue",
+                  "teal",
+                  "purple",
+                  "orange",
+                  "rose",
+                  "olive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The colour the person picks for themselves in this plan.",
+            "title": "Avatar Color"
+          },
           "device": {
             "anyOf": [
               {
@@ -4859,21 +4899,8 @@
       },
       "RedeemInviteResponse": {
         "properties": {
-          "group": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/GroupResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "kind": {
-            "enum": [
-              "plan",
-              "group"
-            ],
+            "const": "plan",
             "title": "Kind",
             "type": "string"
           },
@@ -5319,9 +5346,7 @@
             "enum": [
               "self",
               "manager",
-              "member",
-              "reader",
-              "invited"
+              "member"
             ],
             "title": "Access",
             "type": "string"
@@ -5351,412 +5376,6 @@
           "access"
         ],
         "title": "ScopeEntry",
-        "type": "object"
-      },
-      "SeriesCreateRequest": {
-        "additionalProperties": false,
-        "description": "A recurring plan. ``recurrence_rule`` is an RRULE subset, e.g.\n``FREQ=WEEKLY;BYDAY=TH`` or ``FREQ=MONTHLY;BYDAY=-1FR;COUNT=6``.",
-        "properties": {
-          "base_currency": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Z]{3}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Currency"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "duration_minutes": {
-            "anyOf": [
-              {
-                "maximum": 10080.0,
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration Minutes"
-          },
-          "group_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
-          },
-          "horizon_days": {
-            "default": 56,
-            "maximum": 366.0,
-            "minimum": 7.0,
-            "title": "Horizon Days",
-            "type": "integer"
-          },
-          "id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Id"
-          },
-          "kind": {
-            "default": "custom",
-            "enum": [
-              "dinner",
-              "coffee",
-              "movie",
-              "sport",
-              "birthday",
-              "outing",
-              "trip",
-              "custom"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "local_start_time": {
-            "anyOf": [
-              {
-                "format": "time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Local Start Time"
-          },
-          "location_label": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Location Label"
-          },
-          "participant_user_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Participant User Ids",
-            "type": "array"
-          },
-          "recurrence_rule": {
-            "maxLength": 500,
-            "minLength": 6,
-            "title": "Recurrence Rule",
-            "type": "string"
-          },
-          "start_date": {
-            "format": "date",
-            "title": "Start Date",
-            "type": "string"
-          },
-          "timezone": {
-            "maxLength": 64,
-            "title": "Timezone",
-            "type": "string"
-          },
-          "title": {
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Title",
-            "type": "string"
-          },
-          "visibility": {
-            "anyOf": [
-              {
-                "enum": [
-                  "group",
-                  "participants"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Visibility"
-          }
-        },
-        "required": [
-          "title",
-          "timezone",
-          "start_date",
-          "recurrence_rule"
-        ],
-        "title": "SeriesCreateRequest",
-        "type": "object"
-      },
-      "SeriesResponse": {
-        "properties": {
-          "base_currency": {
-            "title": "Base Currency",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "duration_minutes": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration Minutes"
-          },
-          "group_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Group Id"
-          },
-          "horizon_days": {
-            "title": "Horizon Days",
-            "type": "integer"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "enum": [
-              "dinner",
-              "coffee",
-              "movie",
-              "sport",
-              "birthday",
-              "outing",
-              "trip",
-              "custom"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "local_start_time": {
-            "anyOf": [
-              {
-                "format": "time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Local Start Time"
-          },
-          "materialized_through": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Materialized Through"
-          },
-          "recurrence_rule": {
-            "title": "Recurrence Rule",
-            "type": "string"
-          },
-          "start_date": {
-            "format": "date",
-            "title": "Start Date",
-            "type": "string"
-          },
-          "state": {
-            "enum": [
-              "active",
-              "cancelled"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "timezone": {
-            "title": "Timezone",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          },
-          "visibility": {
-            "enum": [
-              "group",
-              "participants"
-            ],
-            "title": "Visibility",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "group_id",
-          "title",
-          "kind",
-          "base_currency",
-          "visibility",
-          "timezone",
-          "start_date",
-          "local_start_time",
-          "duration_minutes",
-          "recurrence_rule",
-          "horizon_days",
-          "materialized_through",
-          "state",
-          "version",
-          "created_at"
-        ],
-        "title": "SeriesResponse",
-        "type": "object"
-      },
-      "SeriesSplitRequest": {
-        "additionalProperties": false,
-        "description": "Change this and future occurrences from ``from_date``; earlier ones stay as they are.",
-        "properties": {
-          "duration_minutes": {
-            "anyOf": [
-              {
-                "maximum": 10080.0,
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Duration Minutes"
-          },
-          "from_date": {
-            "format": "date",
-            "title": "From Date",
-            "type": "string"
-          },
-          "local_start_time": {
-            "anyOf": [
-              {
-                "format": "time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Local Start Time"
-          },
-          "recurrence_rule": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "minLength": 6,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recurrence Rule"
-          },
-          "timezone": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timezone"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "maxLength": 120,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          }
-        },
-        "required": [
-          "from_date"
-        ],
-        "title": "SeriesSplitRequest",
-        "type": "object"
-      },
-      "SeriesWithOccurrencesResponse": {
-        "properties": {
-          "occurrences": {
-            "items": {
-              "$ref": "#/components/schemas/PlanResponse"
-            },
-            "title": "Occurrences",
-            "type": "array"
-          },
-          "series": {
-            "$ref": "#/components/schemas/SeriesResponse"
-          }
-        },
-        "required": [
-          "series",
-          "occurrences"
-        ],
-        "title": "SeriesWithOccurrencesResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -6693,424 +6312,6 @@
         "title": "TransactionResponse",
         "type": "object"
       },
-      "TravelDetailsRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "destination_summary": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Destination Summary"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          }
-        },
-        "title": "TravelDetailsRequest",
-        "type": "object"
-      },
-      "TravelResponse": {
-        "properties": {
-          "destination_summary": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Destination Summary"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "plan_id": {
-            "format": "uuid",
-            "title": "Plan Id",
-            "type": "string"
-          },
-          "segments": {
-            "items": {
-              "$ref": "#/components/schemas/TravelSegmentResponse"
-            },
-            "title": "Segments",
-            "type": "array"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "plan_id",
-          "destination_summary",
-          "notes",
-          "version",
-          "segments"
-        ],
-        "title": "TravelResponse",
-        "type": "object"
-      },
-      "TravelSegmentRequest": {
-        "additionalProperties": false,
-        "description": "Local wall-clock times with IANA zones (flights cross zones), or dates only.\n\n``id`` is an optional client-generated ID for a new segment; updates ignore it.",
-        "properties": {
-          "arrival_local": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Arrival Local"
-          },
-          "arrival_timezone": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Arrival Timezone"
-          },
-          "departure_local": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Departure Local"
-          },
-          "departure_timezone": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Departure Timezone"
-          },
-          "destination_label": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Destination Label"
-          },
-          "end_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "End Date"
-          },
-          "id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Id"
-          },
-          "origin_label": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Origin Label"
-          },
-          "segment_type": {
-            "enum": [
-              "flight",
-              "train",
-              "bus",
-              "car",
-              "ferry",
-              "lodging",
-              "other"
-            ],
-            "title": "Segment Type",
-            "type": "string"
-          },
-          "sort_order": {
-            "default": 0,
-            "maximum": 10000.0,
-            "minimum": 0.0,
-            "title": "Sort Order",
-            "type": "integer"
-          },
-          "start_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Start Date"
-          },
-          "timing_mode": {
-            "enum": [
-              "date",
-              "datetime"
-            ],
-            "title": "Timing Mode",
-            "type": "string"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          }
-        },
-        "required": [
-          "segment_type",
-          "timing_mode"
-        ],
-        "title": "TravelSegmentRequest",
-        "type": "object"
-      },
-      "TravelSegmentResponse": {
-        "properties": {
-          "arrival_local": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Arrival Local"
-          },
-          "arrival_timezone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Arrival Timezone"
-          },
-          "arrives_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Arrives At"
-          },
-          "departs_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Departs At"
-          },
-          "departure_local": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Departure Local"
-          },
-          "departure_timezone": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Departure Timezone"
-          },
-          "destination_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Destination Label"
-          },
-          "end_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "End Date"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "origin_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Origin Label"
-          },
-          "segment_type": {
-            "title": "Segment Type",
-            "type": "string"
-          },
-          "sort_order": {
-            "title": "Sort Order",
-            "type": "integer"
-          },
-          "start_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Start Date"
-          },
-          "timing_mode": {
-            "enum": [
-              "date",
-              "datetime"
-            ],
-            "title": "Timing Mode",
-            "type": "string"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "segment_type",
-          "title",
-          "origin_label",
-          "destination_label",
-          "timing_mode",
-          "start_date",
-          "end_date",
-          "departure_local",
-          "departure_timezone",
-          "departs_at",
-          "arrival_local",
-          "arrival_timezone",
-          "arrives_at",
-          "sort_order",
-          "version"
-        ],
-        "title": "TravelSegmentResponse",
-        "type": "object"
-      },
       "UnconvertedSpend": {
         "description": "Spend or planned cost in another currency without a rate; not in the totals.",
         "properties": {
@@ -7142,6 +6343,18 @@
       },
       "UserProfileResponse": {
         "properties": {
+          "default_currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default currency for new hangouts",
+            "title": "Default Currency"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -7204,6 +6417,7 @@
           "email",
           "locale",
           "timezone",
+          "default_currency",
           "version"
         ],
         "title": "UserProfileResponse",
@@ -7936,6 +7150,575 @@
         ]
       }
     },
+    "/v1/crews": {
+      "get": {
+        "operationId": "list_crews_v1_crews_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CrewResponse"
+                  },
+                  "title": "Response List Crews V1 Crews Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Crews",
+        "tags": [
+          "people"
+        ]
+      },
+      "post": {
+        "description": "Save people you plan with; ``from_plan_id`` saves everyone active in that plan.",
+        "operationId": "create_crew_v1_crews_post",
+        "parameters": [
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrewCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Crew",
+        "tags": [
+          "people"
+        ]
+      }
+    },
+    "/v1/crews/{crew_id}": {
+      "delete": {
+        "operationId": "delete_crew_v1_crews__crew_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crew_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Crew Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Crew",
+        "tags": [
+          "people"
+        ]
+      },
+      "get": {
+        "operationId": "get_crew_v1_crews__crew_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crew_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Crew Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Crew",
+        "tags": [
+          "people"
+        ]
+      },
+      "patch": {
+        "operationId": "update_crew_v1_crews__crew_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "crew_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Crew Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrewUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Crew",
+        "tags": [
+          "people"
+        ]
+      }
+    },
     "/v1/currencies": {
       "get": {
         "description": "Supported currencies and their pinned minor-unit exponents.",
@@ -8014,1966 +7797,6 @@
         "summary": "List Currencies",
         "tags": [
           "finance"
-        ]
-      }
-    },
-    "/v1/groups": {
-      "get": {
-        "operationId": "list_groups_v1_groups_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 64,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Page_GroupResponse_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List Groups",
-        "tags": [
-          "groups"
-        ]
-      },
-      "post": {
-        "operationId": "create_group_v1_groups_post",
-        "parameters": [
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GroupCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GroupResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Create Group",
-        "tags": [
-          "groups"
-        ]
-      }
-    },
-    "/v1/groups/{group_id}": {
-      "delete": {
-        "description": "Owner-only, requires a recent sign-in; the group can be restored during the grace period.",
-        "operationId": "schedule_group_deletion_v1_groups__group_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "If-Match"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GroupResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Schedule Group Deletion",
-        "tags": [
-          "groups"
-        ]
-      },
-      "get": {
-        "operationId": "get_group_v1_groups__group_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GroupResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Get Group",
-        "tags": [
-          "groups"
-        ]
-      },
-      "patch": {
-        "operationId": "update_group_v1_groups__group_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "If-Match"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GroupUpdateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GroupResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Update Group",
-        "tags": [
-          "groups"
-        ]
-      }
-    },
-    "/v1/groups/{group_id}/invitation": {
-      "post": {
-        "operationId": "answer_group_invitation_v1_groups__group_id__invitation_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InvitationAnswerRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GroupResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Answer Group Invitation",
-        "tags": [
-          "groups"
-        ]
-      }
-    },
-    "/v1/groups/{group_id}/invites": {
-      "get": {
-        "operationId": "list_group_invites_v1_groups__group_id__invites_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/InviteResponse"
-                  },
-                  "title": "Response List Group Invites V1 Groups  Group Id  Invites Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Too many requests; retry after the Retry-After interval."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List Group Invites",
-        "tags": [
-          "invites"
-        ]
-      },
-      "post": {
-        "operationId": "create_group_invite_v1_groups__group_id__invites_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GroupInviteCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreatedInviteResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Too many requests; retry after the Retry-After interval."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Create Group Invite",
-        "tags": [
-          "invites"
-        ]
-      }
-    },
-    "/v1/groups/{group_id}/invites/{invite_id}": {
-      "delete": {
-        "operationId": "revoke_group_invite_v1_groups__group_id__invites__invite_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "invite_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Invite Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InviteResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Too many requests; retry after the Retry-After interval."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Revoke Group Invite",
-        "tags": [
-          "invites"
-        ]
-      }
-    },
-    "/v1/groups/{group_id}/members": {
-      "get": {
-        "operationId": "list_group_members_v1_groups__group_id__members_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/MemberResponse"
-                  },
-                  "title": "Response List Group Members V1 Groups  Group Id  Members Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "List Group Members",
-        "tags": [
-          "groups"
-        ]
-      },
-      "post": {
-        "operationId": "add_group_member_v1_groups__group_id__members_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MemberAddRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemberResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Too many requests; retry after the Retry-After interval."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Add Group Member",
-        "tags": [
-          "groups"
-        ]
-      }
-    },
-    "/v1/groups/{group_id}/members/{user_id}": {
-      "delete": {
-        "description": "Remove a member; removing yourself leaves the group.",
-        "operationId": "remove_group_member_v1_groups__group_id__members__user_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "user_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "User Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Too many requests; retry after the Retry-After interval."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Remove Group Member",
-        "tags": [
-          "groups"
-        ]
-      },
-      "patch": {
-        "operationId": "change_group_member_role_v1_groups__group_id__members__user_id__patch",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "user_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "User Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "If-Match"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MemberRoleChangeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemberResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Change Group Member Role",
-        "tags": [
-          "groups"
-        ]
-      }
-    },
-    "/v1/groups/{group_id}/ownership-transfer": {
-      "post": {
-        "operationId": "transfer_group_ownership_v1_groups__group_id__ownership_transfer_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "If-Match"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/OwnershipTransferRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GroupResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Transfer Group Ownership",
-        "tags": [
-          "groups"
-        ]
-      }
-    },
-    "/v1/groups/{group_id}/restore": {
-      "post": {
-        "operationId": "restore_group_v1_groups__group_id__restore_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "group_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Group Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "If-Match"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GroupResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Restore Group",
-        "tags": [
-          "groups"
         ]
       }
     },
@@ -10080,7 +7903,7 @@
     },
     "/v1/invites/redeem": {
       "post": {
-        "description": "Join a plan or group. Without an account, plan invites that allow guests\ncreate a guest session (returned in ``session``).",
+        "description": "Join a plan. Without an account, invites that allow guests create a guest\nsession (returned in ``session``).",
         "operationId": "redeem_invite_v1_invites_redeem_post",
         "requestBody": {
           "content": {
@@ -10507,598 +8330,11 @@
         ]
       }
     },
-    "/v1/plan-series": {
-      "post": {
-        "description": "Creates the series and materializes occurrences inside its horizon.",
-        "operationId": "create_series_v1_plan_series_post",
-        "parameters": [
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SeriesCreateRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SeriesWithOccurrencesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Too many requests; retry after the Retry-After interval."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Create Series",
-        "tags": [
-          "plan series"
-        ]
-      }
-    },
-    "/v1/plan-series/{series_id}": {
-      "get": {
-        "operationId": "get_series_v1_plan_series__series_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "series_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Series Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SeriesWithOccurrencesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Get Series",
-        "tags": [
-          "plan series"
-        ]
-      }
-    },
-    "/v1/plan-series/{series_id}/cancel": {
-      "post": {
-        "description": "Stops the series and cancels its untouched upcoming occurrences.",
-        "operationId": "cancel_series_v1_plan_series__series_id__cancel_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "series_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Series Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "If-Match"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SeriesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Too many requests; retry after the Retry-After interval."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Cancel Series",
-        "tags": [
-          "plan series"
-        ]
-      }
-    },
-    "/v1/plan-series/{series_id}/split": {
-      "post": {
-        "description": "Returns the successor series that carries the changed rule or fields.",
-        "operationId": "split_series_v1_plan_series__series_id__split_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "series_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Series Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "If-Match"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SeriesSplitRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SeriesWithOccurrencesResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Too many requests; retry after the Retry-After interval."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Split Series",
-        "tags": [
-          "plan series"
-        ]
-      }
-    },
     "/v1/plans": {
       "get": {
-        "description": "Plans the caller participates in, or every plan they can see in one group.",
+        "description": "Plans the caller actively participates in, newest first.",
         "operationId": "list_plans_v1_plans_get",
         "parameters": [
-          {
-            "in": "query",
-            "name": "group_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Group Id"
-            }
-          },
           {
             "in": "query",
             "name": "cursor",
@@ -15063,145 +12299,6 @@
         ]
       }
     },
-    "/v1/plans/{plan_id}/join": {
-      "post": {
-        "operationId": "join_plan_v1_plans__plan_id__join_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "plan_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Plan Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ParticipantResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Join Plan",
-        "tags": [
-          "plans"
-        ]
-      }
-    },
     "/v1/plans/{plan_id}/leave": {
       "post": {
         "operationId": "leave_plan_v1_plans__plan_id__leave_post",
@@ -16503,7 +13600,7 @@
         ]
       },
       "patch": {
-        "operationId": "change_participant_role_v1_plans__plan_id__participants__participant_id__patch",
+        "operationId": "update_participant_v1_plans__plan_id__participants__participant_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -16567,7 +13664,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ParticipantRoleRequest"
+                "$ref": "#/components/schemas/ParticipantUpdateRequest"
               }
             }
           },
@@ -16670,7 +13767,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Change Participant Role",
+        "summary": "Update Participant",
         "tags": [
           "plans"
         ]
@@ -18300,712 +15397,6 @@
         "summary": "Change Plan State",
         "tags": [
           "plans"
-        ]
-      }
-    },
-    "/v1/plans/{plan_id}/travel": {
-      "get": {
-        "operationId": "get_travel_v1_plans__plan_id__travel_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "plan_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Plan Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TravelResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Get Travel",
-        "tags": [
-          "travel"
-        ]
-      },
-      "put": {
-        "description": "Create the travel extension, or replace it with the current ``If-Match`` version.",
-        "operationId": "put_travel_details_v1_plans__plan_id__travel_put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "plan_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Plan Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "If-Match"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TravelDetailsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TravelResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Put Travel Details",
-        "tags": [
-          "travel"
-        ]
-      }
-    },
-    "/v1/plans/{plan_id}/travel/segments": {
-      "post": {
-        "operationId": "add_segment_v1_plans__plan_id__travel_segments_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "plan_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Plan Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TravelSegmentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TravelSegmentResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Add Segment",
-        "tags": [
-          "travel"
-        ]
-      }
-    },
-    "/v1/plans/{plan_id}/travel/segments/{segment_id}": {
-      "delete": {
-        "operationId": "delete_segment_v1_plans__plan_id__travel_segments__segment_id__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "plan_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Plan Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "segment_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Segment Id",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Delete Segment",
-        "tags": [
-          "travel"
-        ]
-      },
-      "put": {
-        "operationId": "update_segment_v1_plans__plan_id__travel_segments__segment_id__put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "plan_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Plan Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "segment_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Segment Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "If-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "If-Match"
-            }
-          },
-          {
-            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-            "in": "header",
-            "name": "Idempotency-Key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "minLength": 1,
-                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TravelSegmentRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TravelSegmentResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "Bearer authentication is missing, invalid, expired, or revoked."
-          },
-          "403": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The current relationship does not allow this action."
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The resource is absent or not visible to the caller."
-          },
-          "409": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request conflicts with the current resource state."
-          },
-          "412": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The If-Match version is stale."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "The request does not satisfy the contract."
-          },
-          "428": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "An If-Match header is required."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProblemResponse"
-                }
-              }
-            },
-            "description": "A dependency or feature is temporarily unavailable."
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Update Segment",
-        "tags": [
-          "travel"
         ]
       }
     },

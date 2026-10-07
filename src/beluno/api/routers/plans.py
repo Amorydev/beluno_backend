@@ -29,7 +29,7 @@ from beluno.contracts.plans import (
     JoinRequestDecision,
     ParticipantAddRequest,
     ParticipantResponse,
-    ParticipantRoleRequest,
+    ParticipantUpdateRequest,
     PlanCreateRequest,
     PlanDuplicateRequest,
     PlanOwnershipTransferRequest,
@@ -70,16 +70,13 @@ async def create_plan(
 async def list_plans(
     runtime: RuntimeDep,
     actor: ActorDep,
-    group_id: UUID | None = None,
     cursor: CursorParam = None,
     limit: LimitParam = DEFAULT_PAGE_SIZE,
 ) -> Page[PlanResponse]:
-    """Plans the caller participates in, or every plan they can see in one group."""
+    """Plans the caller actively participates in, newest first."""
 
     async with open_context(runtime, actor) as ctx:
-        views = await service.list_plans(
-            ctx, group_id=group_id, after_id=decode_cursor(cursor), limit=limit
-        )
+        views = await service.list_plans(ctx, after_id=decode_cursor(cursor), limit=limit)
     next_cursor = encode_cursor(views[-1].plan.id) if len(views) == limit else None
     return Page[PlanResponse](
         items=[plan_response(view) for view in views], next_cursor=next_cursor
@@ -206,10 +203,10 @@ async def add_participant(
     response_model=ParticipantResponse,
     responses=WRITE_ERRORS,
 )
-async def change_participant_role(
+async def update_participant(
     plan_id: UUID,
     participant_id: UUID,
-    body: ParticipantRoleRequest,
+    body: ParticipantUpdateRequest,
     runner: RunnerDep,
     actor: ActorDep,
     response: Response,
@@ -219,7 +216,7 @@ async def change_participant_role(
     call = command_call(
         idempotency_key, if_match=if_match, plan_id=plan_id, participant_id=participant_id
     )
-    result = await runner.run(actor, commands.PLAN_PARTICIPANT_CHANGE_ROLE, call, body)
+    result = await runner.run(actor, commands.PLAN_PARTICIPANT_UPDATE, call, body)
     return finish(response, result)
 
 
@@ -258,18 +255,6 @@ async def review_join_request(
 ) -> ParticipantResponse:
     call = command_call(idempotency_key, plan_id=plan_id, participant_id=participant_id)
     return finish(response, await runner.run(actor, commands.PLAN_PARTICIPANT_REVIEW, call, body))
-
-
-@router.post("/{plan_id}/join", response_model=ParticipantResponse, responses=WRITE_ERRORS)
-async def join_plan(
-    plan_id: UUID,
-    runner: RunnerDep,
-    actor: ActorDep,
-    response: Response,
-    idempotency_key: IdempotencyKey = None,
-) -> ParticipantResponse:
-    call = command_call(idempotency_key, plan_id=plan_id)
-    return finish(response, await runner.run(actor, commands.PLAN_JOIN, call, EmptyPayload()))
 
 
 @router.post("/{plan_id}/leave", status_code=status.HTTP_204_NO_CONTENT, responses=WRITE_ERRORS)

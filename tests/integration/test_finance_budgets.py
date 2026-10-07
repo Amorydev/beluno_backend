@@ -300,3 +300,22 @@ async def test_other_modules_record_costs_through_the_port(
     listed = (await api.get(trip.path("/commitments"), headers=owner.headers)).json()
     assert [(c["source_type"], c["state"]) for c in listed] == [("booking", "cancelled")]
     assert (await overview(api, owner, trip))["unconverted"] == []
+
+
+async def test_the_first_budget_publishes_the_ledger_to_synced_devices(
+    api: httpx.AsyncClient, trip: FinancePlan
+) -> None:
+    scope = f"plan:{trip.plan_id}"
+    _, cursor, _ = await pull_all(api, trip.owner, scope)
+    created = await api.post(
+        trip.path("/budgets"),
+        json={"scope": "total", "limit_minor": 90_000},
+        headers=trip.owner.headers,
+    )
+    assert created.status_code == 201, created.text
+
+    changes, _, status = await pull_all(api, trip.owner, scope, cursor)
+    assert status == "ok"
+    ledger = [item for item in changes if item["entity_type"] == "ledger"]
+    assert [(item["entity_id"], item["operation"]) for item in ledger] == [(trip.plan_id, "upsert")]
+    assert ledger[0]["data"]["ledger_seq"] == 0

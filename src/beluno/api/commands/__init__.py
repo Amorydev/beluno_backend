@@ -4,18 +4,16 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from beluno.api.commands import finance, groups, plans, profile, series, travel
+from beluno.api.commands import crews, finance, plans, profile
 from beluno.api.finance_presenters import present_finance_current
 from beluno.api.presenters import present_current
 from beluno.modules.context import CommandContext
 from beluno.sync.commands import CommandRegistry
 
 ALL_COMMANDS = [
-    *groups.COMMANDS,
     *plans.COMMANDS,
-    *travel.COMMANDS,
-    *series.COMMANDS,
     *profile.COMMANDS,
+    *crews.COMMANDS,
     *finance.COMMANDS,
 ]
 

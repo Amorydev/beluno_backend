@@ -1,4 +1,4 @@
-"""Invite links for plans and groups, plus the public preview/redeem entrypoints."""
+"""Plan invite links, plus the public preview/redeem entrypoints."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Request, Response, status
 
-from beluno.api.commands import groups as group_commands
 from beluno.api.commands import plans as plan_commands
 from beluno.api.dependencies import (
     ActorDep,
@@ -19,7 +18,6 @@ from beluno.api.http import IdempotencyKey, command_call, finish
 from beluno.api.presenters import (
     created_invite_response,
     device_info,
-    group_response,
     invite_response,
     participant_response,
     plan_response,
@@ -27,12 +25,10 @@ from beluno.api.presenters import (
     token_response,
 )
 from beluno.api.problems import problem_responses
-from beluno.authorization.policy import AccessState, GroupRole, PlanRole
+from beluno.authorization.policy import AccessState, PlanRole
 from beluno.contracts.invites import (
     ClaimInviteCreateRequest,
     CreatedInviteResponse,
-    GroupInviteCreateRequest,
-    GroupInvitePreview,
     InvitePreviewResponse,
     InviteResponse,
     InviteTokenRequest,
@@ -43,7 +39,6 @@ from beluno.contracts.invites import (
 )
 from beluno.modules import invitations
 from beluno.modules.context import open_context
-from beluno.modules.groups import invites as group_invites
 from beluno.modules.iam import rate_limits
 from beluno.modules.plans import invites as plan_invites
 from beluno.modules.plans import service as plan_service
@@ -151,56 +146,6 @@ async def rotate_plan_invite(
     return created_invite_response(created.invite, created.token)
 
 
-@router.post(
-    "/v1/groups/{group_id}/invites",
-    status_code=status.HTTP_201_CREATED,
-    response_model=CreatedInviteResponse,
-    responses=MANAGE_ERRORS,
-)
-async def create_group_invite(
-    group_id: UUID, body: GroupInviteCreateRequest, runtime: RuntimeDep, actor: ActorDep
-) -> CreatedInviteResponse:
-    await _limit_invite_creation(runtime, actor)
-    async with open_context(runtime, actor) as ctx:
-        created = await group_invites.create_invite(
-            ctx,
-            group_id,
-            role=GroupRole(body.role),
-            max_uses=body.max_uses,
-            expires_in_hours=body.expires_in_hours,
-        )
-    return created_invite_response(created.invite, created.token)
-
-
-@router.get(
-    "/v1/groups/{group_id}/invites", response_model=list[InviteResponse], responses=MANAGE_ERRORS
-)
-async def list_group_invites(
-    group_id: UUID, runtime: RuntimeDep, actor: ActorDep
-) -> list[InviteResponse]:
-    async with open_context(runtime, actor) as ctx:
-        invites = await group_invites.list_invites(ctx, group_id)
-    return [invite_response(invite) for invite in invites]
-
-
-@router.delete(
-    "/v1/groups/{group_id}/invites/{invite_id}",
-    response_model=InviteResponse,
-    responses=MANAGE_ERRORS,
-)
-async def revoke_group_invite(
-    group_id: UUID,
-    invite_id: UUID,
-    runner: RunnerDep,
-    actor: ActorDep,
-    response: Response,
-    idempotency_key: IdempotencyKey = None,
-) -> InviteResponse:
-    call = command_call(idempotency_key, group_id=group_id, invite_id=invite_id)
-    result = await runner.run(actor, group_commands.GROUP_INVITE_REVOKE, call, EmptyPayload())
-    return finish(response, result)
-
-
 @router.post("/v1/invites/preview", response_model=InvitePreviewResponse, responses=PUBLIC_ERRORS)
 async def preview_invite(
     body: InviteTokenRequest, request: Request, runtime: RuntimeDep
@@ -210,35 +155,26 @@ async def preview_invite(
     )
     async with open_context(runtime) as ctx:
         preview = await invitations.preview_invite(ctx, body.token)
-    if preview.plan is not None:
-        invite, plan = preview.plan.invite, preview.plan.plan
-        return InvitePreviewResponse(
-            kind="plan",
-            purpose="claim" if invite.purpose == "claim" else "join",
-            requires_approval=invite.requires_approval,
-            allow_guests=invite.allow_guests,
-            placeholder_name=preview.plan.placeholder_name,
-            expires_at=invite.expires_at,
-            plan=PlanInvitePreview.model_validate(
-                {
-                    "title": plan.title,
-                    "kind": plan.kind,
-                    "timing": timing_contract(plan_service.timing_of(plan)),
-                    "organizer_name": preview.plan.organizer_name,
-                }
-            ),
-            group=None,
-        )
-    assert preview.group is not None and preview.group_invite is not None
+    invite, plan = preview.plan.invite, preview.plan.plan
     return InvitePreviewResponse(
-        kind="group",
-        purpose="join",
-        requires_approval=False,
-        allow_guests=False,
-        placeholder_name=None,
-        expires_at=preview.group_invite.expires_at,
-        plan=None,
-        group=GroupInvitePreview(name=preview.group.name),
+        kind="plan",
+        purpose="claim" if invite.purpose == "claim" else "join",
+        requires_approval=invite.requires_approval,
+        allow_guests=invite.allow_guests,
+        placeholder_name=preview.plan.placeholder_name,
+        expires_at=invite.expires_at,
+        plan=PlanInvitePreview.model_validate(
+            {
+                "title": plan.title,
+                "type": plan.type,
+                "activity": plan.activity,
+                "timing": timing_contract(plan_service.timing_of(plan)),
+                "destination_names": [item["name"] for item in plan.destinations],
+                "pass_color": plan.pass_color,
+                "participant_count": preview.plan.participant_count,
+                "organizer_name": preview.plan.organizer_name,
+            }
+        ),
     )
 
 
@@ -249,8 +185,8 @@ async def redeem_invite(
     runtime: RuntimeDep,
     actor: OptionalActorDep,
 ) -> RedeemInviteResponse:
-    """Join a plan or group. Without an account, plan invites that allow guests
-    create a guest session (returned in ``session``)."""
+    """Join a plan. Without an account, invites that allow guests create a guest
+    session (returned in ``session``)."""
 
     subject = client_subject(request)
     await rate_limits.enforce_rate_limit(runtime, rate_limits.INVITE_REDEEM_PER_CLIENT, subject)
@@ -265,19 +201,15 @@ async def redeem_invite(
             display_name=body.display_name,
             merge_existing=body.merge_existing,
             device=device_info(body.device),
+            avatar_color=body.avatar_color,
         )
-    if redemption.plan is not None:
-        participant = redemption.plan.participant
-        active = participant.access_state == AccessState.ACTIVE.value
-        plan_view = plan_service.PlanView(plan=redemption.plan.plan, participant=participant)
-        return RedeemInviteResponse(
-            kind="plan",
-            status="active" if active else "pending_approval",
-            plan=plan_response(plan_view) if active else None,
-            participant=participant_response(participant),
-            session=token_response(redemption.plan.tokens) if redemption.plan.tokens else None,
-        )
-    assert redemption.group is not None
+    participant = redemption.plan.participant
+    active = participant.access_state == AccessState.ACTIVE.value
+    plan_view = plan_service.PlanView(plan=redemption.plan.plan, participant=participant)
     return RedeemInviteResponse(
-        kind="group", status="active", group=group_response(redemption.group)
+        kind="plan",
+        status="active" if active else "pending_approval",
+        plan=plan_response(plan_view) if active else None,
+        participant=participant_response(participant),
+        session=token_response(redemption.plan.tokens) if redemption.plan.tokens else None,
     )

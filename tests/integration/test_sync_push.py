@@ -58,7 +58,9 @@ def outcomes(results: list[dict[str, Any]]) -> list[str]:
 
 async def make_plan(api: httpx.AsyncClient, owner: SignedIn, **body: Any) -> dict[str, Any]:
     response = await api.post(
-        "/v1/plans", json={"title": "Dinner", "base_currency": "USD", **body}, headers=owner.headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Dinner", "base_currency": "USD", **body},
+        headers=owner.headers,
     )
     assert response.status_code == 201, response.text
     return response.json()
@@ -74,7 +76,12 @@ async def test_batch_applies_in_order_and_replays_for_free(
         op(
             "plan.create",
             operation_id=create_id,
-            payload={"id": str(plan_id), "title": "Dinner", "base_currency": "USD"},
+            payload={
+                "id": str(plan_id),
+                "type": "hangout",
+                "title": "Dinner",
+                "base_currency": "USD",
+            },
         ),
         op(
             "plan.update",
@@ -221,11 +228,9 @@ async def test_transient_failures_block_later_operations_on_the_same_scope(
         for _ in range(limit + 1)
     ]
     batch.append(op("plan.rsvp", target={"plan_id": plan["id"]}, payload={"status": "going"}))
+    # A new plan addresses no existing plan, so it is not held back.
     batch.append(
-        op(
-            "group.create",
-            payload={"name": "Crew", "default_currency": "USD", "default_timezone": "UTC"},
-        )
+        op("plan.create", payload={"type": "hangout", "title": "Other", "base_currency": "USD"})
     )
 
     results = await push(api, owner, batch)
@@ -233,8 +238,7 @@ async def test_transient_failures_block_later_operations_on_the_same_scope(
     assert outcomes(results) == ["applied"] * limit + ["retry", "skipped", "applied"]
     limited = results[limit]["problem"]
     assert limited["code"] == "RATE_LIMITED" and limited["retry_after_seconds"] >= 1
-    assert admin.scalar("SELECT count(*) FROM plans.plans") == limit + 1
-    assert admin.scalar("SELECT count(*) FROM groups.groups") == 1
+    assert admin.scalar("SELECT count(*) FROM plans.plans") == limit + 2
 
     # Replaying the applied duplicates does not consume the limit again.
     replayed = await push(api, owner, results and batch[:limit])
@@ -253,7 +257,12 @@ async def test_dependencies_on_earlier_batches_and_unknown_operations(
             op(
                 "plan.create",
                 operation_id=create_id,
-                payload={"id": str(plan_id), "title": "Dinner", "base_currency": "USD"},
+                payload={
+                    "id": str(plan_id),
+                    "type": "hangout",
+                    "title": "Dinner",
+                    "base_currency": "USD",
+                },
             )
         ],
     )
@@ -332,12 +341,12 @@ async def test_batch_level_validation_and_limits(
                 op(
                     "plan.create",
                     operation_id=duplicate,
-                    payload={"title": "A", "base_currency": "USD"},
+                    payload={"type": "hangout", "title": "A", "base_currency": "USD"},
                 ),
                 op(
                     "plan.create",
                     operation_id=duplicate,
-                    payload={"title": "B", "base_currency": "USD"},
+                    payload={"type": "hangout", "title": "B", "base_currency": "USD"},
                 ),
             ]
         },

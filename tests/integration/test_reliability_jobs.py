@@ -52,12 +52,16 @@ async def test_compaction_job_removes_old_changes_and_raises_floors(
     owner = await sign_in(api, identity_provider, name="Owner")
     plan = (
         await api.post(
-            "/v1/plans", json={"title": "Old", "base_currency": "USD"}, headers=owner.headers
+            "/v1/plans",
+            json={"type": "hangout", "title": "Old", "base_currency": "USD"},
+            headers=owner.headers,
         )
     ).json()
     fresh = (
         await api.post(
-            "/v1/plans", json={"title": "New", "base_currency": "USD"}, headers=owner.headers
+            "/v1/plans",
+            json={"type": "hangout", "title": "New", "base_currency": "USD"},
+            headers=owner.headers,
         )
     ).json()
     admin.execute(
@@ -102,7 +106,7 @@ async def test_purge_job_removes_only_expired_operation_records(
     for key in ("old", "new"):
         created = await api.post(
             "/v1/plans",
-            json={"title": key, "base_currency": "USD"},
+            json={"type": "hangout", "title": key, "base_currency": "USD"},
             headers={**owner.headers, "Idempotency-Key": key},
         )
         assert created.status_code == 201

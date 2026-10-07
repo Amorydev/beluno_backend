@@ -76,9 +76,3 @@ async def test_purge_job_removes_only_expired_auth_records(
     assert removed >= 2
     assert admin.fetch("SELECT email FROM iam.email_challenges") == [("new@example.com",)]
     assert admin.scalar("SELECT count(*) FROM iam.rate_limit_counters") == 0
-
-
-async def test_series_job_is_safe_with_nothing_to_do(
-    worker_runtime: tuple[Runtime, RecordingEmailSender],
-) -> None:
-    assert await tasks.extend_series_horizons.func(0) == 0

@@ -144,7 +144,7 @@ class Ledger:
             fund_movement_id=fund_movement_id,
             reverses_transaction_id=reverses.id if reverses else None,
             memo=memo,
-            created_by_user_id=ctx.actor.user_id if ctx.actor else ctx.on_behalf_of,
+            created_by_user_id=ctx.actor.user_id if ctx.actor else None,
             operation_id=ctx.operation_id,
             created_at=ctx.now,
         )
@@ -373,7 +373,17 @@ async def lock_head(ctx: CommandContext, plan_id: UUID) -> LedgerHead:
             ctx.session.add(head)
             await ctx.session.flush()
     except IntegrityError:
-        head = (await ctx.session.execute(statement)).scalar_one()
+        return (await ctx.session.execute(statement)).scalar_one()
+    # A new ledger entity: devices that already synced the plan must learn about it
+    # even when the command that created it (a budget, the fund settings) posts nothing.
+    await record_change(
+        ctx,
+        entity_type=LEDGER_ENTITY,
+        entity_id=plan_id,
+        entity_version=head.version,
+        scope=ChangeScope.PLAN,
+        scope_id=plan_id,
+    )
     return head
 
 

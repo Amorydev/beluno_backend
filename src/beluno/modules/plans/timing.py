@@ -3,29 +3,21 @@
 Timed values are stored as UTC instants plus the IANA zone they were planned in;
 date-only values stay SQL ``date`` and are never faked as midnight UTC.
 
-Local wall-clock resolution (``resolve_local``):
-* ambiguous times (clock set back) resolve to the earlier instant;
-* non-existent times (clock jumps forward) are rejected for one-off inputs such
-  as travel segments, and shifted forward by the gap for recurring occurrences,
-  so a weekly 02:30 match still happens on the night the clocks change.
+Local wall-clock resolution (``resolve_local``): ambiguous times (clock set
+back) resolve to the earlier instant; non-existent times (clock jumps forward)
+are rejected.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-from enum import StrEnum
 from zoneinfo import ZoneInfo
 
 from beluno.authorization.policy import PlanState
 from beluno.contracts.errors import invalid_state, validation_error
 
 
-class GapPolicy(StrEnum):
-    REJECT = "reject"
-    SHIFT_FORWARD = "shift_forward"
-
-
-def resolve_local(local: datetime, zone_name: str, *, on_gap: GapPolicy) -> datetime:
+def resolve_local(local: datetime, zone_name: str) -> datetime:
     """Return the UTC instant for a naive local wall-clock time in ``zone_name``."""
 
     if local.tzinfo is not None:
@@ -33,7 +25,7 @@ def resolve_local(local: datetime, zone_name: str, *, on_gap: GapPolicy) -> date
     zone = ZoneInfo(zone_name)
     instant = local.replace(tzinfo=zone, fold=0).astimezone(UTC)
     round_trip = instant.astimezone(zone).replace(tzinfo=None)
-    if round_trip != local and on_gap is GapPolicy.REJECT:
+    if round_trip != local:
         raise validation_error("This local time does not exist in that timezone (DST change)")
     return instant
 

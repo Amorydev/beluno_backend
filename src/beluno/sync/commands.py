@@ -49,6 +49,13 @@ class CommandCall:
         return self.target[name]
 
 
+def required_version(call: CommandCall) -> int:
+    """The expected version of a versioned command (the executor enforces its presence)."""
+
+    assert call.expected_version is not None
+    return call.expected_version
+
+
 Handler = Callable[[CommandContext, CommandCall, PayloadT], Awaitable[ResponseT]]
 ConflictPresenter = Callable[[CommandContext, object], Awaitable[BaseModel | None]]
 

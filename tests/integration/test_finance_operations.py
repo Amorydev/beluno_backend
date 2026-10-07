@@ -148,7 +148,9 @@ async def test_finance_writes_are_rate_limited_per_actor_and_plan(
     assert limited.status_code == 429 and "Retry-After" in limited.headers
     # The same person is not throttled in another plan.
     other = await api.post(
-        "/v1/plans", json={"title": "Other", "base_currency": "USD"}, headers=trip.owner.headers
+        "/v1/plans",
+        json={"type": "hangout", "title": "Other", "base_currency": "USD"},
+        headers=trip.owner.headers,
     )
     other_id = other.json()["id"]
     me = other.json()["my_participant"]["id"]

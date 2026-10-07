@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from beluno.api.commands.groups import required_version
 from beluno.api.presenters import (
     invite_response,
     participant_response,
@@ -12,13 +11,13 @@ from beluno.api.presenters import (
     seed_of,
     timing_input,
 )
-from beluno.authorization.policy import PlanRole, PlanState, Visibility
+from beluno.authorization.policy import Capability, PlanRole, PlanState
 from beluno.contracts.invites import InviteResponse
 from beluno.contracts.plans import (
     JoinRequestDecision,
     ParticipantAddRequest,
     ParticipantResponse,
-    ParticipantRoleRequest,
+    ParticipantUpdateRequest,
     PlanCreateRequest,
     PlanDuplicateRequest,
     PlanOwnershipTransferRequest,
@@ -31,23 +30,24 @@ from beluno.modules.context import CommandContext
 from beluno.modules.iam import rate_limits
 from beluno.modules.plans import duplication, invites, service
 from beluno.modules.plans import participants as participant_service
-from beluno.sync.commands import Command, CommandCall, EmptyPayload, version_of
+from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
 
 
 async def _create(ctx: CommandContext, call: CommandCall, body: PlanCreateRequest) -> PlanResponse:
     draft = service.PlanDraft(
         plan_id=body.id,
-        group_id=body.group_id,
+        type=body.type,
         title=body.title,
-        kind=body.kind,
+        activity=body.activity,
         state=PlanState(body.state),
         timing=timing_input(body.timing),
         base_currency=body.base_currency,
-        visibility=Visibility(body.visibility) if body.visibility else None,
+        destinations=tuple(item.model_dump(mode="json") for item in body.destinations),
+        pass_color=body.pass_color,
+        expected_size=body.expected_size,
         description=body.description,
         location_label=body.location_label,
         seeds=tuple(seed_of(seed) for seed in body.participants),
-        include_all_group_members=body.include_all_group_members,
     )
     return plan_response(await service.create_plan(ctx, draft))
 
@@ -56,10 +56,16 @@ async def _update(ctx: CommandContext, call: CommandCall, body: PlanUpdateReques
     fields = body.model_fields_set
     changes = service.PlanChanges(
         title=body.title,
-        kind=body.kind,
+        activity=body.activity if "activity" in fields else service.UNSET,
         timing=timing_input(body.timing) if body.timing else None,
         base_currency=body.base_currency,
-        visibility=Visibility(body.visibility) if body.visibility else None,
+        destinations=(
+            tuple(item.model_dump(mode="json") for item in body.destinations)
+            if body.destinations is not None
+            else None
+        ),
+        pass_color=body.pass_color,
+        expected_size=body.expected_size if "expected_size" in fields else service.UNSET,
         description=body.description if "description" in fields else service.UNSET,
         location_label=body.location_label if "location_label" in fields else service.UNSET,
     )
@@ -104,15 +110,21 @@ async def _add_participant(
     return participant_response(participant)
 
 
-async def _change_participant_role(
-    ctx: CommandContext, call: CommandCall, body: ParticipantRoleRequest
+async def _update_participant(
+    ctx: CommandContext, call: CommandCall, body: ParticipantUpdateRequest
 ) -> ParticipantResponse:
-    participant = await participant_service.change_role(
-        ctx,
-        call.id("plan_id"),
-        call.id("participant_id"),
-        PlanRole(body.role),
-        required_version(call),
+    changes = participant_service.ParticipantChanges(
+        role=PlanRole(body.role) if body.role else None,
+        default_share=body.default_share,
+        capabilities=(
+            frozenset(Capability(value) for value in body.capabilities)
+            if body.capabilities is not None
+            else None
+        ),
+        avatar_color=body.avatar_color,
+    )
+    participant = await participant_service.update_participant(
+        ctx, call.id("plan_id"), call.id("participant_id"), changes, required_version(call)
     )
     return participant_response(participant)
 
@@ -130,10 +142,6 @@ async def _review_join_request(
     return participant_response(participant)
 
 
-async def _join(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> ParticipantResponse:
-    return participant_response(await participant_service.join_plan(ctx, call.id("plan_id")))
-
-
 async def _leave(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> None:
     await participant_service.leave_plan(ctx, call.id("plan_id"))
 
@@ -148,13 +156,10 @@ async def _duplicate(
 ) -> PlanResponse:
     options = duplication.DuplicateOptions(
         title=body.title,
-        use_source_group="group_id" not in body.model_fields_set,
-        group_id=body.group_id,
         timing=timing_input(body.timing),
         participant_ids=tuple(body.participant_ids) if body.participant_ids is not None else None,
         include_description=body.include_description,
         include_location=body.include_location,
-        include_travel_details=body.include_travel_details,
     )
     return plan_response(await duplication.duplicate_plan(ctx, call.id("plan_id"), options))
 
@@ -227,11 +232,11 @@ PLAN_PARTICIPANT_ADD = Command(
     target_fields=("plan_id",),
     status=201,
 )
-PLAN_PARTICIPANT_CHANGE_ROLE = Command(
-    name="plan.participant.change_role",
-    payload_model=ParticipantRoleRequest,
+PLAN_PARTICIPANT_UPDATE = Command(
+    name="plan.participant.update",
+    payload_model=ParticipantUpdateRequest,
     response_model=ParticipantResponse,
-    handler=_change_participant_role,
+    handler=_update_participant,
     target_fields=("plan_id", "participant_id"),
     versioned=True,
 )
@@ -249,13 +254,6 @@ PLAN_PARTICIPANT_REVIEW = Command(
     response_model=ParticipantResponse,
     handler=_review_join_request,
     target_fields=("plan_id", "participant_id"),
-)
-PLAN_JOIN = Command(
-    name="plan.join",
-    payload_model=EmptyPayload,
-    response_model=ParticipantResponse,
-    handler=_join,
-    target_fields=("plan_id",),
 )
 PLAN_LEAVE = Command(
     name="plan.leave",
@@ -298,10 +296,9 @@ COMMANDS: list[Command[Any, Any]] = [
     PLAN_RESTORE,
     PLAN_TRANSFER_OWNERSHIP,
     PLAN_PARTICIPANT_ADD,
-    PLAN_PARTICIPANT_CHANGE_ROLE,
+    PLAN_PARTICIPANT_UPDATE,
     PLAN_PARTICIPANT_REMOVE,
     PLAN_PARTICIPANT_REVIEW,
-    PLAN_JOIN,
     PLAN_LEAVE,
     PLAN_RSVP,
     PLAN_DUPLICATE,

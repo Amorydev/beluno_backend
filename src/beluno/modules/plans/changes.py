@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from beluno.db.models.plans import Plan, PlanInvite, PlanParticipant, PlanSeries
+from beluno.db.models.plans import Plan, PlanInvite, PlanParticipant
 from beluno.modules.context import CommandContext
 from beluno.modules.sync_audit.recorder import ChangeScope, record_change, record_mutation
 
@@ -24,7 +24,6 @@ async def record_plan_change(
         entity_version=plan.version,
         scope=ChangeScope.PLAN,
         scope_id=plan.id,
-        group_id=plan.group_id,
         plan_id=plan.id,
         metadata=metadata,
     )
@@ -83,6 +82,6 @@ async def record_invite_change(
     )
 
 
-def bump(entity: Plan | PlanParticipant | PlanInvite | PlanSeries, ctx: CommandContext) -> None:
+def bump(entity: Plan | PlanParticipant | PlanInvite, ctx: CommandContext) -> None:
     entity.version += 1
     entity.updated_at = ctx.now

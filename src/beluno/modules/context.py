@@ -61,8 +61,6 @@ class CommandContext:
     now: datetime
     actor: AuthenticatedActor | None
     request_id: str | None
-    # Background work done for a user without a session (e.g. series materialization).
-    on_behalf_of: UUID | None = None
     # Set when the command carries an idempotency key; change rows point back to it.
     operation_id: UUID | None = None
     # Audit and change rows recorded by this command, written just before commit.

@@ -1,1 +1,1 @@
-"""Plans, stable participants, RSVP, invites, series, duplication, and travel."""
+"""Plans, stable participants, RSVP, invites, and duplication."""

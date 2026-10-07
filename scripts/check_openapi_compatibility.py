@@ -5,7 +5,12 @@ Breaking changes detected:
 * a property was removed from a successful JSON response schema;
 * a request body or parameter became required, or a new required one appeared.
 
-Usage: python scripts/check_openapi_compatibility.py BASE.json CURRENT.json
+A break listed in the accepted-breaks file (``openapi/accepted-breaks.json`` by
+default, or a third argument) is reported but does not fail the check. Each entry
+names the exact break, why it is intended, and the release it ships in; prune the
+list once the base branch carries the new contract.
+
+Usage: python scripts/check_openapi_compatibility.py BASE.json CURRENT.json [ACCEPTED.json]
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 METHODS = ("get", "put", "post", "delete", "patch")
+DEFAULT_ACCEPTED = Path(__file__).resolve().parent.parent / "openapi" / "accepted-breaks.json"
 
 
 def resolve(document: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
@@ -83,15 +89,29 @@ def breaking_changes(base: dict[str, Any], current: dict[str, Any]) -> list[str]
     return problems
 
 
+def accepted_breaks(path: Path) -> set[str]:
+    """The intended breaks; every entry must say why and in which release."""
+
+    if not path.exists():
+        return set()
+    entries = json.loads(path.read_text(encoding="utf-8"))["accepted"]
+    for entry in entries:
+        if not entry.get("reason") or not entry.get("release"):
+            raise ValueError(f"accepted break needs a reason and a release: {entry}")
+    return {entry["break"] for entry in entries}
+
+
 def main() -> int:
     base_path, current_path = (Path(argument) for argument in sys.argv[1:3])
+    accepted = accepted_breaks(Path(sys.argv[3]) if len(sys.argv) > 3 else DEFAULT_ACCEPTED)
     problems = breaking_changes(
         json.loads(base_path.read_text(encoding="utf-8")),
         json.loads(current_path.read_text(encoding="utf-8")),
     )
+    unexpected = [problem for problem in problems if problem not in accepted]
     for problem in problems:
-        print(f"BREAKING: {problem}")
-    return 1 if problems else 0
+        print(f"{'ACCEPTED' if problem in accepted else 'BREAKING'}: {problem}")
+    return 1 if unexpected else 0
 
 
 if __name__ == "__main__":

@@ -67,13 +67,16 @@ async def test_ninety_day_offline_device_catches_up_and_older_cursors_resync(
     owner = await sign_in(api, identity_provider, name="Owner")
     plan = (
         await api.post(
-            "/v1/plans", json={"title": "v1", "base_currency": "USD"}, headers=owner.headers
+            "/v1/plans",
+            json={"type": "hangout", "title": "v1", "base_currency": "USD"},
+            headers=owner.headers,
         )
     ).json()
     scope = f"plan:{plan['id']}"
     _, offline_cursor = await drain(api, owner, scope, None)
 
-    # Ninety days of activity while the device is away: twelve edits, a segment, a removal.
+    # Ninety days of activity while the device is away: twelve edits, a new person, a
+    # budget created and deleted again.
     for version in range(1, 13):
         edited = await api.patch(
             f"/v1/plans/{plan['id']}",
@@ -81,25 +84,31 @@ async def test_ninety_day_offline_device_catches_up_and_older_cursors_resync(
             headers={**owner.headers, "If-Match": f'"{version}"'},
         )
         assert edited.status_code == 200, edited.text
-    await api.put(f"/v1/plans/{plan['id']}/travel", json={}, headers=owner.headers)
-    segment = await api.post(
-        f"/v1/plans/{plan['id']}/travel/segments",
-        json={"segment_type": "car", "timing_mode": "date", "start_date": "2027-01-01"},
+    added = await api.post(
+        f"/v1/plans/{plan['id']}/participants",
+        json={"placeholder_name": "Grandma"},
         headers=owner.headers,
     )
-    assert segment.status_code == 201
-    gone = await api.delete(
-        f"/v1/plans/{plan['id']}/travel/segments/{segment.json()['id']}", headers=owner.headers
+    assert added.status_code == 201, added.text
+    budget = await api.post(
+        f"/v1/plans/{plan['id']}/budgets",
+        json={"scope": "total", "limit_minor": 10_000},
+        headers=owner.headers,
     )
-    assert gone.status_code == 204
+    assert budget.status_code == 201, budget.text
+    gone = await api.delete(
+        f"/v1/plans/{plan['id']}/budgets/{budget.json()['id']}", headers=owner.headers
+    )
+    assert gone.status_code == 204, gone.text
     admin.execute("UPDATE sync_audit.change_log SET changed_at = changed_at - interval '95 days'")
     assert await compact_changes(worker) == 0  # everything is still inside retention
 
     caught_up, cursor = await drain(api, owner, scope, offline_cursor)
     assert [(item["entity_type"], item["operation"]) for item in caught_up] == [
         ("plan", "upsert"),
-        ("travel_details", "upsert"),
-        ("travel_segment", "delete"),
+        ("plan_participant", "upsert"),
+        ("ledger", "upsert"),
+        ("budget", "delete"),
     ]
     assert caught_up[0]["data"]["title"] == "v13" and caught_up[0]["version"] == 13
 
@@ -112,6 +121,7 @@ async def test_ninety_day_offline_device_catches_up_and_older_cursors_resync(
     assert [item["entity_type"] for item in snapshot] == [
         "plan",
         "plan_participant",
-        "travel_details",
+        "plan_participant",
+        "ledger",
     ]
     assert snapshot[0]["data"]["title"] == "v13"

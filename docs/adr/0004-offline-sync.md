@@ -1,6 +1,6 @@
 # ADR 0004: Offline Sync
 
-**Status:** Accepted (expanded 2026-10-06)
+**Status:** Accepted (expanded 2026-10-06; scopes updated 2026-10-06)
 
 Clients persist local changes and an outbox atomically. The server accepts
 idempotent commands and exposes cursor-based changes from an append-only change
@@ -9,10 +9,10 @@ last-write-wins.
 
 ## Decisions
 
-- **Scopes.** Sync runs as independent streams per `user:{id}`, `group:{id}`,
-  and `plan:{id}` scope, each with its own cursor. The handshake directory,
-  recomputed from current relationships on every connect, is the revocation
-  signal: a scope that disappears is purged locally.
+- **Scopes.** Sync runs as independent streams per `user:{id}` and `plan:{id}`
+  scope, each with its own cursor (supersedes: group scopes removed in ADR 0008).
+  The handshake directory, recomputed from current relationships on every
+  connect, is the revocation signal: a scope that disappears is purged locally.
 - **Sequencing.** Every change row carries a `scope_seq` that is contiguous per
   scope, assigned under a row lock on `sync_audit.scope_heads` by the SECURITY
   DEFINER gate `sync_audit.append_changes` just before commit. Application code

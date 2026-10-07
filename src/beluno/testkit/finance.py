@@ -15,7 +15,6 @@ from beluno.testkit.identity import IdentityProviderStub
 @dataclass
 class FinancePlan:
     plan_id: str
-    group_id: str
     owner: SignedIn
     members: dict[str, SignedIn]
     people: dict[str, str]
@@ -36,44 +35,43 @@ async def finance_plan(
     """Owner "Ann", registered members, and name-only placeholders, all active participants."""
 
     owner = await sign_in(api, provider, name="Ann")
-    group = await api.post(
-        "/v1/groups",
-        json={"name": "Crew", "default_currency": currency, "default_timezone": "UTC"},
-        headers=owner.headers,
-    )
-    assert group.status_code == 201, group.text
-    group_id = group.json()["id"]
-    signed: dict[str, SignedIn] = {}
-    for name in members:
-        member = await sign_in(api, provider, name=name)
-        admin.execute(
-            "INSERT INTO groups.group_memberships (group_id, user_id, role, state, joined_at, "
-            "version, created_at, updated_at) "
-            "VALUES (%s, %s, 'member', 'active', now(), 1, now(), now())",
-            group_id,
-            member.user_id,
-        )
-        signed[name] = member
     plan = await api.post(
         "/v1/plans",
         json={
+            "type": "trip",
             "title": "Trip",
-            "group_id": group_id,
-            "visibility": "participants",
             "base_currency": currency,
-            "include_all_group_members": True,
             "participants": [{"placeholder_name": name} for name in placeholders],
         },
         headers=owner.headers,
     )
     assert plan.status_code == 201, plan.text
     plan_id = plan.json()["id"]
+    signed: dict[str, SignedIn] = {}
+    for name in members:
+        signed[name] = await sign_in(api, provider, name=name)
+        await join_with_invite(api, owner, plan_id, signed[name])
     listed = await api.get(f"/v1/plans/{plan_id}/participants", headers=owner.headers)
     assert listed.status_code == 200, listed.text
     people = {row["display_name"]: row["id"] for row in listed.json()}
-    return FinancePlan(
-        plan_id=plan_id, group_id=group_id, owner=owner, members=signed, people=people
+    return FinancePlan(plan_id=plan_id, owner=owner, members=signed, people=people)
+
+
+async def join_with_invite(
+    api: httpx.AsyncClient, manager: SignedIn, plan_id: str, person: SignedIn
+) -> dict[str, Any]:
+    """The person joins the plan as a member through a fresh invite link."""
+
+    invite = await api.post(
+        f"/v1/plans/{plan_id}/invites", json={"max_uses": 1}, headers=manager.headers
     )
+    assert invite.status_code == 201, invite.text
+    joined = await api.post(
+        "/v1/invites/redeem", json={"token": invite.json()["token"]}, headers=person.headers
+    )
+    assert joined.status_code == 200, joined.text
+    participant: dict[str, Any] = joined.json()["participant"]
+    return participant
 
 
 def equal_expense(

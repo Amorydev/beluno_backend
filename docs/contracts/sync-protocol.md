@@ -16,24 +16,21 @@ A scope is one independent change stream with its own cursor:
 
 | Scope | Entities (`entity_type`) | Who may read it |
 |---|---|---|
-| `user:{id}` | `user`, `session`, `plan_series` (personal), `group_access`, `plan_access` | the user (`self`) |
-| `group:{id}` | `group`, `group_membership` (live rows only), `group_invite` (managers), `plan_series` | active members (`manager` = owner/admin, `member`); an `invited` person sees the group and their own membership only |
-| `plan:{id}` | `plan`, `plan_participant`, `travel_details`, `travel_segment`, `plan_invite` (managers); finance: `ledger`, `expense`, `settlement`, `budget`, `cost_commitment`, `fund`, `fund_movement` | active participants (`manager` = owner/admin, `member` = everyone else) and active members of the group for group-visible plans (`reader`); pending participants are shown to managers only; finance entities are never sent to `reader` |
+| `user:{id}` | `user`, `session`, `plan_access`, `crew` | the user (`self`) |
+| `plan:{id}` | `plan`, `plan_participant`, `plan_invite` (managers); finance: `ledger`, `expense`, `settlement`, `budget`, `cost_commitment`, `fund`, `fund_movement` | active participants (`manager` = owner/admin, `member` = everyone else); pending participants and invites are shown to managers only |
 
-Entity payloads are the REST representations with two exceptions: the `plan`
-entity has no `my_participant` (use the caller's `plan_participant` row) and
-`travel_details` has no `segments` (they are `travel_segment` entities).
+Entity payloads are the REST representations with one exception: the `plan`
+entity has no `my_participant` (use the caller's `plan_participant` row).
 Entities never embed other entities. Invites carry no token. Finance values
 that are not independent entities travel inside their owner: an `expense`
 carries its current immutable revision (payers, split input, resolved shares,
 base-currency snapshot) and its refunds; the single `ledger` entity per plan
 (`entity_id` = plan id) carries the ledger status, sequence, open dispute
 count, and every account balance per currency. Revision history and the
-journal are REST-only (`/expenses/{id}/revisions`, `/ledger/transactions`). `plan_access` and
-`group_access` are user-scope signals (`PlanAccessSignal`, `GroupAccessSignal`)
-describing the caller's own participation or membership; a non-active state
-means the matching scope is no longer theirs unless the directory still lists
-it (for example as a group `reader`).
+journal are REST-only (`/expenses/{id}/revisions`, `/ledger/transactions`). `plan_access`
+is a user-scope signal (`PlanAccessSignal`) describing the caller's own
+participation; a non-active state means the matching scope is no longer theirs
+unless the directory still lists it.
 
 ## Handshake: `POST /v1/sync/handshake`
 
@@ -80,7 +77,7 @@ Every operation runs in its own transaction and gets its own result:
 | `rejected` | validation, authorization, not-found, or missing `expected_version` | permanent; drop or fix |
 | `upgrade_required` | command or protocol version unsupported | keep the outbox, upgrade the client |
 | `retry` | rate limit (`retry_after_seconds`), disabled feature, transient database conflict | keep, retry unchanged later |
-| `skipped` | not attempted: an earlier operation on the same plan/group/series must be retried first, or a dependency was not applied | keep (or drop with the failed dependency) |
+| `skipped` | not attempted: an earlier operation on the same plan must be retried first, or a dependency was not applied | keep (or drop with the failed dependency) |
 
 Order is preserved: after a `retry`, later operations on the same scope are
 `skipped` so they cannot overtake. A permanent failure only skips operations
@@ -125,9 +122,8 @@ the same sequences return with data at least as new). Apply an `upsert` only
 when its `version` is greater than or equal to the local version. A `delete`
 carries the version at which the row disappeared: keep it as a tombstone, drop
 upserts whose `version` is not greater than it, and let an upsert with a
-greater version revive the entity (`group_membership` rows are revived when a
-person who left joins again; sessions and segments never are). Keep pending
-local edits; conflicts surface when they are pushed.
+greater version revive the entity. Sessions are never revived. Keep pending local edits; conflicts surface
+when they are pushed.
 
 Cursors are opaque, HMAC-signed tokens bound to the user, scope, generation,
 access level, and position. Never edit or share them.
@@ -136,8 +132,8 @@ access level, and position. Never edit or share them.
 
 | Entity / action | Policy |
 |---|---|
-| Versioned entities (plan, group, participant role, membership role, travel details and segments, series, profile) | strict `expected_version`; `412` returns `current`; no server-side last-write-wins |
-| Intent commands (RSVP, join, leave, invitation answer, join-request review, removal) | no version; the server applies the intent to current state |
+| Versioned entities (plan, participant settings, profile, crew) | strict `expected_version`; `412` returns `current`; no server-side last-write-wins |
+| Intent commands (RSVP, leave, join-request review, removal) | no version; the server applies the intent to current state |
 | Delete versus edit | the delete wins; recreate with a new ID |
 | Ordered collections (future itinerary) | fractional ordering keys from `beluno.sync.ordering`; deterministic rebalance |
 | Expenses (revise, void, refund) | strict `expected_version` on the expense; a revision appends a reversal and a new revision, never an overwrite; a voided expense rejects further changes (`409`); a refunded expense keeps its currency and split (`409 INVALID_STATE_TRANSITION`) |

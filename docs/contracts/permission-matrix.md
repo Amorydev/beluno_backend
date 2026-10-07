@@ -4,8 +4,8 @@ Authorization is decided server-side on every request from the caller's
 **current** relationships loaded from PostgreSQL (never from token claims):
 
 ```text
-actor kind (registered | guest) x current group membership x current plan
-participant state x role x plan/group state x visibility x step-up freshness x action
+actor kind (registered | guest) x current plan participant state x role
+x plan state x step-up freshness x action
 ```
 
 The policy (`src/beluno/authorization/policy.py`) defaults to deny. A caller with
@@ -17,28 +17,27 @@ a caller who can see the resource but may not act receives `403 FORBIDDEN`, and
 
 The tables below are executable: `tests/security/test_permission_matrix.py`
 parses them and checks every cell against the policy code, then sweeps every
-combination of role, access state, plan state, visibility, deletion, guest, and
-step-up state for invariant violations.
+combination of role, access state, plan state, deletion, guest, and step-up
+state for invariant violations.
 
 Cell values: `allow`, `deny`, `step-up` (allowed only after a recent sign-in).
 
 ## Plan actions
 
-Columns are the caller's active participant role; `group-member` is an active
-member of the plan's group who is not a participant of a group-visible plan.
+Columns are the caller's active participant role; `outsider` is anyone who is
+not an active participant (they get `404`).
 The `guest` role belongs to guest identities, which never pass
 "registered-only" actions.
 
 <!-- plan-matrix:start -->
-| Action | owner | admin | member | viewer | guest | group-member |
+| Action | owner | admin | member | viewer | guest | outsider |
 |---|---|---|---|---|---|---|
-| plan.view | allow | allow | allow | allow | allow | allow |
+| plan.view | allow | allow | allow | allow | allow | deny |
 | plan.update | allow | allow | deny | deny | deny | deny |
 | plan.state.change | allow | allow | deny | deny | deny | deny |
 | plan.delete | step-up | deny | deny | deny | deny | deny |
 | plan.duplicate | allow | allow | deny | deny | deny | deny |
-| plan.join | deny | deny | deny | deny | deny | allow |
-| plan.participants.view | allow | allow | allow | allow | allow | allow |
+| plan.participants.view | allow | allow | allow | allow | allow | deny |
 | plan.participants.add | allow | allow | deny | deny | deny | deny |
 | plan.participants.remove | allow | allow | deny | deny | deny | deny |
 | plan.participants.change_role | allow | allow | deny | deny | deny | deny |
@@ -47,8 +46,6 @@ The `guest` role belongs to guest identities, which never pass
 | plan.leave | allow | allow | allow | allow | allow | deny |
 | plan.rsvp.respond | allow | allow | allow | allow | allow | deny |
 | plan.invites.manage | allow | allow | deny | deny | deny | deny |
-| plan.travel.view | allow | allow | allow | allow | allow | allow |
-| plan.travel.manage | allow | allow | allow | deny | deny | deny |
 | plan.finance.view | allow | allow | allow | allow | allow | deny |
 | plan.expenses.create | allow | allow | allow | deny | allow | deny |
 | plan.expenses.manage | allow | allow | deny | deny | deny | deny |
@@ -63,8 +60,7 @@ The `guest` role belongs to guest identities, which never pass
 
 State narrowing (applies on top of the table):
 
-- Content edits (`plan.update`, participant add/review, invites, travel edits)
-  require the plan to be `draft`, `planning`, `active`, or `settling`; RSVP
+- Content edits (`plan.update`, participant add/review, invites) require the plan to be `draft`, `planning`, `active`, or `settling`; RSVP
   requires `draft`, `planning`, or `active`. `completed`, `archived`, and
   `cancelled` plans are read-only except state changes, duplication, and
   deletion.
@@ -73,27 +69,26 @@ State narrowing (applies on top of the table):
   `completed`, because people pay each other back after the plan is over.
 - Row rules on top of the table: an expense is revised, voided, or refunded by
   its creator (who must still hold `plan.expenses.create`) or by anyone with
-  `plan.expenses.manage`; naming the fund as a payer also needs
-  `plan.fund.manage` or being the fund's custodian. A settlement is recorded by
-  one of its two parties or by a manager. The creditor (the participant the
-  money now belongs to after merges) confirms or disputes it with
-  `plan.settlements.answer`; managers answer for creditors who are placeholders
-  or no longer active, never for a settlement they owe themselves. Its recorder
-  or a manager reverses it, and the creditor may reverse one they never
-  confirmed. An account that claimed a guest account counts as the creator or
-  recorder of the records that guest made. A waiver is given by the creditor
+  `plan.expenses.manage` (owner, admin, or a member granted `expenses.manage`);
+  naming the fund as a payer also needs `plan.fund.manage` or being the fund's custodian. A
+  settlement is recorded by one of its two parties or by a manager. The creditor
+  (the participant the money now belongs to after merges) confirms or disputes it
+  with `plan.settlements.answer`; managers answer for creditors who are
+  placeholders or no longer active, never for a settlement they owe themselves.
+  Its recorder or a manager reverses it, and the creditor may reverse one they
+  never confirmed. An account that claimed a guest account counts as the creator
+  or recorder of the records that guest made. A waiver is given by the creditor
   (managers for placeholder or inactive creditors, never when they are the
-  debtor) and never exceeds what the debtor owes the group and the creditor is
-  owed. Participants contribute
-  to the fund for themselves; contributions for others, withdrawals, and fund
-  settings need `plan.fund.manage`.
-- Finance is private to the plan's active participants: group members reading
-  a group-visible plan do not see expenses, balances, or settlements.
+  debtor) and never exceeds what the debtor owes overall and what the
+  creditor is owed overall. Participants contribute to the fund for themselves;
+  contributions for others, withdrawals, and fund settings need `plan.fund.manage`
+  (owner or admin; no capability grants it).
+- Finance is private to the plan's active participants.
 - While deletion is scheduled only reads, leaving, and `plan.delete`
   (restore) are allowed.
 - `pending_approval`, `left`, `removed`, and `merged` participants have no
-  rights: the plan is hidden unless it is group-visible to an active group
-  member. Removed participants keep their row and history.
+  rights: the plan is hidden from them. Removed participants keep their row
+  and history.
 - Owners cannot leave (`409 OWNER_TRANSFER_REQUIRED`); ownership moves only by
   transfer to an active registered participant.
 - Placeholders can only be members or viewers; a guest who claims a
@@ -105,37 +100,6 @@ State narrowing (applies on top of the table):
   viewers, and guests and may only assign `member` or `viewer`; only owners
   create admin invites; guests cannot be given another role or become admins.
 
-## Group actions
-
-<!-- group-matrix:start -->
-| Action | owner | admin | member | invited |
-|---|---|---|---|---|
-| group.view | allow | allow | allow | allow |
-| group.update | allow | allow | deny | deny |
-| group.delete | step-up | deny | deny | deny |
-| group.members.view | allow | allow | allow | deny |
-| group.members.add | allow | allow | deny | deny |
-| group.members.remove | allow | allow | deny | deny |
-| group.members.change_role | allow | deny | deny | deny |
-| group.ownership.transfer | step-up | deny | deny | deny |
-| group.invitation.respond | deny | deny | deny | allow |
-| group.leave | allow | allow | allow | deny |
-| group.plans.create | allow | allow | allow | deny |
-<!-- group-matrix:end -->
-
-- `group.members.add` also governs group invite links; admins may add members
-  but not admins, and may remove plain members only.
-- While deletion is scheduled only view, member list, leave, and
-  `group.delete` (restore) are allowed.
-- Guests cannot hold group membership, create groups, or create plans.
-
-## Plan series
-
-A series is visible to its creator and to active members of its group. Only
-the creator (a registered user) may split or cancel it, because the creator
-owns every occurrence it materializes. Occurrences are ordinary plans governed
-by the plan table above.
-
 ## Invite links
 
 | Operation | Who |
@@ -143,23 +107,27 @@ by the plan table above.
 | Preview | anyone holding the token (minimal fields only) |
 | Redeem plan join invite | registered users; guests when `allow_guests`; email-bound invites only the intended verified email |
 | Redeem placeholder claim invite | anyone holding the single-use token; existing participants must confirm a merge |
-| Redeem group invite | registered users only |
-| Create / list / revoke / rotate | `plan.invites.manage` or `group.members.add` |
+| Create / list / revoke / rotate | `plan.invites.manage` |
 
 ## Database write guards
 
 RLS selects the rows a runtime role may touch; BEFORE triggers
 (`alembic/versions/000003_tenant_write_guards.py`) limit what an insider may
 change on them: tenant keys are immutable, only active owners/admins change
-other people's rows or the plan/group, only the owner moves ownership, a
-non-manager changes only their own row through the transitions the API offers,
-and an invite-token holder can only count one use.
+other people's rows or the plan, only the owner moves ownership, a
+non-manager changes only their own row through the transitions the API offers
+and never its `default_share` or `capabilities` (a self-inserted row carries
+none), and an invite-token holder can only count one use. On `people.crews`,
+RLS limits every row to its owner and `people.crew_write_guard` requires a
+registered owner, keeps the ID, owner, and creation time immutable, makes a
+delete final, and admits a newly listed person only when they are registered
+and in a plan the owner is active in.
 
 ## Background roles
 
 | Role | Access |
 |---|---|
 | `api_runtime` | DML on module tables under RLS; insert-only audit events; change rows only through `sync_audit.append_changes`/`read_changes` (visibility checked per scope); own operation records; scope heads readable for visible scopes; enqueue jobs |
-| `worker_runtime` | email challenge delivery, auth record purge, series materialization acting as the series creator; insert-only audit; `append_changes`; retention gates `compact_changes`/`purge_operations`; job queue tooling |
+| `worker_runtime` | email challenge delivery, auth record purge, ledger reconciliation; insert-only audit; `append_changes`; retention gates `compact_changes`/`purge_operations`; job queue tooling |
 | `scheduler_runtime` | job queue only |
 | `migrator` | owns tables and SECURITY DEFINER policy helpers; never used by application traffic |

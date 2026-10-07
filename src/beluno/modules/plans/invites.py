@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from beluno.auth import AuthenticatedActor
 from beluno.authorization.access import find_user_participant, load_plan, require_plan
@@ -52,6 +52,7 @@ from beluno.modules.plans.participants import (
     LIVE_STATES,
     build_participant,
     insert_participant,
+    next_avatar_color,
     reactivate,
 )
 
@@ -78,6 +79,7 @@ class PlanInvitePreview:
     plan: Plan
     organizer_name: str | None
     placeholder_name: str | None
+    participant_count: int
 
 
 @dataclass(frozen=True)
@@ -231,8 +233,20 @@ async def preview(ctx: CommandContext, invite: PlanInvite) -> PlanInvitePreview:
                 )
             )
         ).scalar_one_or_none()
+    participant_count = await ctx.session.scalar(
+        select(func.count())
+        .select_from(PlanParticipant)
+        .where(
+            PlanParticipant.plan_id == plan.id,
+            PlanParticipant.access_state == AccessState.ACTIVE.value,
+        )
+    )
     return PlanInvitePreview(
-        invite=invite, plan=plan, organizer_name=organizer, placeholder_name=placeholder_name
+        invite=invite,
+        plan=plan,
+        organizer_name=organizer,
+        placeholder_name=placeholder_name,
+        participant_count=participant_count or 0,
     )
 
 
@@ -243,6 +257,7 @@ async def redeem(
     display_name: str | None,
     merge_existing: bool,
     device: DeviceInfo,
+    avatar_color: str | None = None,
 ) -> PlanRedemption:
     """``invite`` must be locked and already checked as usable by the caller."""
 
@@ -258,7 +273,7 @@ async def redeem(
     if ctx.actor is None:
         tokens = await _start_guest(ctx, invite, display_name, device)
     if invite.purpose == "claim":
-        participant = await _claim_placeholder(ctx, invite, merge_existing)
+        participant = await _claim_placeholder(ctx, invite, merge_existing, avatar_color)
     else:
         existing = await find_user_participant(
             ctx, plan.id, ctx.require_actor().user_id, for_update=True
@@ -266,7 +281,7 @@ async def redeem(
         if existing is not None and existing.access_state in LIVE_STATES:
             # Retried or repeated redemption: same participant, no extra use counted.
             return PlanRedemption(plan=plan, participant=existing, tokens=tokens)
-        participant = await _join(ctx, invite, existing)
+        participant = await _join(ctx, invite, existing, avatar_color)
     invite.use_count += 1
     bump(invite, ctx)
     await ctx.session.flush()
@@ -278,6 +293,7 @@ async def _join(
     ctx: CommandContext,
     invite: PlanInvite,
     existing: PlanParticipant | None,
+    avatar_color: str | None,
 ) -> PlanParticipant:
     actor = ctx.require_actor()
     state = AccessState.PENDING_APPROVAL if invite.requires_approval else AccessState.ACTIVE
@@ -287,6 +303,7 @@ async def _join(
             raise forbidden("You were removed from this plan; ask an organizer to add you")
         reactivate(ctx, existing, role=role, access_state=state)
         existing.joined_via_invite_id = invite.id
+        existing.avatar_color = avatar_color or existing.avatar_color
         await ctx.session.flush()
         await record_participant_change(ctx, existing, "plan_participant.rejoined_via_invite")
         return existing
@@ -301,6 +318,7 @@ async def _join(
             user_id=user.id,
             display_name=user.display_name,
             role=role,
+            avatar_color=avatar_color or await next_avatar_color(ctx, invite.plan_id),
             access_state=state,
             invite_id=invite.id,
         ),
@@ -312,6 +330,7 @@ async def _claim_placeholder(
     ctx: CommandContext,
     invite: PlanInvite,
     merge_existing: bool,
+    avatar_color: str | None,
 ) -> PlanParticipant:
     actor = ctx.require_actor()
     if merge_existing and await find_user_participant(ctx, invite.plan_id, actor.user_id):
@@ -351,6 +370,7 @@ async def _claim_placeholder(
     placeholder.user_id = actor.user_id
     placeholder.identity_kind = "guest" if actor.is_guest else "user"
     placeholder.claimed_at = ctx.now
+    placeholder.avatar_color = avatar_color or placeholder.avatar_color
     if actor.is_guest:
         placeholder.role = PlanRole.GUEST.value
     bump(placeholder, ctx)
