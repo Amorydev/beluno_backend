@@ -67,6 +67,13 @@ Release 3: everything that needs external providers or storage. The previous pla
   - Review (`reports/code-reviewer-261007-1530-trip-account-export-review-report.md`): no leak found (export IDs match the sync snapshot). Fixed: files render after the transaction closes, in a worker thread (M1); full-width formula signs and whole-cell escaping (L2); per-route OpenAPI responses (L6); stable CSV order (L7); tests for paging, guests, removed people, raw tokens, private notes, voided rows, and the rate limit.
   - Left as is: an export is read-committed, not a single snapshot (L1); exports go through `scope_access` like sync by design (L3); no size cap yet (revisit with the background export job of the media slice).
 
+- Slice 1b (recap) is on `feat/trip-recap`:
+  - `GET /v1/plans/{id}/recap`: days (dates, or local start and end times), stops with nights, people, spending from the budget overview (per person per day, by category in basis points), the most wanted place, itinerary done/total, decided polls, who has settled and when the last settlement was.
+  - `share`: route, start date, days, people, total; the app draws the card.
+  - Not computed (no data yet): steps, memories, and the cover photo (media slice).
+  - Review (`reports/code-reviewer-261007-1600-trip-recap-review-report.md`): money totals matched the budget screen. Fixed: "settled" is the ledger's status and rule (tolerance on the base currency only), and the crew lists people who left with money still open (H1, H2, M1); the top place counts active participants only (M2); `spent_complete` and `estimated_rates` flag partial totals (M3); timed plans return local dates (M4); ending at local midnight ends the day before; category shares add up to 10,000; closed polls without a result are not decisions.
+  - Kept, documented: per person per day divides by today's active headcount, placeholders included; `settled_on` is the last standing settlement's date as entered.
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.

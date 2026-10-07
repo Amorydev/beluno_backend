@@ -30,6 +30,7 @@ from beluno.api.routers import (
     me,
     planning,
     plans,
+    recap,
     sync,
 )
 from beluno.auth import AccessTokenCodec
@@ -165,6 +166,7 @@ def create_app(
         finance.router,
         planning.router,
         exports.router,
+        recap.router,
         invites.router,
         sync.router,
     ):

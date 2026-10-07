@@ -91,6 +91,14 @@ Exports hold exactly what the caller can already sync, so booking secrets, invit
 tokens, and other people's private packing items never appear; each is audited and
 rate-limited.
 
+`GET /v1/plans/{id}/recap` sums up a plan for anyone who sees its money: days and
+stops, people, spending in the base currency (the budget screen's numbers) per
+person per day and by category, the most wanted place, itinerary progress, decided
+polls, and who has settled (the ledger's own status and tolerance rule; people who left
+with money still open are listed too). Its `share` object holds the only fields a public card
+may show (route, start date and length, people, and the total if the person
+chooses); the app draws the card, so the server serves no public link.
+
 ## Trip planning
 
 Trips have a plan: saved places (`/v1/plans/{id}/places`, with "want to go"
