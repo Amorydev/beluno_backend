@@ -58,10 +58,17 @@ def configure_observability(app: FastAPI | None, settings: Settings) -> None:
         metrics.set_meter_provider(meter_provider)
         reliability_metrics.use_meter_provider(meter_provider)
         if app is not None:
-            FastAPIInstrumentor.instrument_app(
-                app,
-                excluded_urls="health/live,health/ready",
-            )
+            instrument_api(app)
+
+
+def instrument_api(app: FastAPI, tracer_provider: TracerProvider | None = None) -> None:
+    """Trace HTTP requests by route and status only: no headers or bodies are captured."""
+
+    FastAPIInstrumentor.instrument_app(
+        app,
+        tracer_provider=tracer_provider,
+        excluded_urls="health/live,health/ready",
+    )
 
 
 def redact_sentry_event(event: Event, _: Hint) -> Event | None:

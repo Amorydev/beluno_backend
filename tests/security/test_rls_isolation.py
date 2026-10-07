@@ -8,12 +8,14 @@ from uuid import uuid4
 import httpx
 import psycopg
 import pytest
+from psycopg.types.json import Jsonb
 
 from beluno.config import Settings
 from beluno.modules.invite_links import token_digest
 from beluno.testkit.api_client import sign_in
 from beluno.testkit.database import AdminDatabase
 from beluno.testkit.identity import IdentityProviderStub
+from beluno.testkit.tenants import full_tenant
 from beluno.token_hashing import TokenHasher
 
 pytestmark = pytest.mark.integration
@@ -171,3 +173,119 @@ def test_role_and_table_ownership_invariants(admin: AdminDatabase) -> None:
     )
     assert len(tables) == 15
     assert all(rls and owner == "migrator" for _, rls, owner in tables), tables
+
+
+def rls_tables(admin: AdminDatabase) -> list[str]:
+    """Every table under row-level security, read from the catalog."""
+
+    return [
+        table
+        for (table,) in admin.fetch(
+            "SELECT n.nspname || '.' || c.relname FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE c.relkind = 'r' AND c.relrowsecurity ORDER BY 1"
+        )
+    ]
+
+
+def seen_by(dsn: str, user_id: str, tables: list[str]) -> dict[str, int | None]:
+    """Rows each table shows the user; None when the role may not read it at all."""
+
+    seen: dict[str, int | None] = {}
+    with psycopg.connect(dsn) as connection:
+        for table in tables:
+            try:
+                with connection.transaction():
+                    act_as(connection, user_id)
+                    row = connection.execute(f"SELECT count(*) FROM {table}").fetchone()
+                    seen[table] = row[0] if row else 0
+            except psycopg.errors.InsufficientPrivilege:
+                seen[table] = None
+    return seen
+
+
+# Sign-in and refresh reach these before an actor exists, so their policies are
+# open to the API role by design and the API filters them by user. Every other
+# RLS table must hide a tenant from an outsider.
+CREDENTIAL_TABLES = {
+    "iam.email_challenges",
+    "iam.rate_limit_counters",
+    "iam.refresh_tokens",
+    "iam.sessions",
+    "iam.user_identities",
+}
+
+# RLS tables a plan, its money, its people, and a crew never write to.
+NOT_TENANT_DATA = {
+    "finance.currencies",
+    "finance.market_rates",
+    "iam.email_challenges",
+    "sync_audit.operations",
+}
+
+
+def tenant_rows(table: str, plan_id: str, owner_id: str) -> tuple[str, str]:
+    """A predicate selecting the tenant's rows in ``table``, and a column to rewrite."""
+
+    if table == "plans.plans":
+        return "id = %s", "title"
+    if table == "people.crews":
+        return "owner_user_id = %s", "name"
+    return "plan_id = %s", "plan_id"
+
+
+async def test_an_outsider_sees_and_changes_nothing_of_a_full_tenant(
+    api: httpx.AsyncClient,
+    identity_provider: IdentityProviderStub,
+    admin: AdminDatabase,
+    live_settings: Settings,
+) -> None:
+    outsider = await sign_in(api, identity_provider, name="Outsider")
+    dsn = raw_dsn(live_settings.api_database_dsn)
+    tables = rls_tables(admin)
+    totals = {table: admin.scalar(f"SELECT count(*) FROM {table}") for table in tables}
+    before = seen_by(dsn, outsider.user_id, tables)
+
+    victim = await full_tenant(api, identity_provider, admin)
+    grown = {
+        table for table in tables if admin.scalar(f"SELECT count(*) FROM {table}") > totals[table]
+    }
+    # A new RLS table is either filled by the tenant (and swept) or named above.
+    assert set(tables) - grown == NOT_TENANT_DATA
+    after = seen_by(dsn, outsider.user_id, tables)
+    assert {table for table in tables if after[table] != before[table]} <= CREDENTIAL_TABLES
+
+    owner_id = victim.trip.owner.user_id
+    swept = sorted(
+        table
+        for table in grown
+        if table.split(".")[0] in ("plans", "finance", "people", "activity")
+    )
+    with psycopg.connect(dsn) as connection:
+        for table in swept:
+            predicate, column = tenant_rows(table, victim.trip.plan_id, owner_id)
+            key = victim.trip.plan_id if predicate.startswith(("plan_id", "id")) else owner_id
+            [(row,)] = admin.fetch(
+                f"SELECT to_jsonb(t) FROM {table} t WHERE {predicate} LIMIT 1", key
+            )
+            if "id" in row:
+                row["id"] = str(uuid4())
+            # A copy of a tenant row, in the outsider's session, is refused outright.
+            with pytest.raises(psycopg.errors.InsufficientPrivilege), connection.transaction():
+                act_as(connection, outsider.user_id)
+                connection.execute(
+                    f"INSERT INTO {table} SELECT * FROM jsonb_populate_record(NULL::{table}, %s)",
+                    (Jsonb(row),),
+                )
+            for statement in (
+                f"UPDATE {table} SET {column} = {column} WHERE {predicate}",
+                f"DELETE FROM {table} WHERE {predicate}",
+            ):
+                try:
+                    with connection.transaction():
+                        act_as(connection, outsider.user_id)
+                        changed = connection.execute(statement, (key,)).rowcount
+                except psycopg.errors.InsufficientPrivilege:
+                    changed = 0
+                assert changed == 0, f"{statement}: {changed}"
+    assert len(swept) >= 25
