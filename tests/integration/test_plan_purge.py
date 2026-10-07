@@ -69,7 +69,8 @@ def rows_left(admin: AdminDatabase, plan_id: str) -> dict[str, int]:
     tables = admin.fetch(
         "SELECT table_schema || '.' || table_name FROM information_schema.columns "
         "WHERE column_name = 'plan_id' "
-        "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places', 'decisions') "
+        "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places', 'decisions', "
+        "'bookings') "
         "ORDER BY 1"
     )
     counts = {
@@ -135,6 +136,18 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
         json={"status": "going"},
         headers=owner.headers,
     )
+    booking = await api.post(
+        trip.path("/bookings"),
+        json={
+            "kind": "lodging",
+            "title": "Ryokan",
+            "place_id": place.json()["id"],
+            "price": {"currency": "EUR", "amount_minor": 1_000},
+            "secrets": {"confirmation_code": "RYO-1"},
+        },
+        headers=owner.headers,
+    )
+    assert booking.status_code == 201, booking.text
     poll = await api.post(
         trip.path("/polls"),
         json={

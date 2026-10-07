@@ -24,7 +24,7 @@ async def full_tenant(
 ) -> FullTenant:
     """A used trip (see ``exercise_money_and_members``) plus a commitment, kitty
     settings, a ledger confirmation, join and claim links, a crew, a wanted place, and an
-    itinerary item with a cost and an answer, and a decided poll."""
+    itinerary item with a cost and an answer, a decided poll, and a booking with sealed secrets."""
 
     trip = await exercise_money_and_members(api, provider, admin)
     owner = trip.owner
@@ -82,6 +82,17 @@ async def full_tenant(
         headers=owner.headers,
     )
     assert going.status_code == 200, going.text
+    booking = await created(
+        trip.path("/bookings"),
+        {
+            "kind": "lodging",
+            "title": "Ryokan",
+            "place_id": place["id"],
+            "traveler_ids": [trip.people["Dan"]],
+            "price": {"currency": "EUR", "amount_minor": 1_000},
+            "secrets": {"confirmation_code": "RYO-1", "private_notes": "Late check-in"},
+        },
+    )
     poll = await created(
         trip.path("/polls"),
         {
@@ -121,5 +132,6 @@ async def full_tenant(
             "place_id": place["id"],
             "item_id": stop["id"],
             "poll_id": poll["id"],
+            "booking_id": booking["id"],
         },
     )

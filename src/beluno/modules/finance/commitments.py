@@ -160,12 +160,15 @@ class CostCommitmentPort:
         if existing is None:
             return await _create(ledger, source_type, source_id, commitment_kind, draft)
         await _apply(ledger, existing, draft)
-        # A cost that already became an expense keeps the state the expense gave it.
+        # A cost that already became an expense keeps the state the expense gave it,
+        # and remembers the tier its source now plans, should the expense go away.
         if CommitmentState(existing.state) not in (
             CommitmentState.CONVERTED,
             CommitmentState.REFUNDED,
         ):
             existing.state = draft.state.value
+        else:
+            existing.converted_from_state = draft.state.value
         await _bump(ledger, existing, "finance.commitment_updated")
         return existing
 

@@ -21,19 +21,17 @@ from beluno.authorization.access import PlanAccess
 from beluno.authorization.policy import AccessState, PlanAction
 from beluno.contracts.errors import (
     conflict,
-    feature_disabled,
     not_found,
     validation_error,
     version_conflict,
 )
 from beluno.db.ids import new_id
-from beluno.db.models.finance import CostCommitment
+from beluno.db.models.bookings import Booking
 from beluno.db.models.plans import PlanParticipant
 from beluno.db.models.schedule_places import ItemAttendance, ItineraryItem, Place
 from beluno.modules.activity.events import ActivityItem, ActivityType, item
 from beluno.modules.context import CommandContext
-from beluno.modules.finance.commitments import COST_COMMITMENTS, CommitmentDraft
-from beluno.modules.finance.states import LINKABLE_COMMITMENT_STATES, CommitmentState
+from beluno.modules.planning import costs
 from beluno.modules.planning.common import (
     own_participant_id,
     planning_access,
@@ -49,14 +47,9 @@ DEFAULT_COST_CATEGORY = "activities"
 COST_SOURCE = "itinerary_item"
 COST_KIND = "estimate"
 PLANNED, DONE, CANCELLED = "planned", "done", "cancelled"
-LINKABLE = frozenset(state.value for state in LINKABLE_COMMITMENT_STATES)
 
 
-@dataclass(frozen=True)
-class EstimatedCost:
-    currency: str
-    amount_minor: int
-    category: str | None = None  # None keeps the current one (or "activities" for a new cost)
+EstimatedCost = costs.PlannedCost
 
 
 @dataclass(frozen=True)
@@ -69,6 +62,7 @@ class ItemDraft:
     note: str | None = None
     place_id: UUID | None = None
     lead_participant_id: UUID | None = None
+    booking_id: UUID | None = None
     status: str = PLANNED
     order_key: str | None = None
     estimated_cost: EstimatedCost | None = None
@@ -238,14 +232,8 @@ async def item_views(ctx: CommandContext, items: list[ItineraryItem]) -> list[It
     by_item: dict[UUID, list[ItemAttendance]] = {}
     for answer in answers.scalars():
         by_item.setdefault(answer.item_id, []).append(answer)
-    costs = await COST_COMMITMENTS.live_for_sources(
-        ctx,
-        items[0].plan_id,
-        source_type=COST_SOURCE,
-        source_ids=ids,
-        commitment_kind=COST_KIND,
-    )
-    return [ItemView(entry, by_item.get(entry.id, []), costs.get(entry.id)) for entry in items]
+    planned = await costs.live_costs(ctx, items[0].plan_id, COST_SOURCE, COST_KIND, ids)
+    return [ItemView(entry, by_item.get(entry.id, []), planned.get(entry.id)) for entry in items]
 
 
 async def _apply(
@@ -262,10 +250,13 @@ async def _apply(
             raise validation_error("timezone is required: the plan has none to default to")
         assert draft.day is not None
         resolve_local(datetime.combine(draft.day, draft.start_time), zone)
-    if draft.place_id is not None:
+    # Unchanged references stay valid even after their place or booking was deleted.
+    if draft.place_id is not None and draft.place_id != entry.place_id:
         await _require_place(ctx, entry.plan_id, draft.place_id)
     if draft.lead_participant_id is not None:
         await _require_active_participant(ctx, entry.plan_id, draft.lead_participant_id)
+    if draft.booking_id is not None and draft.booking_id != entry.booking_id:
+        await _require_booking(ctx, entry.plan_id, draft.booking_id)
     if draft.order_key is not None:
         entry.order_key = draft.order_key
     elif moved:
@@ -278,69 +269,21 @@ async def _apply(
     entry.note = draft.note
     entry.place_id = draft.place_id
     entry.lead_participant_id = draft.lead_participant_id
+    entry.booking_id = draft.booking_id
     entry.status = draft.status
 
 
 async def _record_cost(
     ctx: CommandContext, access: PlanAccess, entry: ItineraryItem, cost: EstimatedCost | None
 ) -> UUID | None:
-    """Bring the item's cost commitment in line with ``cost``; write only what changed."""
-
-    current = await _live_cost(ctx, entry)
-    if cost is None:
-        needed = current is not None and not (
-            current.state not in LINKABLE
-            and current.converted_from_state == CommitmentState.CANCELLED.value
-        )
-        if needed:
-            _require_finance_writes(ctx)
-            await COST_COMMITMENTS.cancel(
-                ctx, access, source_type=COST_SOURCE, source_id=entry.id, commitment_kind=COST_KIND
-            )
-        return None
-    category = cost.category or (current.category if current else DEFAULT_COST_CATEGORY)
-    if current is not None and (
-        current.currency,
-        current.amount_minor,
-        current.category,
-        current.description,
-    ) == (cost.currency, cost.amount_minor, category, entry.title):
-        return current.id
-    _require_finance_writes(ctx)
-    commitment = await COST_COMMITMENTS.record(
-        ctx,
-        access,
+    source = costs.CostSource(
         source_type=COST_SOURCE,
         source_id=entry.id,
-        commitment_kind=COST_KIND,
-        draft=CommitmentDraft(
-            category=category,
-            description=entry.title,
-            currency=cost.currency,
-            amount_minor=cost.amount_minor,
-            state=CommitmentState.ESTIMATED,
-        ),
+        kind=COST_KIND,
+        description=entry.title,
+        default_category=DEFAULT_COST_CATEGORY,
     )
-    return commitment.id
-
-
-async def _live_cost(ctx: CommandContext, entry: ItineraryItem) -> CostCommitment | None:
-    return await ctx.session.scalar(
-        select(CostCommitment).where(
-            CostCommitment.plan_id == entry.plan_id,
-            CostCommitment.source_type == COST_SOURCE,
-            CostCommitment.source_id == entry.id,
-            CostCommitment.commitment_kind == COST_KIND,
-            CostCommitment.state != CommitmentState.CANCELLED.value,
-        )
-    )
-
-
-def _require_finance_writes(ctx: CommandContext) -> None:
-    """A cost commitment is a finance write: the finance kill switch stops it too."""
-
-    if not ctx.settings.finance_writes_enabled:
-        raise feature_disabled()
+    return await costs.sync_cost(ctx, access, source, cost)
 
 
 async def sync_place_status(ctx: CommandContext, plan_id: UUID, place_id: UUID | None) -> None:
@@ -406,6 +349,16 @@ async def _require_place(ctx: CommandContext, plan_id: UUID, place_id: UUID) -> 
     )
     if place is None:
         raise validation_error("place_id does not name a saved place of this plan")
+
+
+async def _require_booking(ctx: CommandContext, plan_id: UUID, booking_id: UUID) -> None:
+    found = await ctx.session.scalar(
+        select(Booking.id).where(
+            Booking.plan_id == plan_id, Booking.id == booking_id, Booking.deleted_at.is_(None)
+        )
+    )
+    if found is None:
+        raise validation_error("booking_id does not name a booking of this plan")
 
 
 async def _require_active_participant(

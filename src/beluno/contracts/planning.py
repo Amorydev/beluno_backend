@@ -81,6 +81,7 @@ class ItineraryItemRequest(BaseModel):
     note: LongText | None = None
     place_id: UUID | None = None
     lead_participant_id: UUID | None = None
+    booking_id: UUID | None = None
     status: ItemStatus = "planned"
     order_key: OrderKey | None = Field(
         default=None, description="Position within the day; omitted puts the item last"
@@ -164,6 +165,7 @@ class ItineraryItemResponse(BaseModel):
     note: str | None
     place_id: UUID | None
     lead_participant_id: UUID | None
+    booking_id: UUID | None
     status: ItemStatus
     order_key: str
     attendance: list[AttendanceResponse]
@@ -295,3 +297,106 @@ class PollResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+BookingKind = Literal[
+    "flight", "lodging", "transport", "activity", "restaurant", "insurance", "other"
+]
+BookingStatus = Literal["planned", "confirmed", "cancelled"]
+PaymentNote = Literal["prepaid", "pay_at_property", "each_paid_own", "personal"]
+SecretText = Annotated[str, StringConstraints(min_length=1, max_length=200, strip_whitespace=True)]
+PrivateNote = Annotated[
+    str, StringConstraints(min_length=1, max_length=2000, strip_whitespace=True)
+]
+
+
+class BookingSecretsRequest(BaseModel):
+    """The secrets to change: a value sets one, null clears it, and one left out stays."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    confirmation_code: SecretText | None = None
+    private_notes: PrivateNote | None = None
+
+
+class BookingRequest(BaseModel):
+    """A reservation. Start and end are local dates, with an optional time in a zone.
+
+    ``secrets`` is write-only: omit it to keep what is stored. ``price`` is estimated
+    while planned and committed once confirmed; create the expense that pays it with
+    the booking's ``commitment_id`` so budgets count it once.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: BookingKind
+    title: Title
+    provider: Annotated[str, StringConstraints(min_length=1, max_length=120)] | None = None
+    start_date: date | None = None
+    start_time: time | None = None
+    start_timezone: TimezoneName | None = None
+    end_date: date | None = None
+    end_time: time | None = None
+    end_timezone: TimezoneName | None = None
+    place_id: UUID | None = None
+    traveler_ids: list[UUID] = Field(default_factory=list, max_length=50)
+    status: BookingStatus = "planned"
+    payment_note: PaymentNote | None = None
+    free_cancellation_until: datetime | None = None
+    price: EstimatedCost | None = None
+    secrets: BookingSecretsRequest | None = None
+
+    @model_validator(mode="after")
+    def _times(self) -> BookingRequest:
+        for day, moment, zone, name in (
+            (self.start_date, self.start_time, self.start_timezone, "start"),
+            (self.end_date, self.end_time, self.end_timezone, "end"),
+        ):
+            if moment is not None and (day is None or zone is None or moment.tzinfo is not None):
+                raise ValueError(f"{name}_time is a local time on {name}_date in {name}_timezone")
+            if zone is not None and moment is None:
+                raise ValueError(f"{name}_timezone belongs to {name}_time")
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("end_date is before start_date")
+        if self.free_cancellation_until is not None and self.free_cancellation_until.tzinfo is None:
+            raise ValueError("free_cancellation_until must include a UTC offset")
+        return self
+
+
+class BookingCreateRequest(BookingRequest):
+    id: UUID | None = None
+
+
+class BookingResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    kind: BookingKind
+    title: str
+    provider: str | None
+    start_date: date | None
+    start_time: time | None
+    start_timezone: str | None
+    end_date: date | None
+    end_time: time | None
+    end_timezone: str | None
+    place_id: UUID | None
+    traveler_ids: list[UUID]
+    status: BookingStatus
+    payment_note: PaymentNote | None
+    free_cancellation_until: datetime | None
+    has_confirmation_code: bool
+    has_private_notes: bool
+    commitment_id: UUID | None = Field(
+        description="The price (a synced cost_commitment); pay it with an expense naming it"
+    )
+    created_by_user_id: UUID
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class BookingSecretsResponse(BaseModel):
+    """Plaintext, for travelers, whoever added the booking, and organisers only."""
+
+    confirmation_code: str | None
+    private_notes: str | None

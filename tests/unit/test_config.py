@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from beluno.config import EmailBackend, Environment, ProcessRole, Settings, SmtpSecurity
+from beluno.secret_box import new_keyring_json
 from beluno.testkit.environment import generate_signing_keys_json
 
 
@@ -18,6 +19,7 @@ def secure_settings(**overrides: object) -> Settings:
         "migration_database_url": "postgresql+psycopg://a:b@db/beluno?sslmode=require",
         "auth_signing_keys": generate_signing_keys_json(),
         "token_hash_key": secrets.token_urlsafe(40),
+        "booking_keys": new_keyring_json("k1"),
         "email_backend": EmailBackend.SMTP,
         "smtp_host": "smtp.example.com",
         "email_from": "Beluno <no-reply@example.com>",
@@ -110,3 +112,13 @@ def test_migrations_and_the_scheduler_need_no_keys_or_email() -> None:
         secure_settings(
             process_role=ProcessRole.WORKER, **{**bare, "worker_database_url": url}
         ).assert_runtime_requirements()
+
+
+def test_the_api_needs_a_booking_keyring_and_a_broken_one_is_refused() -> None:
+    with pytest.raises(RuntimeError, match="BELUNO_BOOKING_KEYS"):
+        secure_settings(booking_keys=None).assert_runtime_requirements()
+    secure_settings(
+        booking_keys=None, process_role=ProcessRole.WORKER
+    ).assert_runtime_requirements()
+    with pytest.raises(ValueError, match="keyring"):
+        secure_settings(booking_keys='{"active": "k1", "keys": {"k1": "short"}}')

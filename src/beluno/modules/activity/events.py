@@ -49,6 +49,9 @@ class ActivityType(StrEnum):
     ITINERARY_ITEM_DONE = "itinerary.item_done"
     POLL_CREATED = "poll.created"
     POLL_CLOSED = "poll.closed"
+    BOOKING_ADDED = "booking.added"
+    BOOKING_CONFIRMED = "booking.confirmed"
+    BOOKING_CANCELLED = "booking.cancelled"
     ACCOUNT_GUEST_UPGRADED = "account.guest_upgraded"
     ACCOUNT_GUEST_MERGED = "account.guest_merged"
 
@@ -98,6 +101,7 @@ SUMMARY_KEYS = frozenset(
         "outcome",
         "option_id",
         "poll_kind",
+        "booking_kind",
     }
 )
 
