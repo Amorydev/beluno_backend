@@ -22,6 +22,7 @@ submitted values.
 | `IDENTITY_ALREADY_LINKED` | 409 | The external identity belongs to another account |
 | `HIGHLIGHT_LIMIT_REACHED` | 409 | The trip already has the most recap highlights (20) |
 | `MEDIA_LIMIT_REACHED` | 409 | The trip already holds the receipts the free limit allows (no Trip Pass or Pro; when a limit is configured) |
+| `NO_RECEIPTS` | 409 | A receipt archive was asked for a plan with no ready receipts |
 | `TRIP_LIMIT_REACHED` | 409 | Starting or reopening a trip would pass the free limit on your own trips in progress (when configured) |
 | `PURCHASE_OWNED_ELSEWHERE` | 409 | The store purchase was made or recorded by another account |
 | `PURCHASE_USED` | 409 | This Trip Pass already unlocks another trip |

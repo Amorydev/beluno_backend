@@ -87,6 +87,18 @@ them. Hangouts get the accounting CSV free; the report is for trips.
   images are not embedded yet. Characters Noto Sans lacks (Thai, CJK, Arabic, Hebrew,
   emoji) print as `?`. At most two reports render at once per API process.
 
+- **Receipt archive:** `POST /v1/plans/{id}/receipt-archives` (`202`) asks for every
+  ready receipt of the plan's active (not voided) expenses in one zip, with
+  `receipts.csv` (file, date, description, amount as entered before refunds, currency,
+  expense) inside. An archive in the making is shared, and a ready one is reused until
+  new receipts arrive; at most 5 requests an hour per person; a plan with no receipts
+  answers `409 NO_RECEIPTS`. Poll `GET .../receipt-archives/{id}` until `state` is
+  `ready` (`download_url`, short-lived) or `failed` (`too_large` past
+  `BELUNO_RECEIPT_ARCHIVE_MAX_BYTES`, default 2 GiB, decided before anything is read;
+  or `storage`, also when a crash cut the build short). Only the person who asked sees
+  it; the file is deleted a day later (`expired`), or at once if the plan is purged.
+  Hangouts are free.
+
 ## Reading entitlements
 
 - `GET /v1/me/entitlements`: `pro` (store and expiry) or null; `active_trips` (own
