@@ -82,6 +82,7 @@ the passkey's account. A passkey never creates an account. Passkeys require user
 verification, keep no attestation, and need `BELUNO_WEBAUTHN_RP_ID` (the app's
 domain) and `BELUNO_WEBAUTHN_ORIGINS` in staging and production.
 
+People sign out every other device at once with `POST /v1/me/sessions/sign-out-others`.
 People can delete their account (`DELETE /v1/me`) after a recent sign-in (guests any time).
 Deletion is immediate and permanent and leaves money history intact: the person
 becomes "Former member" in every plan, and others can still settle with them. It
@@ -164,7 +165,8 @@ queue their objects, which the worker removes from storage. Configure
 Push notifications go through Firebase Cloud Messaging (`firebase-admin`; set
 `BELUNO_FCM_SERVICE_ACCOUNT_JSON`, or they are recorded but not sent). Devices
 register their token per session (`PUT /v1/me/push-token`); people choose categories
-and quiet hours (`/v1/me/notification-settings`). The database turns activity
+and quiet hours (`/v1/me/notification-settings`), nudge a task's assignee or someone
+who owes them, and get a 21:00 summary of trips in progress. The database turns activity
 (expenses and payments that involve you) and reminders (tasks due, polls closing)
 into an outbox the worker delivers every minute. Messages carry localisation keys
 for the app to render, never amounts, codes, or addresses: see

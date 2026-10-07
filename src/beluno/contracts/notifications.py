@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import time
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,3 +35,13 @@ class NotificationSettingsBody(BaseModel):
 
 class NotificationSettingsResponse(NotificationSettingsBody):
     version: int = Field(description="0 until first saved (the defaults apply)")
+
+
+class PaymentNudgeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    participant_id: UUID = Field(description="Who owes you")
+
+
+class NudgeResponse(BaseModel):
+    queued: bool = Field(description="False when already nudged for this today")

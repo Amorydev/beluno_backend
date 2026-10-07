@@ -14,6 +14,7 @@ from uuid import UUID
 
 from sqlalchemy import select, update
 
+from beluno.contracts.errors import authentication_failed
 from beluno.db.ids import new_id
 from beluno.db.models.iam import AuthSession, RefreshToken, User
 from beluno.modules.context import CommandContext
@@ -233,6 +234,32 @@ async def revoke_session(ctx: CommandContext, auth_session: AuthSession, *, reas
         operation="delete",
         actor_user_id=ctx.actor.user_id if ctx.actor else auth_session.user_id,
     )
+
+
+async def revoke_other_sessions(ctx: CommandContext) -> int:
+    """Sign out every other device of the caller; this one stays signed in."""
+
+    actor = ctx.require_actor()
+    # Lock every session of the person in one order: when two devices ask at once, the
+    # second waits and then finds itself signed out instead of signing out the first.
+    live = [
+        auth_session
+        for auth_session in (
+            await ctx.session.execute(
+                select(AuthSession)
+                .where(AuthSession.user_id == actor.user_id, AuthSession.revoked_at.is_(None))
+                .order_by(AuthSession.id)
+                .with_for_update()
+            )
+        ).scalars()
+        if _session_is_live(ctx, auth_session)
+    ]
+    if all(auth_session.id != actor.session_id for auth_session in live):
+        raise authentication_failed()
+    others = [auth_session for auth_session in live if auth_session.id != actor.session_id]
+    for auth_session in others:
+        await revoke_session(ctx, auth_session, reason="user_revoked")
+    return len(others)
 
 
 async def revoke_all_sessions(ctx: CommandContext, user_id: UUID, *, reason: str) -> None:
