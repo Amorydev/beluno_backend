@@ -132,6 +132,14 @@ Release 3: everything that needs external providers or storage. The previous pla
   - Review (`reports/code-reviewer-261007-2315-paid-exports-review-report.md`): fixed owner corrections missing from the CSV (C1, now journal-based); the report lists at most 1,000 expenses and renders at most two at a time (H1, user decision); characters the font lacks print as `?` (M1, user decision); the paywall is checked before any data is read and only needed entities load (M2); the misleading rate column is gone and a `person_id` column added (M3, M4); dates of entries without one use the plan's time zone; the merge-depth rule is the ledger's.
   - Defaults taken without an answer: the report is in English; hangouts get the accounting CSV free and no report.
 
+- Decisions for the remaining work (user, 2026-10-07):
+  - Market rates from Open Exchange Rates (API key, one call a day), replacing the no-op provider.
+  - The PDF report in Vietnamese and English (`lang=vi|en`, defaulting to the person's profile).
+  - A weekly planning summary on Sundays at 19:00 local for trips being organised (open tasks, open polls, days to go), and news sent by operators through a script to people with news on.
+  - PDF receipts stay as uploaded (scanned by ClamAV) and are only ever served as attachments.
+  - A receipt archive for unlocked trips: a worker job builds a zip, kept 24 hours behind a download link; next after the weekly summary and news.
+  - Staging on a Singapore VPS with docker compose; a 7-day soak with the Android app.
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.

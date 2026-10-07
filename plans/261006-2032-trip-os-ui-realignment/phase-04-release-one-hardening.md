@@ -125,7 +125,7 @@ Make release 1 operable. Release 1 covers trip, hangout, money, offline sync, in
 
 ## Open decisions
 
-- Host and region (data residency), and S3-compatible storage for later media.
+- ~~Host and region~~ decided (user, 2026-10-07): a VPS in Singapore running `deploy/staging/compose.yaml` (RustFS for media); the soak lasts 7 days.
 
 ## Progress Notes (2026-10-07)
 
