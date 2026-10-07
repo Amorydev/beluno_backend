@@ -17,6 +17,7 @@ from beluno.modules.context import Runtime
 from beluno.observability.metrics import instruments
 
 COMPACT_SQL = text("SELECT sync_audit.compact_changes(:cutoff, :batch, :window_days)")
+PURGE_ACTIVITY_SQL = text("SELECT activity.purge_events(:cutoff, :batch)")
 PURGE_SQL = text("SELECT sync_audit.purge_operations(:now, :batch)")
 BATCH_SIZE = 5_000
 MAX_BATCHES_PER_RUN = 200
@@ -44,6 +45,26 @@ async def compact_changes(runtime: Runtime) -> int:
             break
         removed += int(batch)
         instruments().changes_compacted.add(int(batch))
+    return removed
+
+
+async def purge_activity(runtime: Runtime) -> int:
+    """Remove feed events older than the change-log retention, a batch at a time."""
+
+    cutoff = runtime.clock() - timedelta(days=runtime.settings.sync_change_retention_days)
+    removed = 0
+    for _ in range(MAX_BATCHES_PER_RUN):
+        async with runtime.database.transaction() as session:
+            batch = int(
+                (
+                    await session.execute(
+                        PURGE_ACTIVITY_SQL, {"cutoff": cutoff, "batch": BATCH_SIZE}
+                    )
+                ).scalar_one()
+            )
+        if not batch:
+            break
+        removed += batch
     return removed
 
 

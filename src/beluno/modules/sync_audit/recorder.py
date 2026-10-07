@@ -2,7 +2,9 @@
 
 Records are buffered on the command context and written just before the
 transaction commits (``flush_pending_records``, called by ``open_context``), so a
-command that fails writes nothing. Change rows go through
+command that fails writes nothing. A mutation may also carry an activity item:
+the feed event is written in the same transaction through
+``activity.append_events`` and synced like any entity of its scope. Change rows go through
 ``sync_audit.append_changes``, which locks each touched scope head in one sorted
 order and assigns the scope's next sequence; holding those locks only at the very
 end keeps them short and deadlock-free. Metadata is redacted again here so no
@@ -20,6 +22,7 @@ from uuid import UUID
 from sqlalchemy import text
 
 from beluno.db.ids import new_id
+from beluno.modules.activity.events import ACTIVITY_ENTITY, ActivityItem
 from beluno.observability.metrics import instruments
 from beluno.observability.redaction import redact
 
@@ -45,6 +48,7 @@ INSERT_AUDIT_EVENT = text(
 )
 
 APPEND_CHANGES = text("SELECT sync_audit.append_changes(CAST(:changes AS jsonb))")
+APPEND_ACTIVITY = text("SELECT activity.append_events(CAST(:events AS jsonb))")
 
 
 def _require_tracked_savepoint(ctx: CommandContext) -> None:
@@ -71,6 +75,7 @@ async def record_mutation(
     metadata: Mapping[str, Any] | None = None,
     operation: str = "upsert",
     actor_user_id: UUID | None = None,
+    activity: ActivityItem | None = None,
 ) -> None:
     """Record one audit event and one change-log row for an accepted mutation."""
 
@@ -99,6 +104,75 @@ async def record_mutation(
         scope_id=scope_id,
         operation=operation,
         acting_user_id=acting_user_id,
+    )
+    if activity is not None:
+        _buffer_activity(
+            ctx,
+            activity,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            scope=scope,
+            scope_id=scope_id,
+            acting_user_id=acting_user_id,
+        )
+
+
+def _buffer_activity(
+    ctx: CommandContext,
+    activity: ActivityItem,
+    *,
+    entity_type: str,
+    entity_id: UUID,
+    scope: ChangeScope,
+    scope_id: UUID,
+    acting_user_id: UUID | None,
+) -> None:
+    event_id = new_id()
+    ctx.pending_activity.append(
+        {
+            "id": str(event_id),
+            "scope_type": scope.value,
+            "scope_id": str(scope_id),
+            "plan_id": str(scope_id) if scope is ChangeScope.PLAN else None,
+            "type": activity.type.value,
+            "entity_type": entity_type,
+            "entity_id": str(entity_id),
+            "summary": dict(activity.summary),
+            "occurred_at": ctx.now.isoformat(),
+        }
+    )
+    _buffer_change(
+        ctx,
+        entity_type=ACTIVITY_ENTITY,
+        entity_id=event_id,
+        entity_version=1,
+        scope=scope,
+        scope_id=scope_id,
+        operation="upsert",
+        acting_user_id=acting_user_id,
+    )
+
+
+async def record_activity(
+    ctx: CommandContext,
+    activity: ActivityItem,
+    *,
+    entity_type: str,
+    entity_id: UUID,
+    scope: ChangeScope,
+    scope_id: UUID,
+) -> None:
+    """Record a feed event for a mutation whose own records land in another scope."""
+
+    _require_tracked_savepoint(ctx)
+    _buffer_activity(
+        ctx,
+        activity,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        scope=scope,
+        scope_id=scope_id,
+        acting_user_id=_acting_user(ctx, None),
     )
 
 
@@ -193,6 +267,9 @@ async def flush_pending_records(ctx: CommandContext) -> None:
     if ctx.pending_audit:
         audit_rows, ctx.pending_audit = ctx.pending_audit, []
         await ctx.session.execute(INSERT_AUDIT_EVENT, audit_rows)
+    if ctx.pending_activity:
+        events, ctx.pending_activity = ctx.pending_activity, []
+        await ctx.session.execute(APPEND_ACTIVITY, {"events": json.dumps(events)})
     if ctx.pending_changes:
         change_rows, ctx.pending_changes = ctx.pending_changes, []
         await ctx.session.execute(APPEND_CHANGES, {"changes": json.dumps(change_rows)})

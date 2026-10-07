@@ -107,8 +107,11 @@ async def test_ninety_day_offline_device_catches_up_and_older_cursors_resync(
     assert [(item["entity_type"], item["operation"]) for item in caught_up] == [
         ("plan", "upsert"),
         ("plan_participant", "upsert"),
+        ("activity_event", "upsert"),  # Grandma was added
         ("ledger", "upsert"),
+        ("activity_event", "upsert"),  # the budget was set
         ("budget", "delete"),
+        ("activity_event", "upsert"),  # and removed again
     ]
     assert caught_up[0]["data"]["title"] == "v13" and caught_up[0]["version"] == 13
 
@@ -123,5 +126,7 @@ async def test_ninety_day_offline_device_catches_up_and_older_cursors_resync(
         "plan_participant",
         "plan_participant",
         "ledger",
+        # Feed events stay within retention after their change rows are compacted.
+        *["activity_event"] * 4,
     ]
     assert snapshot[0]["data"]["title"] == "v13"

@@ -150,11 +150,18 @@ async def test_hangout_access_spine(
     assert [person["display_name"] for person in copy_roster] == ["Minh"]
 
     # Every accepted mutation left an audit event and a change-log entry; access
-    # signals add change rows of their own without an audit event.
+    # signals and feed events add change rows of their own without an audit event.
     events = admin.scalar("SELECT count(*) FROM sync_audit.audit_events")
     changes = admin.scalar("SELECT count(*) FROM sync_audit.change_log")
     signals = admin.scalar(
         "SELECT count(*) FROM sync_audit.change_log WHERE entity_type = 'plan_access'"
     )
-    assert events > 20
-    assert changes == events + signals
+    feed = admin.scalar("SELECT count(*) FROM activity.events")
+    assert events > 20 and feed > 5
+    assert changes == events + signals + feed
+    assert (
+        admin.scalar(
+            "SELECT count(*) FROM sync_audit.change_log WHERE entity_type = 'activity_event'"
+        )
+        == feed
+    )

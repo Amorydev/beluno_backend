@@ -90,7 +90,9 @@ async def test_bootstrap_and_catch_up_timings(
         started = time.perf_counter()
         delivered = await drain(api, owner, scope, None)
         bootstrap_samples.append(time.perf_counter() - started)
-        assert delivered == PARTICIPANTS + 2
+        # The plan, its owner, every placeholder, and the feed: the plan was created and
+        # each placeholder joined and then became a viewer.
+        assert delivered == PARTICIPANTS + 2 + 1 + 2 * PARTICIPANTS
     print(
         f"\nsync timings (local PostgreSQL, {PARTICIPANTS} participants): "
         f"push {len(batch)} ops {push_seconds:.3f}s; bootstrap p50 "

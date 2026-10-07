@@ -63,17 +63,19 @@ async def test_replay_returns_the_stored_outcome_without_a_second_mutation(
     assert second.headers["Idempotency-Replayed"] == "true"
     plan_id = first.json()["id"]
     assert admin.scalar("SELECT count(*) FROM plans.plans") == 1
-    assert change_count(admin, plan_id) == 2  # plan.created + owner participant
+    # plan.created, its feed event, and the owner participant; the replay adds nothing.
+    assert change_count(admin, plan_id) == 3
+    assert admin.fetch("SELECT type FROM activity.events") == [("plan.created",)]
     assert admin.fetch(
         "SELECT command, idempotency_key, response_status, source FROM sync_audit.operations"
     ) == [("plan.create", "create-1", 201, "http")]
-    # plan.created, the owner participant, and the owner's own plan_access signal
+    # plan.created, its feed event, the owner participant, and the owner's plan_access signal
     assert (
         admin.scalar(
             "SELECT count(*) FROM sync_audit.change_log WHERE operation_id = "
             "(SELECT id FROM sync_audit.operations)"
         )
-        == 3
+        == 4
     )
 
     # A later update with a key: the replay carries the same body and ETag as the original.

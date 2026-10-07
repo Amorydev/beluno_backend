@@ -66,6 +66,7 @@ class CommandContext:
     # Audit and change rows recorded by this command, written just before commit.
     pending_audit: list[dict[str, Any]] = field(default_factory=list)
     pending_changes: list[dict[str, Any]] = field(default_factory=list)
+    pending_activity: list[dict[str, Any]] = field(default_factory=list)
     savepoint_depth: int = 0
 
     @property
@@ -99,6 +100,7 @@ class CommandContext:
         """
 
         audit_mark, change_mark = len(self.pending_audit), len(self.pending_changes)
+        activity_mark = len(self.pending_activity)
         self.savepoint_depth += 1
         try:
             async with self.session.begin_nested():
@@ -106,6 +108,7 @@ class CommandContext:
         except BaseException:
             del self.pending_audit[audit_mark:]
             del self.pending_changes[change_mark:]
+            del self.pending_activity[activity_mark:]
             raise
         finally:
             self.savepoint_depth -= 1

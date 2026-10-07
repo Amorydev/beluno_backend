@@ -33,6 +33,7 @@ from beluno.contracts.errors import (
 from beluno.db.ids import new_id
 from beluno.db.models.finance import FxSnapshot, LedgerTransaction, Settlement
 from beluno.db.models.plans import PlanParticipant
+from beluno.modules.activity.events import ActivityItem, ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.errors import waiver_exceeds_debt
 from beluno.modules.finance.fx import RateSource, implied_rate
@@ -195,7 +196,12 @@ async def record_settlement(
             settlement_id=settlement.id,
         )
     await ledger.finish()
-    await _record(ctx, settlement, "finance.settlement_recorded")
+    await _record(
+        ctx,
+        settlement,
+        "finance.settlement_recorded",
+        _activity(ActivityType.PAYMENT_RECORDED, settlement),
+    )
     return await settlement_view(ctx, settlement)
 
 
@@ -242,7 +248,9 @@ async def waive_debt(ctx: CommandContext, plan_id: UUID, draft: WaiverDraft) -> 
         settlement_id=settlement.id,
     )
     await ledger.finish()
-    await _record(ctx, settlement, "finance.debt_waived")
+    await _record(
+        ctx, settlement, "finance.debt_waived", _activity(ActivityType.WAIVER_GIVEN, settlement)
+    )
     return await settlement_view(ctx, settlement)
 
 
@@ -320,7 +328,12 @@ async def reverse_settlement(
     settlement.reversed_by_user_id, settlement.reversed_at = actor, ctx.now
     await _bump(ctx, settlement)
     await ledger.finish()
-    await _record(ctx, settlement, "finance.settlement_reversed")
+    await _record(
+        ctx,
+        settlement,
+        "finance.settlement_reversed",
+        _activity(ActivityType.PAYMENT_REVERSED, settlement),
+    )
     return await settlement_view(ctx, settlement)
 
 
@@ -455,7 +468,22 @@ async def _locked(ctx: CommandContext, plan_id: UUID, settlement_id: UUID) -> Se
     return settlement
 
 
-async def _record(ctx: CommandContext, settlement: Settlement, action: str) -> None:
+def _activity(kind: ActivityType, settlement: Settlement) -> ActivityItem:
+    return item(
+        kind,
+        from_participant_id=settlement.from_participant_id,
+        to_participant_id=settlement.to_participant_id,
+        amount_minor=settlement.amount_minor,
+        currency=settlement.currency,
+    )
+
+
+async def _record(
+    ctx: CommandContext,
+    settlement: Settlement,
+    action: str,
+    activity: ActivityItem | None = None,
+) -> None:
     await record_mutation(
         ctx,
         action=action,
@@ -466,4 +494,5 @@ async def _record(ctx: CommandContext, settlement: Settlement, action: str) -> N
         scope_id=settlement.plan_id,
         plan_id=settlement.plan_id,
         metadata={"version": settlement.version, "status": settlement.status},
+        activity=activity,
     )

@@ -92,8 +92,14 @@ async def test_a_participant_who_leaves_and_rejoins_keeps_one_entity_with_newer_
     left = await api.post(f"/v1/plans/{plan['id']}/leave", headers=member.headers)
     assert left.status_code == 204
     gone, cursor = await drain(api, owner, scope, cursor)
-    assert [(item["entity_id"], item["version"]) for item in gone] == [(joined["id"], 2)]
-    assert gone[0]["data"]["access_state"] == "left"
+    rows = [item for item in gone if item["entity_type"] == "plan_participant"]
+    assert [(item["entity_id"], item["version"]) for item in rows] == [(joined["id"], 2)]
+    assert rows[0]["data"]["access_state"] == "left"
+    # Leaving is in the feed, recorded by the person who left.
+    feed = [item["data"] for item in gone if item["entity_type"] == "activity_event"]
+    assert [(event["type"], event["actor_user_id"]) for event in feed] == [
+        ("member.left", member.user_id)
+    ]
 
     rejoined = await join_with_invite(api, owner, plan["id"], member)
     assert rejoined["id"] == joined["id"]

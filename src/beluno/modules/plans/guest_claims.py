@@ -17,6 +17,7 @@ from sqlalchemy import select
 from beluno.authorization.policy import AccessState, PlanRole
 from beluno.contracts.errors import conflict
 from beluno.db.models.plans import PlanParticipant
+from beluno.modules.activity.events import ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.merges import lock_plan_for_merge, transfer_merged_balances
 from beluno.modules.plans.changes import bump, record_participant_change
@@ -89,7 +90,16 @@ async def transfer_guest_participations(
             action = "plan_participant.claimed"
         bump(row, ctx)
         await ctx.session.flush()
-        await record_participant_change(ctx, row, action)
+        await record_participant_change(
+            ctx,
+            row,
+            action,
+            activity=item(
+                ActivityType.GUEST_LINKED,
+                participant_id=row.merged_into_participant_id or row.id,
+                guest_participant_id=row.id,
+            ),
+        )
         if row.access_state == AccessState.MERGED.value:
             await transfer_merged_balances(ctx, row.plan_id, row.id)
 

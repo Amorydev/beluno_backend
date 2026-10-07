@@ -166,7 +166,8 @@ def test_role_and_table_ownership_invariants(admin: AdminDatabase) -> None:
     tables = admin.fetch(
         "SELECT c.relname, c.relrowsecurity, pg_get_userbyid(c.relowner) FROM pg_class c "
         "WHERE c.relnamespace IN ('iam'::regnamespace, 'plans'::regnamespace, "
-        "'people'::regnamespace, 'sync_audit'::regnamespace) AND c.relkind = 'r'"
+        "'people'::regnamespace, 'activity'::regnamespace, 'sync_audit'::regnamespace) "
+        "AND c.relkind = 'r'"
     )
-    assert len(tables) == 14
+    assert len(tables) == 15
     assert all(rls and owner == "migrator" for _, rls, owner in tables), tables

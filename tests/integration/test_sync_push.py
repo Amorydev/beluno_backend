@@ -120,7 +120,7 @@ async def test_batch_applies_in_order_and_replays_for_free(
             "WHERE scope_id = %s AND operation_id IS NOT NULL",
             plan_id,
         )
-        == 4
+        == 5  # create (plan, feed event, owner), update, RSVP
     )
 
     # Lost response: the whole batch is resent and nothing runs twice.

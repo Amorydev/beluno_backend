@@ -38,6 +38,7 @@ from beluno.db.models.finance import (
     RefundShare,
 )
 from beluno.db.models.plans import PlanParticipant
+from beluno.modules.activity.events import ActivityItem, ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.base_currency import base_chain
 from beluno.modules.finance.fx import RateSource
@@ -134,7 +135,7 @@ async def create_budget(
         raise conflict(
             "ALREADY_EXISTS", "A budget with this id or for this scope already exists"
         ) from error
-    await _record(ctx, budget, "finance.budget_created")
+    await _record(ctx, budget, "finance.budget_created", _activity(budget, "created"))
     return budget
 
 
@@ -146,11 +147,14 @@ async def update_budget(
     if budget.version != expected_version:
         raise version_conflict(budget)
     check_amount(limit_minor, field="limit_minor")
+    previous = budget.limit_minor
     budget.limit_minor = limit_minor
     budget.version += 1
     budget.updated_at = ctx.now
     await ctx.session.flush()
-    await _record(ctx, budget, "finance.budget_updated")
+    await _record(
+        ctx, budget, "finance.budget_updated", _activity(budget, "updated", previous=previous)
+    )
     return budget
 
 
@@ -161,7 +165,9 @@ async def delete_budget(ctx: CommandContext, plan_id: UUID, budget_id: UUID) -> 
     budget.version += 1
     budget.updated_at = ctx.now
     await ctx.session.flush()
-    await _record(ctx, budget, "finance.budget_deleted", operation="delete")
+    await _record(
+        ctx, budget, "finance.budget_deleted", _activity(budget, "deleted"), operation="delete"
+    )
 
 
 def _check_scope(ledger: Ledger, draft: BudgetDraft) -> None:
@@ -401,8 +407,26 @@ async def _locked(ctx: CommandContext, plan_id: UUID, budget_id: UUID) -> Budget
     return budget
 
 
+def _activity(budget: Budget, operation: str, *, previous: int | None = None) -> ActivityItem:
+    return item(
+        ActivityType.BUDGET_CHANGED,
+        operation=operation,
+        scope=budget.scope,
+        category=budget.category,
+        participant_id=budget.participant_id,
+        limit_minor=budget.limit_minor,
+        previous_limit_minor=previous,
+        currency=budget.currency,
+    )
+
+
 async def _record(
-    ctx: CommandContext, budget: Budget, action: str, *, operation: str = "upsert"
+    ctx: CommandContext,
+    budget: Budget,
+    action: str,
+    activity: ActivityItem,
+    *,
+    operation: str = "upsert",
 ) -> None:
     await record_mutation(
         ctx,
@@ -415,4 +439,5 @@ async def _record(
         plan_id=budget.plan_id,
         metadata={"version": budget.version},
         operation=operation,
+        activity=activity,
     )

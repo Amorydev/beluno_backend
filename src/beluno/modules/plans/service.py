@@ -26,6 +26,7 @@ from beluno.contracts.errors import (
 from beluno.db.ids import new_id
 from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanParticipant
+from beluno.modules.activity.events import ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.currencies import require_supported_currency
 from beluno.modules.plans.changes import bump, record_participant_change, record_plan_change
@@ -219,7 +220,13 @@ async def create_plan(ctx: CommandContext, draft: PlanDraft) -> PlanView:
         location_label=draft.location_label,
     )
     owner = await insert_plan_with_owner(ctx, plan)
-    await record_plan_change(ctx, plan, "plan.created", {"type": plan.type})
+    await record_plan_change(
+        ctx,
+        plan,
+        "plan.created",
+        {"type": plan.type},
+        activity=item(ActivityType.PLAN_CREATED, type=plan.type),
+    )
     await record_participant_change(ctx, owner, "plan_participant.added")
     seeds = list(draft.seeds)
     seeded_user_ids = [seed.user_id for seed in seeds if seed.user_id is not None]
@@ -268,6 +275,7 @@ async def update_plan(
 ) -> PlanView:
     access = await _load_for_change(ctx, plan_id, PlanAction.UPDATE, expected_version)
     plan = access.plan
+    dates_before = plan_dates(plan)
     if changes.title is not None:
         plan.title = changes.title
     if changes.activity is not UNSET:
@@ -287,8 +295,32 @@ async def update_plan(
         plan.location_label = changes.location_label
     bump(plan, ctx)
     await ctx.session.flush()
-    await record_plan_change(ctx, plan, "plan.updated")
+    dates_after = plan_dates(plan)
+    moved = (
+        item(
+            ActivityType.PLAN_DATES_CHANGED,
+            timing_mode=plan.timing_mode,
+            start_date=dates_after[0],
+            end_date=dates_after[1],
+            previous_start_date=dates_before[0],
+            previous_end_date=dates_before[1],
+        )
+        if dates_after != dates_before
+        else None
+    )
+    await record_plan_change(ctx, plan, "plan.updated", activity=moved)
     return PlanView(plan=plan, participant=access.participant)
+
+
+def plan_dates(plan: Plan) -> tuple[str | None, str | None]:
+    """The plan's first and last day as ISO dates (from dates or instants)."""
+
+    start = plan.start_date or (plan.starts_at.date() if plan.starts_at else None)
+    end = plan.end_date or (plan.ends_at.date() if plan.ends_at else None)
+    return (
+        start.isoformat() if start else None,
+        end.isoformat() if end else None,
+    )
 
 
 async def change_state(
@@ -305,7 +337,11 @@ async def change_state(
     bump(plan, ctx)
     await ctx.session.flush()
     await record_plan_change(
-        ctx, plan, "plan.state_changed", {"from": previous, "to": target.value}
+        ctx,
+        plan,
+        "plan.state_changed",
+        {"from": previous, "to": target.value},
+        activity=item(ActivityType.PLAN_STATE_CHANGED, state=target.value, previous_state=previous),
     )
     return PlanView(plan=plan, participant=access.participant)
 

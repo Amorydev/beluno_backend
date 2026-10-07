@@ -11,10 +11,11 @@ from sqlalchemy.dialects.postgresql import insert
 from beluno.contracts.errors import conflict, version_conflict
 from beluno.db.ids import new_id
 from beluno.db.models.iam import User, UserIdentity
+from beluno.modules.activity.events import ActivityItem, ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.currencies import require_supported_currency
 from beluno.modules.iam.external_identity import IdentityProvider, VerifiedIdentity
-from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
+from beluno.modules.sync_audit.recorder import ChangeScope, record_activity, record_mutation
 
 REGISTERED = "registered"
 GUEST = "guest"
@@ -186,7 +187,13 @@ async def upgrade_guest(ctx: CommandContext, guest: User, identity: VerifiedIden
     guest.version += 1
     guest.updated_at = ctx.now
     await ctx.session.flush()
-    await _record_user_change(ctx, guest, "user.guest_upgraded", actor_user_id=guest.id)
+    await _record_user_change(
+        ctx,
+        guest,
+        "user.guest_upgraded",
+        actor_user_id=guest.id,
+        activity=item(ActivityType.ACCOUNT_GUEST_UPGRADED),
+    )
     return guest
 
 
@@ -202,6 +209,15 @@ async def retire_merged_guest(ctx: CommandContext, guest: User, target_user_id: 
         "user.guest_merged",
         actor_user_id=guest.id,
         metadata={"target_user_id": str(target_user_id)},
+    )
+    # The feed of the account the guest now belongs to says so.
+    await record_activity(
+        ctx,
+        item(ActivityType.ACCOUNT_GUEST_MERGED, guest_user_id=guest.id),
+        entity_type="user",
+        entity_id=target_user_id,
+        scope=ChangeScope.USER,
+        scope_id=target_user_id,
     )
 
 
@@ -249,6 +265,7 @@ async def _record_user_change(
     *,
     actor_user_id: UUID | None = None,
     metadata: dict[str, str] | None = None,
+    activity: ActivityItem | None = None,
 ) -> None:
     await record_mutation(
         ctx,
@@ -260,4 +277,5 @@ async def _record_user_change(
         scope_id=user.id,
         metadata={"kind": user.kind, **(metadata or {})},
         actor_user_id=actor_user_id,
+        activity=activity,
     )

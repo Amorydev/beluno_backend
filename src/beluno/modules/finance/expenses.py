@@ -34,6 +34,7 @@ from beluno.db.models.finance import (
     RefundShare,
 )
 from beluno.db.models.iam import AuthSession
+from beluno.modules.activity.events import ActivityItem, ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.commitments import link_expense, release_expense
 from beluno.modules.finance.errors import refund_exceeds_amount, split_invalid
@@ -326,7 +327,17 @@ async def create_expense(
         await link_expense(ledger, draft.commitment_id, expense)
     await _append_revision(ledger, expense, revision_id, 1, draft, keep=())
     await ledger.finish()
-    await _record(ctx, expense, "finance.expense_created")
+    await _record(
+        ctx,
+        expense,
+        "finance.expense_created",
+        item(
+            ActivityType.EXPENSE_ADDED,
+            amount_minor=draft.amount_minor,
+            currency=draft.currency,
+            category=draft.category,
+        ),
+    )
     return await expense_view(ctx, expense)
 
 
@@ -373,7 +384,19 @@ async def revise_expense(
     expense.updated_at = ctx.now
     await ctx.session.flush()
     await ledger.finish()
-    await _record(ctx, expense, "finance.expense_revised")
+    await _record(
+        ctx,
+        expense,
+        "finance.expense_revised",
+        item(
+            ActivityType.EXPENSE_EDITED,
+            fields=changed_fields(current, draft),
+            amount_minor=draft.amount_minor,
+            previous_amount_minor=current.revision.amount_minor,
+            currency=draft.currency,
+            previous_currency=current.revision.currency,
+        ),
+    )
     return await expense_view(ctx, expense)
 
 
@@ -381,6 +404,7 @@ async def void_expense(
     ctx: CommandContext, plan_id: UUID, expense_id: UUID, expected_version: int
 ) -> ExpenseView:
     ledger, expense = await _open_expense(ctx, plan_id, expense_id, expected_version)
+    voided = await _current_revision(ctx, expense)
     await ledger.reverse(
         await _transaction(ctx, revision_id=expense.current_revision_id), kind="expense_reversal"
     )
@@ -395,7 +419,16 @@ async def void_expense(
     if linked is not None:
         await release_expense(ledger, linked, expense.id)
     await ledger.finish()
-    await _record(ctx, expense, "finance.expense_voided")
+    await _record(
+        ctx,
+        expense,
+        "finance.expense_voided",
+        item(
+            ActivityType.EXPENSE_VOIDED,
+            amount_minor=voided.amount_minor,
+            currency=voided.currency,
+        ),
+    )
     return await expense_view(ctx, expense)
 
 
@@ -467,7 +500,16 @@ async def refund_expense(
     expense.updated_at = ctx.now
     await ctx.session.flush()
     await ledger.finish()
-    await _record(ctx, expense, "finance.expense_refunded")
+    await _record(
+        ctx,
+        expense,
+        "finance.expense_refunded",
+        item(
+            ActivityType.EXPENSE_REFUNDED,
+            amount_minor=draft.amount_minor,
+            currency=revision.currency,
+        ),
+    )
     return await expense_view(ctx, expense)
 
 
@@ -662,7 +704,35 @@ async def _live_refunds(ctx: CommandContext, expense_id: UUID) -> list[ExpenseRe
     return [refund for refund in refunds if not await _refund_reversed(ctx, refund.id)]
 
 
-async def _record(ctx: CommandContext, expense: Expense, action: str) -> None:
+def changed_fields(current: RevisionView, draft: ExpenseDraft) -> list[str]:
+    """Which parts of an expense a revision changed, by name only (for the feed)."""
+
+    revision = current.revision
+    before = [(payer.participant_id, payer.amount_minor) for payer in current.payers]
+    after = [(payer.participant_id, payer.amount_minor) for payer in draft.payers]
+    # A new amount moves a lone payer's share too; only who paid, or how a same
+    # total is shared among payers, counts as a payer change.
+    payers_changed = [pid for pid, _ in before] != [pid for pid, _ in after] or (
+        draft.amount_minor == revision.amount_minor and before != after
+    )
+    checks = {
+        "amount": draft.amount_minor != revision.amount_minor,
+        "currency": draft.currency != revision.currency,
+        "description": draft.description != revision.description,
+        "category": draft.category != revision.category,
+        "occurred": (draft.occurred_on, draft.occurred_at, draft.occurred_timezone)
+        != (revision.occurred_on, revision.occurred_at, revision.occurred_timezone),
+        "notes": draft.notes != revision.notes,
+        "payers": payers_changed,
+        "split": draft.split_input != revision.split_input,
+        "commitment": draft.commitment_id != revision.commitment_id,
+    }
+    return [name for name, changed in checks.items() if changed]
+
+
+async def _record(
+    ctx: CommandContext, expense: Expense, action: str, activity: ActivityItem
+) -> None:
     await record_mutation(
         ctx,
         action=action,
@@ -673,4 +743,5 @@ async def _record(ctx: CommandContext, expense: Expense, action: str) -> None:
         scope_id=expense.plan_id,
         plan_id=expense.plan_id,
         metadata={"version": expense.version},
+        activity=activity,
     )

@@ -117,14 +117,15 @@ async def test_api_mutations_get_contiguous_sequences_per_scope(
     assert retitled.status_code == 200
 
     first_rows = scope_rows(admin, first["id"])
-    assert [seq for seq, _, _ in first_rows] == [1, 2, 3, 4]
+    # Creation writes the plan, its feed event, and the owner's row; renames add one each.
+    assert [seq for seq, _, _ in first_rows] == [1, 2, 3, 4, 5]
     assert [version for _, entity_id, version in first_rows if entity_id == first["id"]] == [
         1,
         2,
         3,
     ]
     second_rows = scope_rows(admin, second["id"])
-    assert [seq for seq, _, _ in second_rows] == [1, 2, 3]
+    assert [seq for seq, _, _ in second_rows] == [1, 2, 3, 4]
     assert [version for _, entity_id, version in second_rows if entity_id == second["id"]] == [
         1,
         2,
@@ -136,7 +137,7 @@ async def test_api_mutations_get_contiguous_sequences_per_scope(
             [first["id"], second["id"]],
         )
     )
-    assert heads == {first["id"]: 4, second["id"]: 3}
+    assert heads == {first["id"]: 5, second["id"]: 4}
     assert (
         admin.scalar(
             "SELECT count(*) FROM sync_audit.scope_heads WHERE floor_seq <> 0 OR generation <> 1"
@@ -300,7 +301,7 @@ async def test_runtime_roles_reach_change_rows_only_through_gates(
             assert changes is not None and heads is not None
             return changes[0], heads[0]
 
-        assert read_as(owner.user_id) == (2, 1)
+        assert read_as(owner.user_id) == (3, 1)
         assert read_as(outsider.user_id) == (0, 0)
 
     with psycopg.connect(raw_dsn(live_settings.worker_database_dsn)) as worker:
