@@ -89,7 +89,10 @@ Trips have a plan: saved places (`/v1/plans/{id}/places`, with "want to go"
 reactions and Maps links read offline for coordinates) and an itinerary
 (`/v1/plans/{id}/itinerary`: items on a day or anytime, ordered within the day,
 with local times, a lead, attendance, and an estimated cost that budgets count
-until an expense pays it). Sync carries them as `place` and `itinerary_item`.
+until an expense pays it), and polls (`/v1/plans/{id}/polls`: single choice or
+yes/no with a quorum, an optional deadline, open votes, one result however it
+closes, and outcome actions that save the winning place or put it on the
+itinerary). Sync carries them as `place`, `itinerary_item`, and `poll`.
 
 ## Finance
 

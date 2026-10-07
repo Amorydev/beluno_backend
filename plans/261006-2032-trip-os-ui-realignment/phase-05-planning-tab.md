@@ -119,6 +119,41 @@ Anything else, short links included, stays `pending` with the name the user type
 - [ ] Poll close races (job vs organiser) yield one result version.
 - [ ] Booking codes never appear in list or sync payloads, logs, or activity events.
 
+## Slice 2 design: Polls
+
+Decisions (user, 2026-10-07):
+- **A tie** in a single-choice poll closes as `tie`, listing the tied options; an organiser picks one of them when applying the outcome.
+- **The electorate** is the participants active when the poll opens. It is snapshotted, so the quorum and "x of y voted" do not drift; people who join later do not vote on that poll.
+- **Votes are visible** while the poll is open, including who chose what.
+- **Yes/no** (after review): a poll passes when yes outnumbers no and reaches the quorum, if one is set. A quorum above the electorate is refused, and no votes at all closes as `no_votes`.
+- **One tie pick** binds every outcome action of the poll (after review).
+
+Design:
+- **Schema.** Migration `000012_decisions_polls` fills the `decisions` schema:
+  - `polls`: kind `single_choice` or `yes_no`, question, optional `deadline_at`, a quorum for yes/no, `allow_vote_change`, status open or closed, who closed it (null means the deadline job).
+  - `poll_options`: label, optional `place_id`, position. A yes/no poll gets Yes and No options, marked by `answer`.
+  - `poll_electorate`: the snapshot taken at open.
+  - `poll_votes`: one row per voter, updated in place, written only by the voter themselves, and only while they are in the electorate.
+  - `poll_results`: immutable, one row per poll. Holds the outcome (`winner`, `tie`, `no_votes`, `passed`, `failed`), the winner or tied options, counts, eligible and voted totals.
+  - `poll_outcomes`: actions applied to a result, one per poll and action.
+- **Closing.** One SECURITY DEFINER path computes and writes the result, then appends the change rows, the `poll.closed` feed event, and an audit row:
+  - `decisions.close_poll` (API): the creator or an organiser;
+  - `decisions.close_due_polls` (worker, every 5 minutes): polls past their deadline.
+
+  Both lock the poll first, and a closed poll returns its existing result, so a job racing an organiser yields one result. Votes are refused once the deadline has passed.
+- **Outcome actions** apply to single-choice polls and are idempotent per poll and action. The same request again returns the earlier entity; a different option gets 409.
+  - `save_place` marks, or creates, the winning place as `poll_winner`.
+  - `add_to_plan` creates an itinerary item from the winner, at an optional day and time.
+  - Assigning a booking comes with slice 3.
+- **Permissions:**
+  - creating a poll needs `plan.planning.contribute`;
+  - voting needs `plan.planning.respond` plus membership in the electorate;
+  - closing early, deleting (open polls only), and applying outcomes take the creator or an organiser.
+- **Sync, feed, and purge:**
+  - plan-scope entity `poll`, with options, votes, eligible count, and result;
+  - feed events `poll.created` and `poll.closed`;
+  - the purge gate removes decisions rows before places.
+
 ## Progress Notes (2026-10-07)
 
 - Slice 1 (Itinerary and Places) is done on `feat/planning-itinerary-places`.

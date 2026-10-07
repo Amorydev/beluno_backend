@@ -25,7 +25,12 @@ submitted values.
 | `WAIVER_EXCEEDS_DEBT` | 409 | A waiver would forgive more than the debtor owes and the creditor is owed in that currency |
 | `REFUND_EXCEEDS_AMOUNT` | 409 | Refunds would exceed the expense's current amount (also when a revision goes below them) |
 | `FUND_INSUFFICIENT` | 409 | A fund-paid expense, withdrawal, or adjustment would overdraw the plan fund in that currency |
-| `NOT_AVAILABLE_FOR_HANGOUT` | 409 | Budgets, cost commitments, the kitty (settings, contributions, withdrawals, counts, fund-paid expenses, refunds to the fund), and the trip plan (places, itinerary) are for trips only |
+| `NOT_AVAILABLE_FOR_HANGOUT` | 409 | Budgets, cost commitments, the kitty (settings, contributions, withdrawals, counts, fund-paid expenses, refunds to the fund), and the trip plan (places, itinerary, polls) are for trips only |
+| `POLL_CLOSED` | 409 | The poll is closed (or past its deadline): no more votes, and a closed poll is not deleted |
+| `VOTE_LOCKED` | 409 | The poll does not allow changing a vote once cast |
+| `POLL_NOT_DECIDED` | 409 | Only a closed single-choice poll with a winner (or a tie, with `option_id`) can be acted on |
+| `POLL_RESULT_CHANGED` | 409 | `result_version` does not match the poll's result |
+| `OUTCOME_ALREADY_APPLIED` | 409 | This action was already applied to the result with another option |
 | `LEDGER_CHANGED` | 409 | A confirmation named an older `ledger_seq`; review the latest entries and confirm again |
 | `FUND_NOT_EMPTY` | 409 | The kitty still holds money in a currency to consolidate; pay it out first |
 | `CONSOLIDATION_SETTLED` | 409 | A payment or waiver still in effect was recorded after this consolidation; reverse it first or keep the base-currency balances |

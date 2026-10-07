@@ -77,6 +77,11 @@ State narrowing (applies on top of the table):
   `plan.planning.manage`. Wanting to go and going / not going are each
   participant's own answers: the database refuses an answer written for someone
   else.
+- Polls: anyone with `plan.planning.contribute` opens one. Voters are the
+  participants active when it opened (placeholders excluded), each with
+  `plan.planning.respond`, voting for themselves while it is open and before its
+  deadline. The creator or an organiser closes it early, deletes it while open, and
+  applies its outcome.
 - Finance writes (expenses, budgets, fund, adjustments) require `draft`,
   `planning`, `active`, or `settling`; settlements and waivers also accept
   `completed`, because people pay each other back after the plan is over.
