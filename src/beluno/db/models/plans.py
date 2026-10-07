@@ -34,6 +34,8 @@ class Plan(Base):
     destinations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     pass_color: Mapped[str] = mapped_column(Text)
     expected_size: Mapped[int | None]
+    cover_media_id: Mapped[UUID | None]
+    album_url: Mapped[str | None] = mapped_column(Text)
     duplicated_from_plan_id: Mapped[UUID | None]
     created_by_user_id: Mapped[UUID]
     deletion_scheduled_at: Mapped[datetime | None]

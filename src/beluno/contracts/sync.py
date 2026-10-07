@@ -232,6 +232,8 @@ class PlanEntity(BaseModel):
     expected_size: int | None
     description: str | None
     location_label: str | None
+    cover_media_id: UUID | None
+    album_url: str | None
     deletion_scheduled_at: datetime | None
     version: int
     created_at: datetime

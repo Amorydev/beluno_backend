@@ -18,7 +18,9 @@ from pydantic import SecretStr
 from beluno.config import EmailBackend, Environment, Settings
 from beluno.modules.iam.email_delivery import OutboundEmail
 from beluno.secret_box import new_keyring_json
+from beluno.testkit import media as media_testkit
 from beluno.testkit.identity import APPLE_CLIENT_ID, GOOGLE_CLIENT_ID
+from beluno.testkit.media import MediaServices
 
 # Synthetic credentials for disposable local/CI databases only.
 RUNTIME_PASSWORDS = {
@@ -49,6 +51,7 @@ def build_settings(
     worker_dsn: str,
     scheduler_dsn: str,
     migration_dsn: str,
+    media: MediaServices | None = None,
 ) -> Settings:
     return Settings(
         _env_file=None,  # type: ignore[call-arg]
@@ -64,6 +67,13 @@ def build_settings(
         auth_apple_client_ids=[APPLE_CLIENT_ID],
         auth_magic_link_url="https://app.beluno.test/auth/email",
         email_backend=EmailBackend.CONSOLE,
+        storage_endpoint_url=media.storage_url if media else None,
+        storage_bucket=media_testkit.BUCKET,
+        storage_region=media_testkit.REGION,
+        storage_access_key_id=SecretStr(media_testkit.ACCESS_KEY_ID) if media else None,
+        storage_secret_access_key=SecretStr(media_testkit.SECRET_ACCESS_KEY) if media else None,
+        clamd_host=media.clamd_host if media else None,
+        clamd_port=media.clamd_port if media else 3310,
     )
 
 

@@ -29,6 +29,7 @@ from beluno.testkit.environment import (
     role_dsn,
 )
 from beluno.testkit.identity import IdentityProviderStub
+from beluno.testkit.media import MediaServices, media_services
 from beluno.token_hashing import TokenHasher
 
 
@@ -150,7 +151,15 @@ def admin_cluster_dsn() -> Iterator[str]:
 
 
 @pytest.fixture(scope="session")
-def integration_environment(admin_cluster_dsn: str) -> Iterator[IntegrationEnvironment]:
+def media(admin_cluster_dsn: str) -> Iterator[MediaServices]:
+    with media_services() as services:
+        yield services
+
+
+@pytest.fixture(scope="session")
+def integration_environment(
+    admin_cluster_dsn: str, media: MediaServices
+) -> Iterator[IntegrationEnvironment]:
     _provision_roles(admin_cluster_dsn)
     name = f"beluno_it_{uuid4().hex[:12]}"
     database_admin_dsn = _create_database(admin_cluster_dsn, name)
@@ -159,6 +168,7 @@ def integration_environment(admin_cluster_dsn: str) -> Iterator[IntegrationEnvir
         worker_dsn=role_dsn(database_admin_dsn, "worker_runtime"),
         scheduler_dsn=role_dsn(database_admin_dsn, "scheduler_runtime"),
         migration_dsn=role_dsn(database_admin_dsn, "migrator"),
+        media=media,
     )
     try:
         run_migrations(settings)

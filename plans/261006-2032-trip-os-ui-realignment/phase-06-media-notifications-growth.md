@@ -90,6 +90,16 @@ Release 3: everything that needs external providers or storage. The previous pla
   - After a refused guest sign-in the app asks for a new assertion (with `merge_guest_participations: true`); asking for merge consent before the ceremony avoids the second prompt.
   - Left: counter regressions are refused but not audited.
 
+- Media (receipts, covers, album link) is on `feat/media-receipts`:
+  - Decisions (user, 2026-10-07): self-hosted RustFS (S3 API; client `boto3`); the server strips all image metadata; the receipt limit is a setting, unset until paid plans; receipts for trips and hangouts, covers and memories for trips.
+  - Migration `000017_media`; `/v1/plans/{id}/media` (record, upload URL, uploaded, download URL, delete), sync entity `media`, commands `media.create`/`media.delete`; plan `cover_media_id`, `album_url`.
+  - Worker: `media.process` (size, sniffed type, ClamAV INSTREAM, Pillow re-encode, HEIC to JPEG, pixel cap) and `media.delete_objects`.
+  - Tests: moto's S3 server and an INSTREAM clamd stand-in (`beluno.testkit.media`) with real signed uploads and downloads.
+  - Review (`reports/code-reviewer-261007-1800-media-receipts-review-report.md`): upload binding holds on RustFS, no storage I/O in transactions, purge intact. Fixed: undecodable images got stuck scanning (H1, now rejected `unreadable`; hourly sweep re-queues stuck files); deleting the cover now records the plan change under a plan lock (H2, M5); files deleted or purged mid-scan no longer leave objects behind, and the incoming copy goes only after commit (H3); comments and ICC profiles stripped too (M1); abandoned uploads and reused upload URLs cleaned up (M2); media on its own queue, image work in a thread, worker concurrency 4 (M3); images pinned, scoped keys documented (M4); a definer trigger queues deleted files' objects, the API cannot (M6); tests for the guard, outages, and mid-scan deletes, and the moto limits stated (M7); control characters in album links, clamd size-limit replies, PDFs downloaded as attachments, sniffed-format-only decoding, 503 when storage is missing, per-key deletion failures. The sync `plan` entity now carries the cover and album link.
+  - Image limit lowered to 20 MB so clamd's default stream limit scans every file whole.
+  - Open (user): account deletion and files others keep; receipts on voided expenses and who may delete a receipt; sanitising PDF receipts.
+  - Next: memories (captions, day and place links) and recap highlights.
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.

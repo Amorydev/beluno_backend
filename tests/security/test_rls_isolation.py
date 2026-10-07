@@ -220,6 +220,7 @@ CREDENTIAL_TABLES = {
 # RLS tables a plan, its money, its people, and a crew never write to.
 NOT_TENANT_DATA = {
     "finance.currencies",
+    "media_memories.object_deletions",
     "finance.market_rates",
     "iam.email_challenges",
     "sync_audit.operations",

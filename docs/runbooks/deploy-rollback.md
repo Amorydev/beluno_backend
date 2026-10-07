@@ -96,6 +96,27 @@ Android needs `/.well-known/assetlinks.json`. Staging and production refuse
 `localhost` and plain `http`. Changing the RP ID orphans every existing passkey:
 people then sign in another way and add a new one.
 
+## Media storage and scanning
+
+Media lives in RustFS (`rustfs` service, S3 API on 9000, data in the `rustfs-data`
+volume) and every upload is scanned by ClamAV (`clamav` service, signatures in
+`clamav-data`, refreshed by its own freshclam; it needs about 2 GB of memory and a
+few minutes after first start). The worker creates the bucket on start. Apps reach
+storage only through presigned URLs signed for `BELUNO_STORAGE_PUBLIC_URL`: publish
+RustFS behind the TLS proxy at that address (and allow the app's origin for CORS
+if the web client uploads). While ClamAV is down, uploads stay `scanning` and the
+`media.process` job retries with backoff; nothing unscanned is ever served. Media jobs
+run on their own `media` queue with the worker's concurrency of 4, so scans never
+hold up sign-in email; a file stuck scanning for an hour is re-queued by the hourly
+`media.sweep`. Pin `RUSTFS_VERSION` and `CLAMAV_VERSION` in `.env`. clamd's default
+`StreamMaxLength` (25M) covers the media limits (20 MB images, 15 MB receipts):
+raise it in clamd.conf before raising `BELUNO_MEDIA_*_MAX_BYTES`, or larger files
+are rejected as too large. The bundled stack uses RustFS's root keys as the app's
+keys; in production create a bucket-scoped access key for the API and worker
+instead. Back up
+the `rustfs-data` volume with the database: a restored database pointing at missing
+objects shows files that cannot be downloaded.
+
 ## Kill switches
 
 Flip one in the environment and restart the affected process. Clients keep their

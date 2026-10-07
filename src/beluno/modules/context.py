@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import cached_property
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -25,8 +26,10 @@ from beluno.contracts.errors import authentication_failed, authentication_unavai
 from beluno.db.models.iam import AuthSession, User
 from beluno.db.roles import set_actor_context
 from beluno.db.session import Database
+from beluno.malware import ClamdScanner, ScannerUnavailable
 from beluno.modules.sync_audit.recorder import flush_pending_records
 from beluno.observability.context import get_request_id
+from beluno.storage import ObjectStorage
 from beluno.token_hashing import TokenHasher
 
 if TYPE_CHECKING:
@@ -52,6 +55,18 @@ class Runtime:
         if self.hasher is None:
             raise authentication_unavailable()
         return self.hasher
+
+    @cached_property
+    def storage(self) -> ObjectStorage:
+        """Media storage, built on first use (raises when it is not configured)."""
+
+        return ObjectStorage.from_settings(self.settings)
+
+    @cached_property
+    def scanner(self) -> ClamdScanner:
+        if not self.settings.clamd_host:
+            raise ScannerUnavailable("BELUNO_CLAMD_HOST is not configured")
+        return ClamdScanner(self.settings.clamd_host, self.settings.clamd_port)
 
 
 @dataclass

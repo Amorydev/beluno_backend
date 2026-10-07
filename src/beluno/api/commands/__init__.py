@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from beluno.api.commands import crews, finance, planning, plans, profile
+from beluno.api.commands import crews, finance, media, planning, plans, profile
 from beluno.api.finance_presenters import present_finance_current
+from beluno.api.media_projection import present_media_current
 from beluno.api.planning_projection import present_planning_current
 from beluno.api.presenters import present_current
 from beluno.modules.context import CommandContext
@@ -17,6 +18,7 @@ ALL_COMMANDS = [
     *crews.COMMANDS,
     *finance.COMMANDS,
     *planning.COMMANDS,
+    *media.COMMANDS,
 ]
 
 
@@ -24,6 +26,7 @@ async def present_conflict(ctx: CommandContext, entity: object) -> BaseModel | N
     return (
         await present_finance_current(ctx, entity)
         or await present_planning_current(ctx, entity)
+        or await present_media_current(ctx, entity)
         or await present_current(ctx, entity)
     )
 
