@@ -350,10 +350,28 @@ async def test_every_release_one_event_type_is_written(
             trip.path(f"/participants/{dan}"), json={"role": "viewer"}, headers=if_match(2, owner)
         )
     )
+    await ok(
+        await api.post(
+            trip.path("/ledger/adjustments"),
+            json={
+                "currency": "EUR",
+                "memo": SECRET,
+                "entries": [
+                    {"participant_id": ann, "amount_minor": 250},
+                    {"participant_id": dan, "amount_minor": -250},
+                ],
+            },
+            headers=owner.headers,
+        )
+    )
     await ok(await api.post(trip.path("/leave"), headers=trip.members["Bea"].headers))
 
-    types = {event["type"] for event in await feed(api, owner, f"plan:{trip.plan_id}")}
+    events = await feed(api, owner, f"plan:{trip.plan_id}")
+    [adjusted] = [event["summary"] for event in events if event["type"] == "ledger.adjusted"]
+    assert adjusted == {"currency": "EUR", "amounts": {ann: 250, dan: -250}}
+    types = {event["type"] for event in events}
     assert types >= {
+        "ledger.adjusted",
         "expense.voided",
         "expense.refunded",
         "waiver.given",

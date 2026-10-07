@@ -37,7 +37,12 @@ from beluno.modules.finance.errors import amount_out_of_range, entry_unbalanced,
 from beluno.modules.finance.ledger import LEDGER_ENTITY, Ledger, open_ledger
 from beluno.modules.finance.money import MAX_AMOUNT_MINOR, check_amount
 from beluno.modules.finance.postings import FUND, Party, adjustment_postings, transfer_postings
-from beluno.modules.sync_audit.recorder import ChangeScope, record_audit, record_mutation
+from beluno.modules.sync_audit.recorder import (
+    ChangeScope,
+    record_activity,
+    record_audit,
+    record_mutation,
+)
 
 FUND_ENTITY = "fund"
 MOVEMENT_ENTITY = "fund_movement"
@@ -306,6 +311,19 @@ async def adjust_ledger(
         entity_id=plan_id,
         plan_id=plan_id,
         metadata={"ledger_seq": transaction.ledger_seq, "subtype": subtype},
+    )
+    # Balances moved, so the feed says by how much (never the memo).
+    amounts = {
+        "fund" if party.is_fund else str(party.participant_id): amount
+        for party, amount in draft.entries
+    }
+    await record_activity(
+        ctx,
+        item(ActivityType.LEDGER_ADJUSTED, currency=draft.currency, amounts=amounts),
+        entity_type=LEDGER_ENTITY,
+        entity_id=plan_id,
+        scope=ChangeScope.PLAN,
+        scope_id=plan_id,
     )
     return transaction
 

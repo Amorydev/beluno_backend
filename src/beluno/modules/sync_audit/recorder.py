@@ -162,7 +162,7 @@ async def record_activity(
     scope: ChangeScope,
     scope_id: UUID,
 ) -> None:
-    """Record a feed event for a mutation whose own records land in another scope."""
+    """Record a feed event for a mutation whose own records are written apart from it."""
 
     _require_tracked_savepoint(ctx)
     _buffer_activity(

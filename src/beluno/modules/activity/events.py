@@ -28,6 +28,7 @@ class ActivityType(StrEnum):
     WAIVER_GIVEN = "waiver.given"
     BUDGET_CHANGED = "budget.changed"
     BASE_CURRENCY_CHANGED = "base_currency.changed"
+    LEDGER_ADJUSTED = "ledger.adjusted"
     LEDGER_CONSOLIDATED = "ledger.consolidated"
     CONSOLIDATION_REVERSED = "ledger.consolidation_reversed"
     KITTY_CONTRIBUTED = "kitty.contributed"
@@ -47,10 +48,12 @@ class ActivityType(StrEnum):
 
 
 # Every key a summary may carry; values are numbers, booleans, IDs, codes from a
-# closed set (currency, role, state, category, field name), or ISO dates.
+# closed set (currency, role, state, category, field name), ISO dates, or amounts
+# keyed by participant ID (or "fund").
 SUMMARY_KEYS = frozenset(
     {
         "amount_minor",
+        "amounts",
         "previous_amount_minor",
         "currency",
         "previous_currency",
@@ -87,7 +90,7 @@ SUMMARY_KEYS = frozenset(
     }
 )
 
-SummaryValue = int | str | bool | None | Sequence[str]
+SummaryValue = int | str | bool | None | Sequence[str] | Mapping[str, int]
 
 
 @dataclass(frozen=True)
