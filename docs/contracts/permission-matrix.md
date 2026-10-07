@@ -99,8 +99,7 @@ State narrowing (applies on top of the table):
 - `pending_approval`, `left`, `removed`, and `merged` participants have no
   rights: the plan is hidden from them. Removed participants keep their row
   and history.
-- Owners cannot leave (`409 OWNER_TRANSFER_REQUIRED`); ownership moves only by
-  transfer to an active registered participant.
+- Owners cannot leave (`409 OWNER_TRANSFER_REQUIRED`) without transferring ownership; the same constraint applies to account deletion (owners cannot delete their account while another registered person or guest is active in a plan they own; placeholders do not count). Account deletion needs step-up, except for guests, who cannot sign in again.
 - Placeholders can only be members or viewers; a guest who claims a
   placeholder receives the `guest` role, so bearer links never grant
   management rights. Invite links stop admitting people once a plan is
