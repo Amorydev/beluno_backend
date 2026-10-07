@@ -19,6 +19,7 @@ submitted values.
 | `ALREADY_PARTICIPANT` | 409 | Person already participates in the plan |
 | `GUEST_NOT_ALLOWED` | 409 | Guests cannot be added this way; they join through an invite |
 | `IDENTITY_ALREADY_LINKED` | 409 | The external identity belongs to another account |
+| `HIGHLIGHT_LIMIT_REACHED` | 409 | The trip already has the most recap highlights (20) |
 | `MEDIA_LIMIT_REACHED` | 409 | The plan already holds the receipts its plan allows (when a limit is configured) |
 | `PASSKEY_ALREADY_REGISTERED` | 409 | This passkey is already added (to this or another account) |
 | `INVALID_STATE_TRANSITION` | 409 | Action is not valid in the resource's current state |

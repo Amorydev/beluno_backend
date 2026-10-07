@@ -141,7 +141,8 @@ scope).
 
 ## Media
 
-Receipts (on expenses, trips and hangouts) and trip covers are files the app uploads
+Receipts (on expenses that are not voided, trips and hangouts), trip covers, and trip
+memories are files the app uploads
 straight to S3-compatible storage (RustFS, self-hosted) through presigned URLs:
 `POST /v1/plans/{id}/media` records the file (offline too, as sync command
 `media.create`), `POST .../media/{media_id}/upload-url` signs a PUT for exactly the
@@ -150,7 +151,11 @@ real type and size, streams the bytes to ClamAV, rewrites images without any
 metadata (EXIF, GPS; HEIC becomes JPEG), and stores the clean copy. Anyone in the
 plan gets a five-minute download link (`POST .../download-url`; PDFs download as
 attachments). A trip's
-`cover_media_id` and `album_url` are set on the plan. Deleted files and purged plans
+`cover_media_id` and `album_url` are set on the plan. Memories carry a caption, the
+local day and time (sent by the app, since the server strips EXIF), and a saved
+place; anyone on the trip shares them, their uploader or an organiser edits them
+(`PUT .../media/{media_id}/memory`), and organisers pick up to 20 recap highlights
+(`PUT .../highlight`), which the recap lists by day and time with the cover. Deleted files and purged plans
 queue their objects, which the worker removes from storage. Configure
 `BELUNO_STORAGE_*` and `BELUNO_CLAMD_HOST` (see `.env.example`).
 
