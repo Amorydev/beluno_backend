@@ -1,7 +1,7 @@
 ---
 phase: 6
 title: "Media, notifications, and growth"
-status: pending
+status: in-progress
 priority: P2
 effort: "4–6 weeks"
 dependencies: [5]
@@ -46,6 +46,26 @@ Release 3: everything that needs external providers or storage. The previous pla
 - Push, email, malware-scan, PDF, and storage providers.
 - Pricing and limits (blueprint §12 hypotheses).
 - FX provider if Phase 2 left it open.
+
+## Execution Decisions (user, 2026-10-07)
+
+- **Order:** slices that need no provider first: (1) export, recap, report a problem; then passkeys, media, push, monetization, PDF reports.
+- **Push:** FCM for Android and iOS (APNs through FCM).
+- **Malware scanning:** self-hosted ClamAV next to the worker; uploads are scanned before use.
+- **Pricing and limits:** the blueprint's hypotheses (Free: 2 active trips, 5 receipts per trip; Trip Pass per trip; Pro yearly; hangouts always free) as settings, changeable without a code change.
+- **Exports:** every active participant (viewers and guests too) exports what they can already sync; files download at once and are never stored (the receipt archive becomes a background job with the media slice).
+- **Share card:** drawn on the device from public-safe recap fields; the server serves no public link.
+- **Report a problem:** stored in the database and read by operators through a script; no email or helpdesk yet.
+- The trip-OS blueprint is no longer on this machine; the Stitch screen texts (S04, S14, S18, S27, S32, S58, S69, S77, S80) guide the slices.
+
+## Progress Notes
+
+- Slice 1a (exports) is on `feat/trip-export`:
+  - `GET /v1/plans/{id}/export?format=csv|json` and `GET /v1/me/export`, built from the sync snapshot so visibility and secret handling match sync.
+  - CSV cells that would read as formulas are kept as text.
+  - Audited (`plan.exported`, `account.exported`) and rate-limited (20 per hour per user).
+  - Review (`reports/code-reviewer-261007-1530-trip-account-export-review-report.md`): no leak found (export IDs match the sync snapshot). Fixed: files render after the transaction closes, in a worker thread (M1); full-width formula signs and whole-cell escaping (L2); per-route OpenAPI responses (L6); stable CSV order (L7); tests for paging, guests, removed people, raw tokens, private notes, voided rows, and the rate limit.
+  - Left as is: an export is read-committed, not a single snapshot (L1); exports go through `scope_access` like sync by design (L3); no size cap yet (revisit with the background export job of the media slice).
 
 ## Success Criteria
 
