@@ -47,6 +47,8 @@ class ActivityType(StrEnum):
     PLACE_ADDED_TO_PLAN = "place.added_to_plan"
     ITINERARY_ITEM_ADDED = "itinerary.item_added"
     ITINERARY_ITEM_DONE = "itinerary.item_done"
+    POLL_CREATED = "poll.created"
+    POLL_CLOSED = "poll.closed"
     ACCOUNT_GUEST_UPGRADED = "account.guest_upgraded"
     ACCOUNT_GUEST_MERGED = "account.guest_merged"
 
@@ -93,6 +95,9 @@ SUMMARY_KEYS = frozenset(
         "previous_end_date",
         "day",
         "item_id",
+        "outcome",
+        "option_id",
+        "poll_kind",
     }
 )
 

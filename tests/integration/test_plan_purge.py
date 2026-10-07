@@ -69,7 +69,7 @@ def rows_left(admin: AdminDatabase, plan_id: str) -> dict[str, int]:
     tables = admin.fetch(
         "SELECT table_schema || '.' || table_name FROM information_schema.columns "
         "WHERE column_name = 'plan_id' "
-        "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places') "
+        "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places', 'decisions') "
         "ORDER BY 1"
     )
     counts = {
@@ -135,6 +135,27 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
         json={"status": "going"},
         headers=owner.headers,
     )
+    poll = await api.post(
+        trip.path("/polls"),
+        json={
+            "question": "Go?",
+            "options": [{"label": "Temple", "place_id": place.json()["id"]}, {"label": "No"}],
+        },
+        headers=owner.headers,
+    )
+    assert poll.status_code == 201, poll.text
+    await api.put(
+        trip.path(f"/polls/{poll.json()['id']}/vote"),
+        json={"option_id": poll.json()["options"][0]["id"]},
+        headers=owner.headers,
+    )
+    await api.post(trip.path(f"/polls/{poll.json()['id']}/close"), headers=owner.headers)
+    applied = await api.post(
+        trip.path(f"/polls/{poll.json()['id']}/outcome"),
+        json={"action": "add_to_plan"},
+        headers=owner.headers,
+    )
+    assert applied.status_code == 200, applied.text
     crew = await api.post(
         "/v1/crews", json={"name": "Trip crew", "from_plan_id": trip.plan_id}, headers=owner.headers
     )

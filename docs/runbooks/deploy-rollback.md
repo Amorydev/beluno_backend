@@ -101,6 +101,7 @@ These jobs run in the worker, in the `maintenance` queue:
 |---|---|---|
 | `iam.purge_expired_auth_records` | hourly | Expired challenges, tokens, and rate-limit windows; sessions that ended more than 30 days ago |
 | `sync.compact_changes`, `sync.purge_operations`, `activity.purge_events` | daily | Retention per `docs/contracts/retention-matrix.md` |
+| `decisions.close_due_polls` | every 5 min | Closes polls past their deadline (one result each, even racing an organiser) |
 | `plans.purge_deleted` | daily | Deletes plans whose deletion was scheduled `BELUNO_PLAN_PURGE_AFTER_DAYS` (30) ago |
 | `finance.reconcile_ledgers` | daily | Ledger drift check (`finance-operations.md`) |
 | `jobs.report_queue_health` | every 5 min | Queue depth and oldest waiting age for the alerts |

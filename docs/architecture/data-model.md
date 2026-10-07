@@ -55,6 +55,16 @@ The `schedule_places` schema holds a trip's places and itinerary (trips only):
 - An item's estimated cost is a finance cost commitment (`itinerary_item`, `estimate`); the expense that pays it names that commitment. Cancelling or deleting the item cancels a cost that is still only planned; a paid one stays an expense and remembers the withdrawal (`converted_from_state = cancelled`), so voiding that expense cancels the cost rather than reviving it. An item save writes the commitment only when the cost or title changed. Order keys use the `C` collation.
 - RLS: the plan's active participants read and write; there is no DELETE grant. Write guards keep identities fixed and let each participant write only their own reactions and attendance.
 
+### Polls
+
+The `decisions` schema holds a trip's polls:
+
+- **polls**: `single_choice` or `yes_no` (passes when yes outnumbers no and reaches the optional quorum, which cannot exceed the electorate; no votes at all closes as `no_votes`), question, optional deadline, whether votes may change, status `open`/`closed`, who closed it (null: the deadline). After opening only its version moves; whoever manages it (creator or organiser) may withdraw it while open.
+- **poll_options** (label, optional place, position; yes/no options carry `answer`) come from the creator before the poll opens; `decisions.open_poll` then snapshots **poll_electorate** (participants active at opening, placeholders excluded) once and seals the options.
+- **poll_votes**: one per voter, updated in place; the database accepts only the voter's own vote, from the electorate, on an option of the poll, while open and before the deadline.
+- **poll_results**: one immutable row written by `decisions.finalize_poll` (outcome `winner`, `tie`, `no_votes`, `passed`, `failed`; counts; eligible and voted). The API (`decisions.close_poll`, creator or organiser) and the worker (`decisions.close_due_poll`, every 5 minutes) both close through it, locking the poll first, so a race yields one result.
+- **poll_outcomes**: one per poll and action (`save_place`, `add_to_plan`), naming the option and the place or item it made. A tie is settled once: every action of the poll uses the option picked first. A free-text winner becomes one place, and its itinerary item points at it.
+
 ## Finance
 
 The `finance` schema holds each plan's ledger (ADR 0003). Amounts are `BIGINT`

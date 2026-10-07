@@ -175,3 +175,123 @@ class ItineraryItemResponse(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+PollKind = Literal["single_choice", "yes_no"]
+PollOutcomeAction = Literal["save_place", "add_to_plan"]
+OptionLabel = Annotated[str, StringConstraints(min_length=1, max_length=120, strip_whitespace=True)]
+
+
+class PollOptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: OptionLabel
+    place_id: UUID | None = None
+
+
+class PollCreateRequest(BaseModel):
+    """A single-choice poll lists 2 to 20 options; a yes/no poll lists none (Yes and No are given).
+
+    Everyone active in the trip when it opens may vote, and only they.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    kind: PollKind = "single_choice"
+    question: Annotated[str, StringConstraints(min_length=1, max_length=200, strip_whitespace=True)]
+    options: list[PollOptionRequest] = Field(default_factory=list, max_length=20)
+    deadline_at: datetime | None = Field(default=None, description="Closes on its own then")
+    quorum: int | None = Field(
+        default=None, ge=1, le=100, description="Yes/no only: yes votes needed to pass"
+    )
+    allow_vote_change: bool = True
+
+    @model_validator(mode="after")
+    def _shape(self) -> PollCreateRequest:
+        if self.kind == "single_choice" and not 2 <= len(self.options) <= 20:
+            raise ValueError("a single-choice poll needs 2 to 20 options")
+        if self.kind == "yes_no" and self.options:
+            raise ValueError("a yes/no poll has its own Yes and No options")
+        if self.kind == "single_choice" and self.quorum is not None:
+            raise ValueError("quorum applies to yes/no polls")
+        if self.deadline_at is not None and self.deadline_at.tzinfo is None:
+            raise ValueError("deadline_at must include a UTC offset")
+        return self
+
+
+class VoteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    option_id: UUID
+
+
+class PollOutcomeRequest(BaseModel):
+    """Act on a closed single-choice poll's result.
+
+    ``option_id`` is needed only to pick among tied options; ``day``, ``start_time``,
+    and ``timezone`` place the item for ``add_to_plan``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: PollOutcomeAction
+    result_version: Literal[1] = 1
+    option_id: UUID | None = None
+    day: date | None = None
+    start_time: time | None = None
+    timezone: TimezoneName | None = None
+
+    @model_validator(mode="after")
+    def _time(self) -> PollOutcomeRequest:
+        if self.start_time is not None and (self.day is None or self.start_time.tzinfo is not None):
+            raise ValueError("start_time is a local time on a day")
+        if self.timezone is not None and self.start_time is None:
+            raise ValueError("timezone belongs to start_time")
+        return self
+
+
+class PollOptionResponse(BaseModel):
+    id: UUID
+    label: str
+    place_id: UUID | None
+    answer: Literal["yes", "no"] | None
+    position: int
+    voter_ids: list[UUID] = Field(description="Participants who chose this option")
+
+
+class PollResultResponse(BaseModel):
+    version: int
+    outcome: Literal["winner", "tie", "no_votes", "passed", "failed"]
+    winner_option_id: UUID | None
+    tied_option_ids: list[UUID]
+    counts: dict[str, int]
+    eligible: int
+    voted: int
+    closed_at: datetime
+    closed_by_user_id: UUID | None = Field(description="Null when the deadline closed it")
+
+
+class PollOutcomeResponse(BaseModel):
+    action: PollOutcomeAction
+    option_id: UUID
+    created_entity_id: UUID = Field(description="The place or itinerary item it made")
+
+
+class PollResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    kind: PollKind
+    question: str
+    options: list[PollOptionResponse]
+    deadline_at: datetime | None
+    quorum: int | None
+    allow_vote_change: bool
+    status: Literal["open", "closed"]
+    eligible: int = Field(description="Participants who may vote")
+    result: PollResultResponse | None
+    outcomes: list[PollOutcomeResponse]
+    created_by_user_id: UUID
+    version: int
+    created_at: datetime
+    updated_at: datetime

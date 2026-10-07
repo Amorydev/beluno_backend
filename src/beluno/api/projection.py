@@ -219,6 +219,7 @@ LOADERS: dict[str, Loader] = {
     "consolidation": finance_projection.load_consolidation,
     "place": planning_projection.load_place,
     "itinerary_item": planning_projection.load_item,
+    "poll": planning_projection.load_poll,
 }
 
 
@@ -326,6 +327,7 @@ PAGERS: dict[str, Pager] = {
     "consolidation": finance_projection.page_consolidations,
     "place": planning_projection.page_places,
     "itinerary_item": planning_projection.page_items,
+    "poll": planning_projection.page_polls,
 }
 
 
