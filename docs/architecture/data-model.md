@@ -104,6 +104,10 @@ constraint triggers verify sums and posting shapes at commit; RLS limits every
 row to active participants of its plan; the worker reaches finance data only
 through SECURITY DEFINER reconciliation gates.
 
+## Media
+
+`media_memories.media` records each uploaded file of a plan: kind (`receipt` linked to an expense, `cover`, later `memory`), state (`awaiting_upload` -> `scanning` -> `ready`, or `rejected` with `type`, `size`, `malware`, `unreadable`, or `missing`), the declared type and size, and once clean the stored type, size, and pixel size. Bytes live in object storage under `incoming/{id}` (until scanned) and `media/{id}`; rows hold no file names. A guard lets the API add a file in its uploader's name, move it to scanning (the uploader), or delete it (the uploader or an organiser); only the worker settles it. `media_memories.object_deletions` queues keys (with the time they become due) for the worker to delete from storage; a definer trigger fills it when a file is deleted, the plan purge when a plan goes, and the worker for objects it no longer needs. The API has no access to it. `plans.plans` has `cover_media_id` (a ready cover of the plan) and `album_url`.
+
 ## Support
 
 `analytics_ops.problem_reports` keeps what people send from "Report a problem":

@@ -17,7 +17,7 @@ A scope is one independent change stream with its own cursor:
 | Scope | Entities (`entity_type`) | Who may read it |
 |---|---|---|
 | `user:{id}` | `user`, `session`, `plan_access`, `crew`, `packing_item` (the user's private packing items, any plan), `activity_event` (user scope) | the user (`self`) |
-| `plan:{id}` | `plan`, `plan_participant`, `plan_invite` (managers), `activity_event` (plan scope); finance: `ledger`, `expense`, `settlement`, `budget`, `cost_commitment`, `fund`, `fund_movement`, `fund_count`, `consolidation`; planning (trips): `place`, `itinerary_item`, `poll`, `booking` (secrets never included), `task`, `packing_item` (shared items only) | active participants (`manager` = owner/admin, `member` = everyone else); pending participants and invites are shown to managers only |
+| `plan:{id}` | `plan`, `plan_participant`, `plan_invite` (managers), `activity_event` (plan scope); finance: `ledger`, `expense`, `settlement`, `budget`, `cost_commitment`, `fund`, `fund_movement`, `fund_count`, `consolidation`; planning (trips): `place`, `itinerary_item`, `poll`, `booking` (secrets never included), `task`, `packing_item` (shared items only); `media` (file records, never URLs) | active participants (`manager` = owner/admin, `member` = everyone else); pending participants and invites are shown to managers only |
 
 Entity payloads are the REST representations with one exception: the `plan`
 entity has no `my_participant` (use the caller's `plan_participant` row).

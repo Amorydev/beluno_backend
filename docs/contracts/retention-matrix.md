@@ -17,6 +17,7 @@
 | Booking secrets (sealed confirmation codes and private notes) | live with the booking and its plan; cleared when set to null | purged with the plan; never logged, synced, or stored in replayable responses |
 | Exports (plan CSV/JSON, account JSON) | never stored: built per request and sent with `Cache-Control: no-store` | each export leaves an audit event (`plan.exported`, `account.exported`) with no content |
 | Problem reports (the person's words, diagnostic snapshot) | until the person deletes their account, or a legal policy sets a limit | `analytics_ops.forget_problem_reports` on account deletion; snapshots hold no expense text, notes, names, or codes |
+| Media files (receipts, covers) | live with their plan until deleted; the unscanned upload is deleted once scanned (and again 15 minutes later, after its upload URL expires); uploads never reported done are dropped after 7 days | a trigger (delete) or the plan purge queues `incoming/` and `media/` objects in `media_memories.object_deletions`; the worker's `media.delete_objects` removes due objects every 10 minutes and `media.sweep` handles stuck or abandoned uploads hourly |
 | Deleted crews | name and members cleared at deletion; the tombstone stays for sync | `crew.delete` and account deletion |
 | Failed jobs (dead letters) | until replayed or removed by an operator | `scripts/jobs.py` |
 

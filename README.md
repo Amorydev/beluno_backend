@@ -139,6 +139,21 @@ per person, plus client-supplied templates applied once per list
 `poll`, `booking`, `task`, and `packing_item` (private items in the owner's user
 scope).
 
+## Media
+
+Receipts (on expenses, trips and hangouts) and trip covers are files the app uploads
+straight to S3-compatible storage (RustFS, self-hosted) through presigned URLs:
+`POST /v1/plans/{id}/media` records the file (offline too, as sync command
+`media.create`), `POST .../media/{media_id}/upload-url` signs a PUT for exactly the
+declared type and size, and `POST .../uploaded` queues the worker, which checks the
+real type and size, streams the bytes to ClamAV, rewrites images without any
+metadata (EXIF, GPS; HEIC becomes JPEG), and stores the clean copy. Anyone in the
+plan gets a five-minute download link (`POST .../download-url`; PDFs download as
+attachments). A trip's
+`cover_media_id` and `album_url` are set on the plan. Deleted files and purged plans
+queue their objects, which the worker removes from storage. Configure
+`BELUNO_STORAGE_*` and `BELUNO_CLAMD_HOST` (see `.env.example`).
+
 ## Finance
 
 Each plan has an append-only ledger in minor units (`docs/adr/0003-financial-ledger.md`):

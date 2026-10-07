@@ -96,6 +96,11 @@ State narrowing (applies on top of the table):
   list of their own (viewers included). Whoever added a shared item or an organiser
   edits or deletes it. A private item is its owner's alone: RLS hides it from
   everyone else, organisers included.
+- Media: anyone with `plan.expenses.create` adds a receipt to an expense of the plan;
+  organisers (`plan.update`) add trip covers and set the cover and album link. Only
+  the uploader gets the upload URL and reports the upload; everyone in the plan
+  downloads ready files; the uploader or an organiser deletes a file. Only the worker
+  marks a file ready or rejected (a guard enforces it).
 - Exports: every active participant (viewers and guests included) exports the
   plan as CSV or JSON, receiving exactly the entity types and rows their sync
   access level gives them, plus their own private packing items.
