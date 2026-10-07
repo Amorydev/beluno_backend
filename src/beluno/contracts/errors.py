@@ -129,6 +129,12 @@ def rate_limited(retry_after_seconds: int) -> BelunoError:
     )
 
 
+def upgrade_required(detail: str) -> BelunoError:
+    """A paid feature on a trip that neither a Trip Pass nor its owner's Pro unlocks."""
+
+    return BelunoError(status=403, code="UPGRADE_REQUIRED", title="Upgrade required", detail=detail)
+
+
 def feature_disabled() -> BelunoError:
     return BelunoError(
         status=503,

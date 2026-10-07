@@ -126,6 +126,20 @@ Release 3: everything that needs external providers or storage. The previous pla
   - Decisions after review (user): handing a trip in progress to a new owner needs a place within their limit; a purchase without the buyer's id belongs to the first account that records it, and Family Sharing purchases are refused. Default taken: guests cannot buy.
   - Review (`reports/code-reviewer-261007-2230-entitlements-review-report.md`): store I/O stays outside transactions, RLS holds. Fixed: the limit now also covers restoring, reopening by an admin, and handing over (H1); a refund ends only the period it covers, a later paid period or a reversed refund restores Pro, an app replay never lifts a refund, and answers describe the stored purchase (H2); Family Sharing refused (H3); replaced Google subscriptions stop counting (M1); Google push tokens verified against keys fetched at most every five minutes (M2); misconfiguration, certificate-check outages, token refresh and unreadable answers map to 503, and secure environments require full App Store settings (M3); receipt uploads to one trip count one at a time (M4); notifications for other products ignored (L1); product id checked (L2); expiries bounded (L3); purchases the app consumed itself still confirmed (L5); app guidance on finishing and restoring (L6, L7).
 
+- PDF trip report and accounting CSV are on `feat/pdf-reports`:
+  - Decisions (user, 2026-10-07): a money-first report (cover, categories, people, settling up, expenses); receipts marked, not embedded; Noto Sans fonts vendored (OFL).
+  - `GET /v1/plans/{id}/export?format=accounting|pdf` behind a Trip Pass or the owner's Pro (`403 UPGRADE_REQUIRED`); the accounting CSV is read from the ledger journal, so it adds up to the balances for every entry kind (tested with refunds, payments, waivers, the kitty, consolidations, corrections, and merges).
+  - Review (`reports/code-reviewer-261007-2315-paid-exports-review-report.md`): fixed owner corrections missing from the CSV (C1, now journal-based); the report lists at most 1,000 expenses and renders at most two at a time (H1, user decision); characters the font lacks print as `?` (M1, user decision); the paywall is checked before any data is read and only needed entities load (M2); the misleading rate column is gone and a `person_id` column added (M3, M4); dates of entries without one use the plan's time zone; the merge-depth rule is the ledger's.
+  - Defaults taken without an answer: the report is in English; hangouts get the accounting CSV free and no report.
+
+- Decisions for the remaining work (user, 2026-10-07):
+  - Market rates from Open Exchange Rates (API key, one call a day), replacing the no-op provider.
+  - The PDF report in Vietnamese and English (`lang=vi|en`, defaulting to the person's profile).
+  - A weekly planning summary on Sundays at 19:00 local for trips being organised (open tasks, open polls, days to go), and news sent by operators through a script to people with news on.
+  - PDF receipts stay as uploaded (scanned by ClamAV) and are only ever served as attachments.
+  - A receipt archive for unlocked trips: a worker job builds a zip, kept 24 hours behind a download link; next after the weekly summary and news.
+  - Staging on a Singapore VPS with docker compose; a 7-day soak with the Android app.
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.

@@ -12,6 +12,7 @@ submitted values.
 | `STEP_UP_REQUIRED` | 403 | Sensitive action needs a sign-in within the step-up window |
 | `REAUTHENTICATION_MISMATCH` | 403 | Step-up used an identity that belongs to a different account |
 | `INVITE_EMAIL_MISMATCH` | 403 | Invite is bound to a different verified email address |
+| `UPGRADE_REQUIRED` | 403 | A paid feature (accounting export, trip report) on a trip with no Trip Pass and no owner's Pro |
 | `NOT_FOUND` | 404 | Resource is absent or intentionally undisclosed |
 | `INVITE_UNAVAILABLE` | 404 | Invite token is unknown, expired, revoked, or used up (never distinguished) |
 | `ACCOUNT_LINK_REQUIRED` | 409 | Identity's verified email belongs to an existing account; link it from that account |

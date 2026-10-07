@@ -62,6 +62,31 @@ before offering a pass, so nobody buys one for a trip already unlocked.
 | `404 NOT_FOUND` | The trip is unknown or the caller is not in it |
 | `503 STORE_UNAVAILABLE` | The store is not configured here or did not answer; retry later |
 
+## Paid exports
+
+`GET /v1/plans/{id}/export` with `format=accounting` or `format=pdf` needs a Trip Pass
+or the owner's Pro (`403 UPGRADE_REQUIRED` otherwise); anyone on the trip may download
+them. Hangouts get the accounting CSV free; the report is for trips.
+
+- **Accounting CSV** (UTF-8 with BOM): `date, entry, description, category, person_id,
+  person, currency, amount, ledger_seq, reference_id`, read from the ledger's journal:
+  one row per account (a person, or `Kitty` with an empty `person_id`) and entry, with
+  how much that entry moved the balance. `entry` is the journal kind or subtype:
+  `expense`, `expense_reversal` (an edit or void undoing the previous version),
+  `refund`, `settlement` (a payment), `settlement_reversal`, `waiver`,
+  `fund_contribution`, `fund_withdrawal`, `conversion` and `conversion_reversal`
+  (consolidations), `correction`, `fund_adjustment`, `merge_transfer`. Per person and
+  currency, `amount` adds up to the ledger balance. Expense rows carry the version's
+  description, category, and date; other rows their own date (or the day they were
+  recorded, in the plan's time zone). Owner memos are left out. Text a spreadsheet would
+  read as a formula starts with `'`. Base-currency snapshots are in the free CSV.
+- **PDF trip report** (English for now): cover (title, dates, stops, people), spending
+  by category in the base currency, each person's paid and share per currency with
+  their balance, suggested transfers, and the expenses by date with a receipt mark (at
+  most 1,000 rows; the rest are counted, and the accounting CSV lists them all). Receipt
+  images are not embedded yet. Characters Noto Sans lacks (Thai, CJK, Arabic, Hebrew,
+  emoji) print as `?`. At most two reports render at once per API process.
+
 ## Reading entitlements
 
 - `GET /v1/me/entitlements`: `pro` (store and expiry) or null; `active_trips` (own

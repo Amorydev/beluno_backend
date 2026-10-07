@@ -53,5 +53,5 @@ Phases 1–2 are detailed. Phases 3–6 carry scope and acceptance; each gets "E
 
 ## Unresolved
 
-- FX rate source for "market · est." rates (Phase 2): provider choice; ECB lacks VND.
+- ~~FX rate source~~ decided (user, 2026-10-07): Open Exchange Rates (free tier, has VND, one call a day).
 - Home "Approve 2 splits, 1 receipt scan" implies split approval and receipt OCR; not in the blueprint. Excluded until confirmed.

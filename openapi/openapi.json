@@ -19298,7 +19298,7 @@
     },
     "/v1/plans/{plan_id}/export": {
       "get": {
-        "description": "Everyone in the plan may export what they can already see: CSV has one row per\nexpense (original amount and base-currency snapshot); JSON has every entity sync\ngives them. Secrets and other people's private packing items are never included.",
+        "description": "Everyone in the plan may export what they can already see: CSV has one row per\nexpense (original amount and base-currency snapshot); JSON has every entity sync\ngives them. Secrets and other people's private packing items are never included.\n\nWith a Trip Pass (or the owner's Pro; hangouts are free): ``accounting`` is a CSV\nwith one row per person and journal entry whose ``amount`` adds up to the balances;\n``pdf`` is the trip report (trips only). Otherwise ``403 UPGRADE_REQUIRED``.",
         "operationId": "export_plan_v1_plans__plan_id__export_get",
         "parameters": [
           {
@@ -19319,7 +19319,9 @@
               "default": "csv",
               "enum": [
                 "csv",
-                "json"
+                "json",
+                "accounting",
+                "pdf"
               ],
               "title": "Format",
               "type": "string"
@@ -19330,6 +19332,7 @@
           "200": {
             "content": {
               "application/json": {},
+              "application/pdf": {},
               "text/csv": {}
             },
             "description": "The file, as an attachment (Content-Disposition), never cached"
@@ -19344,6 +19347,16 @@
             },
             "description": "Bearer authentication is missing, invalid, expired, or revoked."
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -19353,6 +19366,16 @@
               }
             },
             "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
           },
           "422": {
             "content": {
