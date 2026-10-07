@@ -140,6 +140,12 @@ Release 3: everything that needs external providers or storage. The previous pla
   - A receipt archive for unlocked trips: a worker job builds a zip, kept 24 hours behind a download link; next after the weekly summary and news.
   - Staging on a Singapore VPS with docker compose; a 7-day soak with the Android app.
 
+- The weekly summary and news are on `feat/weekly-news`:
+  - Migration `000022_weekly_summary_news`: `queue_weekly` (Sundays from 19:00 local, trips in draft or planning, open tasks and polls and days to go, only when there is something to say) and `queue_news` (operators, per locale, once per key).
+  - `scripts/news.py`; news messages carry plain title and body instead of keys.
+  - Fixed on the way: `alembic/env.py` let a developer's `.env` redirect migrations away from the database a caller (the test suite) named.
+  - Review (`reports/code-reviewer-261008-0000-weekly-summary-news-review-report.md`): local-time logic, dedupe, grants, and message building hold (probed). Fixed: bursts held up other pushes (H1: urgent kinds first, up to ten batches a run, news only to people with a signed-in device); the weekly scan returns at once outside UTC Sunday and Monday and counts once per trip (M1); the news audit keeps what was sent (M2); tests for two time zones, a datetime trip, a poll, and a burst (M3). Left: a weekly summary held by quiet hours past Sunday midnight is dropped.
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.
