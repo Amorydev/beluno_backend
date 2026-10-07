@@ -1566,6 +1566,52 @@
         "title": "ClientInfo",
         "type": "object"
       },
+      "ClientState": {
+        "additionalProperties": false,
+        "description": "What the app knows about its own sync; numbers and times only.",
+        "properties": {
+          "app_version": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "pattern": "^[0-9A-Za-z.+\\-_ ()]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "pending_operations": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Operations"
+          }
+        },
+        "title": "ClientState",
+        "type": "object"
+      },
       "CommandInfo": {
         "properties": {
           "name": {
@@ -4888,6 +4934,37 @@
         "title": "LedgerSettingsRequest",
         "type": "object"
       },
+      "LinkedRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "entity_id": {
+            "format": "uuid",
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "enum": [
+              "expense",
+              "settlement",
+              "budget",
+              "place",
+              "itinerary_item",
+              "poll",
+              "booking",
+              "task",
+              "packing_item"
+            ],
+            "title": "Entity Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_type",
+          "entity_id"
+        ],
+        "title": "LinkedRecord",
+        "type": "object"
+      },
       "MarketRateResponse": {
         "properties": {
           "as_of": {
@@ -7477,6 +7554,102 @@
         "title": "PostingResponse",
         "type": "object"
       },
+      "ProblemReportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "attach_diagnostics": {
+            "default": true,
+            "description": "Attach a diagnostic snapshot (IDs, states, versions; never expense text, notes, or codes) and get its code",
+            "title": "Attach Diagnostics",
+            "type": "boolean"
+          },
+          "category": {
+            "enum": [
+              "balance_wrong",
+              "sync_issue",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "client": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClientState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinkedRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "maxLength": 1000,
+            "title": "Message",
+            "type": "string"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          }
+        },
+        "required": [
+          "category",
+          "message"
+        ],
+        "title": "ProblemReportRequest",
+        "type": "object"
+      },
+      "ProblemReportResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diagnostic_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Quote it to support, e.g. BLN-7F3K-29QD",
+            "title": "Diagnostic Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "diagnostic_code",
+          "created_at"
+        ],
+        "title": "ProblemReportResponse",
+        "type": "object"
+      },
       "ProfileUpdateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -8449,6 +8622,52 @@
           "of_people"
         ],
         "title": "RecapTopPlace",
+        "type": "object"
+      },
+      "RecordCheckResponse": {
+        "description": "Shown on the report screen before sending (\"audit OK\").",
+        "properties": {
+          "ledger_ok": {
+            "description": "Reconciling the plan's ledger found no disagreement",
+            "title": "Ledger Ok",
+            "type": "boolean"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "record_found": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The linked record is in this plan (if asked)",
+            "title": "Record Found"
+          },
+          "record_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Version"
+          }
+        },
+        "required": [
+          "plan_id",
+          "ledger_ok",
+          "record_found",
+          "record_version"
+        ],
+        "title": "RecordCheckResponse",
         "type": "object"
       },
       "RedeemInviteRequest": {
@@ -26875,6 +27094,216 @@
         "summary": "Waive Debt",
         "tags": [
           "finance"
+        ]
+      }
+    },
+    "/v1/support/checks": {
+      "get": {
+        "description": "Whether the plan's ledger reconciles and the record belongs to the plan.",
+        "operationId": "check_record_v1_support_checks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "expense",
+                    "settlement",
+                    "budget",
+                    "place",
+                    "itinerary_item",
+                    "poll",
+                    "booking",
+                    "task",
+                    "packing_item"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Check Record",
+        "tags": [
+          "support"
+        ]
+      }
+    },
+    "/v1/support/reports": {
+      "post": {
+        "description": "Send a report; with diagnostics attached, its code is returned to quote to support.",
+        "operationId": "report_problem_v1_support_reports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProblemReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Report Problem",
+        "tags": [
+          "support"
         ]
       }
     },

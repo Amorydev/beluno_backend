@@ -25,7 +25,8 @@ async def full_tenant(
     """A used trip (see ``exercise_money_and_members``) plus a commitment, kitty
     settings, a ledger confirmation, join and claim links, a crew, a wanted place, an
     itinerary item with a cost and an answer, a decided poll, a booking with sealed
-    secrets, a done task, and packing items (a shared template, a private item)."""
+    secrets, a done task, packing items (a shared template, a private item), and a
+    problem report with diagnostics."""
 
     trip = await exercise_money_and_members(api, provider, admin)
     owner = trip.owner
@@ -132,6 +133,17 @@ async def full_tenant(
     )
     assert template.status_code == 200, template.text
     await created(trip.path("/packing"), {"name": "Earplugs", "visibility": "private"})
+    reported = await api.post(
+        "/v1/support/reports",
+        json={
+            "category": "balance_wrong",
+            "plan_id": trip.plan_id,
+            "linked": {"entity_type": "booking", "entity_id": booking["id"]},
+            "message": "My share looks off by one",
+        },
+        headers=owner.headers,
+    )
+    assert reported.status_code == 201, reported.text
     budgets = (await api.get(trip.path("/budgets"), headers=owner.headers)).json()["budgets"]
     assert budgets
     return FullTenant(
