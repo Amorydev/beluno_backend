@@ -6,6 +6,7 @@ import asyncio
 import statistics
 import time
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 from uuid import UUID
 
 import httpx
@@ -141,6 +142,11 @@ async def test_finance_writes_are_rate_limited_per_actor_and_plan(
 ) -> None:
     ann = trip.people["Ann"]
     refused = equal_expense(100, ann, [ann], currency="XYZ")
+    # Limits count in fixed one-minute windows: start early in a window so all
+    # 121 requests land in the same one.
+    seconds_left = 60 - datetime.now(UTC).second
+    if seconds_left < 20:
+        await asyncio.sleep(seconds_left + 0.5)
     for _ in range(120):
         response = await api.post(trip.path("/expenses"), json=refused, headers=trip.owner.headers)
         assert response.status_code == 422

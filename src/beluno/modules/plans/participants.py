@@ -40,6 +40,7 @@ from beluno.contracts.errors import (
 from beluno.db.ids import new_id
 from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanParticipant
+from beluno.modules.activity.events import ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.plans.changes import bump, record_participant_change, record_plan_change
 
@@ -270,6 +271,7 @@ async def update_participant(
     if target.version != expected_version:
         raise version_conflict(target)
     changed: dict[str, str] = {}
+    previous_role, previous_capabilities = target.role, list(target.capabilities)
     if changes.role is not None:
         if not can_manage_participant(_role(access), PlanRole(target.role), new_role=changes.role):
             raise forbidden()
@@ -296,8 +298,27 @@ async def update_participant(
         changed["avatar_color"] = target.avatar_color
     bump(target, ctx)
     await ctx.session.flush()
+    activity = None
+    if target.role != previous_role:
+        activity = item(
+            ActivityType.MEMBER_ROLE_CHANGED,
+            participant_id=target.id,
+            role=target.role,
+            previous_role=previous_role,
+        )
+    elif list(target.capabilities) != previous_capabilities:
+        activity = item(
+            ActivityType.MEMBER_CAPABILITIES_CHANGED,
+            participant_id=target.id,
+            capabilities=list(target.capabilities),
+            previous_capabilities=previous_capabilities,
+        )
     await record_participant_change(
-        ctx, target, "plan_participant.updated", {"changed": ",".join(changed), **changed}
+        ctx,
+        target,
+        "plan_participant.updated",
+        {"changed": ",".join(changed), **changed},
+        activity=activity,
     )
     return target
 
@@ -311,12 +332,15 @@ async def remove_participant(ctx: CommandContext, plan_id: UUID, participant_id:
     target = await _target(ctx, plan_id, participant_id, states=LIVE_STATES)
     if not can_manage_participant(_role(access), PlanRole(target.role)):
         raise forbidden()
+    previous_state = target.access_state
     target.access_state = AccessState.REMOVED.value
     target.removed_at = ctx.now
     target.capabilities = []
     bump(target, ctx)
     await ctx.session.flush()
-    await record_participant_change(ctx, target, "plan_participant.removed")
+    await record_participant_change(
+        ctx, target, "plan_participant.removed", previous_state=previous_state
+    )
 
 
 async def leave_plan(ctx: CommandContext, plan_id: UUID) -> None:
@@ -330,12 +354,15 @@ async def _leave(ctx: CommandContext, access: PlanAccess) -> None:
     assert participant is not None
     if participant.role == PlanRole.OWNER.value:
         raise conflict("OWNER_TRANSFER_REQUIRED", "Transfer ownership before leaving the plan")
+    previous_state = participant.access_state
     participant.access_state = AccessState.LEFT.value
     participant.left_at = ctx.now
     participant.capabilities = []
     bump(participant, ctx)
     await ctx.session.flush()
-    await record_participant_change(ctx, participant, "plan_participant.left")
+    await record_participant_change(
+        ctx, participant, "plan_participant.left", previous_state=previous_state
+    )
 
 
 async def review_join_request(

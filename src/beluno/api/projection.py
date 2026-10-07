@@ -27,8 +27,10 @@ from beluno.api.presenters import (
 )
 from beluno.authorization.access import find_user_participant
 from beluno.authorization.policy import AccessState
+from beluno.contracts.activity import ActivityEventResponse
 from beluno.contracts.iam import SessionResponse
 from beluno.contracts.sync import PlanAccessSignal, PlanEntity
+from beluno.db.models.activity import ActivityEvent
 from beluno.db.models.base import Base
 from beluno.db.models.iam import AuthSession, User
 from beluno.db.models.people import Crew
@@ -47,15 +49,30 @@ Pager = Callable[
 ]
 
 SNAPSHOT_ORDER: dict[str, tuple[str, ...]] = {
-    "user": ("user", "session", "plan_access", "crew"),
-    "plan": ("plan", "plan_participant", "plan_invite", *FINANCE_TYPES),
+    "user": ("user", "session", "plan_access", "crew", "activity_event"),
+    "plan": ("plan", "plan_participant", "plan_invite", *FINANCE_TYPES, "activity_event"),
 }
 
 VISIBLE_TYPES: dict[tuple[str, AccessLevel], frozenset[str]] = {
     ("user", AccessLevel.SELF): frozenset(SNAPSHOT_ORDER["user"]),
     ("plan", AccessLevel.MANAGER): frozenset(SNAPSHOT_ORDER["plan"]),
-    ("plan", AccessLevel.MEMBER): frozenset({"plan", "plan_participant", *FINANCE_TYPES}),
+    ("plan", AccessLevel.MEMBER): frozenset(
+        {"plan", "plan_participant", *FINANCE_TYPES, "activity_event"}
+    ),
 }
+
+
+def activity_response(event: ActivityEvent) -> ActivityEventResponse:
+    return ActivityEventResponse(
+        id=event.id,
+        type=event.type,
+        entity_type=event.entity_type,
+        entity_id=event.entity_id,
+        plan_id=event.plan_id,
+        actor_user_id=event.actor_user_id,
+        summary=event.summary,
+        occurred_at=event.occurred_at,
+    )
 
 
 def session_response(session: AuthSession, current_session_id: UUID) -> SessionResponse:
@@ -138,6 +155,18 @@ async def _load_crew(ctx: CommandContext, scope: ScopeKey, level: AccessLevel, i
     return crew_response((await crew_views(ctx, [crew]))[0])
 
 
+async def _load_activity(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID
+) -> Loaded:
+    event = await ctx.session.get(ActivityEvent, id)
+    if event is None or (event.scope_type, event.scope_id) != (
+        scope.scope_type.value,
+        scope.scope_id,
+    ):
+        return None
+    return activity_response(event)
+
+
 async def _load_plan(ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID) -> Loaded:
     plan = await ctx.session.get(Plan, id)
     return await _plan_view(ctx, plan) if plan else None
@@ -167,6 +196,7 @@ LOADERS: dict[str, Loader] = {
     "user": _load_user,
     "session": _load_session,
     "crew": _load_crew,
+    "activity_event": _load_activity,
     "plan": _load_plan,
     "plan_participant": _load_participant,
     "plan_invite": _load_plan_invite,
@@ -226,6 +256,17 @@ async def _page_crews(
     return [SnapshotRow(view.crew.id, view.crew.version, crew_response(view)) for view in views]
 
 
+async def _page_activity(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(ActivityEvent).where(
+        ActivityEvent.scope_type == scope.scope_type.value,
+        ActivityEvent.scope_id == scope.scope_id,
+    )
+    rows = await _page(ctx, statement, ActivityEvent.id, after, limit)
+    return [SnapshotRow(row.id, 1, activity_response(row)) for row in rows]
+
+
 async def _page_plan(
     ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
 ) -> list[SnapshotRow]:
@@ -260,6 +301,7 @@ PAGERS: dict[str, Pager] = {
     "user": _page_user,
     "session": _page_sessions,
     "crew": _page_crews,
+    "activity_event": _page_activity,
     "plan": _page_plan,
     "plan_participant": _page_participants,
     "plan_invite": _page_plan_invites,

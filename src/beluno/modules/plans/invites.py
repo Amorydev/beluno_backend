@@ -47,7 +47,12 @@ from beluno.modules.invite_links import (
     issue_invite_token,
     unavailable_reason,
 )
-from beluno.modules.plans.changes import bump, record_invite_change, record_participant_change
+from beluno.modules.plans.changes import (
+    bump,
+    guest_linked,
+    record_invite_change,
+    record_participant_change,
+)
 from beluno.modules.plans.participants import (
     LIVE_STATES,
     build_participant,
@@ -167,13 +172,34 @@ async def revoke_invite(ctx: CommandContext, plan_id: UUID, invite_id: UUID) -> 
     access = await load_plan(ctx, plan_id, for_update=True)
     require_plan(access, PlanAction.MANAGE_INVITES)
     invite = await _managed_invite(ctx, plan_id, invite_id)
-    if invite.state != "revoked":
-        invite.state = "revoked"
-        invite.revoked_at = ctx.now
-        bump(invite, ctx)
-        await ctx.session.flush()
-        await record_invite_change(ctx, invite, "plan_invite.revoked")
+    await revoke_locked(ctx, invite)
     return invite
+
+
+async def lock_live_invites(ctx: CommandContext, plan_ids: list[UUID]) -> list[PlanInvite]:
+    """Lock the plans' active links; redemption waits on them, so nobody joins meanwhile."""
+
+    if not plan_ids:
+        return []
+    rows = await ctx.session.execute(
+        select(PlanInvite)
+        .where(PlanInvite.plan_id.in_(plan_ids), PlanInvite.state == "active")
+        .order_by(PlanInvite.id)
+        .with_for_update()
+    )
+    return list(rows.scalars())
+
+
+async def revoke_locked(ctx: CommandContext, invite: PlanInvite) -> None:
+    """Revoke an invite the caller has locked and is allowed to manage."""
+
+    if invite.state == "revoked":
+        return
+    invite.state = "revoked"
+    invite.revoked_at = ctx.now
+    bump(invite, ctx)
+    await ctx.session.flush()
+    await record_invite_change(ctx, invite, "plan_invite.revoked")
 
 
 async def rotate_invite(ctx: CommandContext, plan_id: UUID, invite_id: UUID) -> CreatedInvite:
@@ -364,7 +390,14 @@ async def _claim_placeholder(
         placeholder.merged_into_participant_id = existing.id
         bump(placeholder, ctx)
         await ctx.session.flush()
-        await record_participant_change(ctx, placeholder, "plan_participant.merged")
+        # Members hear of it only when the person is still with them in the plan.
+        linked = existing.access_state == AccessState.ACTIVE.value
+        await record_participant_change(
+            ctx,
+            placeholder,
+            "plan_participant.merged",
+            activity=guest_linked(existing.id, placeholder.id) if linked else None,
+        )
         await transfer_merged_balances(ctx, placeholder.plan_id, placeholder.id)
         return existing
     placeholder.user_id = actor.user_id

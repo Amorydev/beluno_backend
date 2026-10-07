@@ -30,6 +30,7 @@ from beluno.authorization.policy import (
 )
 from beluno.contracts.errors import validation_error
 from beluno.db.models.plans import PlanParticipant
+from beluno.modules.activity.events import ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.plans.changes import record_participant_change, record_plan_change
 from beluno.modules.plans.participants import Seed, add_seeded_participant
@@ -84,6 +85,7 @@ async def duplicate_plan(
         plan,
         "plan.duplicated",
         {"source_plan_id": str(source.id), "manifest": COPY_MANIFEST_VERSION},
+        activity=item(ActivityType.PLAN_CREATED, type=plan.type),
     )
     await record_participant_change(ctx, owner, "plan_participant.added")
     for person in await _copyable_people(ctx, source.id, options.participant_ids):

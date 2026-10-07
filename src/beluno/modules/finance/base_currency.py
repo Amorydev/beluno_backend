@@ -37,6 +37,7 @@ from beluno.db.models.finance import (
     Currency,
     LedgerHead,
 )
+from beluno.modules.activity.events import ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.consolidation import open_consolidation_exists
 from beluno.modules.finance.currencies import require_supported_currency
@@ -205,7 +206,13 @@ async def change_base_currency(
     bump(plan, ctx)
     await ctx.session.flush()
     await record_plan_change(
-        ctx, plan, "plan.base_currency_changed", {"from": previous, "to": currency}
+        ctx,
+        plan,
+        "plan.base_currency_changed",
+        {"from": previous, "to": currency},
+        activity=item(
+            ActivityType.BASE_CURRENCY_CHANGED, from_currency=previous, to_currency=currency
+        ),
     )
     return PlanView(plan=plan, participant=access.participant)
 

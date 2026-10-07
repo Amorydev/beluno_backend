@@ -31,12 +31,18 @@ from beluno.contracts.errors import (
 )
 from beluno.db.ids import new_id
 from beluno.db.models.finance import FundCount, FundMovement, FundSettings, LedgerTransaction
+from beluno.modules.activity.events import ActivityItem, ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.errors import amount_out_of_range, entry_unbalanced, split_invalid
 from beluno.modules.finance.ledger import LEDGER_ENTITY, Ledger, open_ledger
 from beluno.modules.finance.money import MAX_AMOUNT_MINOR, check_amount
 from beluno.modules.finance.postings import FUND, Party, adjustment_postings, transfer_postings
-from beluno.modules.sync_audit.recorder import ChangeScope, record_audit, record_mutation
+from beluno.modules.sync_audit.recorder import (
+    ChangeScope,
+    record_activity,
+    record_audit,
+    record_mutation,
+)
 
 FUND_ENTITY = "fund"
 MOVEMENT_ENTITY = "fund_movement"
@@ -204,7 +210,9 @@ async def contribute(ctx: CommandContext, plan_id: UUID, draft: MovementDraft) -
         fund_movement_id=movement.id,
     )
     await ledger.finish()
-    await _record_movement(ctx, movement, "finance.fund_contributed")
+    await _record_movement(
+        ctx, movement, "finance.fund_contributed", ActivityType.KITTY_CONTRIBUTED
+    )
     return movement
 
 
@@ -221,7 +229,7 @@ async def withdraw(ctx: CommandContext, plan_id: UUID, draft: MovementDraft) -> 
         fund_movement_id=movement.id,
     )
     await ledger.finish()
-    await _record_movement(ctx, movement, "finance.fund_withdrawn")
+    await _record_movement(ctx, movement, "finance.fund_withdrawn", ActivityType.KITTY_WITHDRAWN)
     return movement
 
 
@@ -250,7 +258,21 @@ async def count_fund(ctx: CommandContext, plan_id: UUID, draft: CountDraft) -> F
             await ctx.session.flush()
     except IntegrityError as error:
         raise conflict("ALREADY_EXISTS", "A resource with this id already exists") from error
-    await _record(ctx, plan_id, COUNT_ENTITY, count.id, 1, "finance.fund_counted")
+    await _record(
+        ctx,
+        plan_id,
+        COUNT_ENTITY,
+        count.id,
+        1,
+        "finance.fund_counted",
+        activity=item(
+            ActivityType.KITTY_COUNTED,
+            currency=count.currency,
+            counted_minor=count.counted_minor,
+            expected_minor=count.expected_minor,
+            difference_minor=count.counted_minor - count.expected_minor,
+        ),
+    )
     return count
 
 
@@ -289,6 +311,19 @@ async def adjust_ledger(
         entity_id=plan_id,
         plan_id=plan_id,
         metadata={"ledger_seq": transaction.ledger_seq, "subtype": subtype},
+    )
+    # Balances moved, so the feed says by how much (never the memo).
+    amounts = {
+        "fund" if party.is_fund else str(party.participant_id): amount
+        for party, amount in draft.entries
+    }
+    await record_activity(
+        ctx,
+        item(ActivityType.LEDGER_ADJUSTED, currency=draft.currency, amounts=amounts),
+        entity_type=LEDGER_ENTITY,
+        entity_id=plan_id,
+        scope=ChangeScope.PLAN,
+        scope_id=plan_id,
     )
     return transaction
 
@@ -333,8 +368,23 @@ async def _movement(ledger: Ledger, kind: str, draft: MovementDraft) -> FundMove
     return movement
 
 
-async def _record_movement(ctx: CommandContext, movement: FundMovement, action: str) -> None:
-    await _record(ctx, movement.plan_id, MOVEMENT_ENTITY, movement.id, 1, action)
+async def _record_movement(
+    ctx: CommandContext, movement: FundMovement, action: str, kind: ActivityType
+) -> None:
+    await _record(
+        ctx,
+        movement.plan_id,
+        MOVEMENT_ENTITY,
+        movement.id,
+        1,
+        action,
+        activity=item(
+            kind,
+            participant_id=movement.participant_id,
+            amount_minor=movement.amount_minor,
+            currency=movement.currency,
+        ),
+    )
 
 
 async def _record(
@@ -346,6 +396,7 @@ async def _record(
     action: str,
     *,
     metadata: dict[str, object] | None = None,
+    activity: ActivityItem | None = None,
 ) -> None:
     await record_mutation(
         ctx,
@@ -357,4 +408,5 @@ async def _record(
         scope_id=plan_id,
         plan_id=plan_id,
         metadata=metadata or {"version": version},
+        activity=activity,
     )

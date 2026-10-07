@@ -67,8 +67,19 @@ Every mutation is a catalog command (`src/beluno/api/commands`) that REST and
 `POST /v1/sync/push` share: optional `Idempotency-Key` on REST, `operation_id`
 on push, stored outcomes replayed for repeats. Clients discover their scopes with
 `POST /v1/sync/handshake` and read changes with `POST /v1/sync/pull`; see
-`docs/contracts/sync-protocol.md`. Operators use `scripts/jobs.py` for dead
+`docs/contracts/sync-protocol.md`. An activity feed tracks what changed in each
+plan and person's account as typed events (never free text) in plan and user scopes,
+synced and retained 180 days. Operators use `scripts/jobs.py` for dead
 letters and `docs/runbooks/sync-operations.md` for metrics and retention.
+
+## Account management
+
+People can delete their account (`DELETE /v1/me`) after a recent sign-in (guests any time).
+Deletion is immediate and permanent and leaves money history intact: the person
+becomes "Former member" in every plan, and others can still settle with them. It
+is refused while they own a plan another person is still in (transfer ownership first;
+a guest must create an account to take it). Placeholders never block.
+See `docs/adr/0009-activity-feed-and-account-deletion.md`.
 
 ## Finance
 

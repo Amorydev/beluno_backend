@@ -42,6 +42,7 @@ from beluno.db.models.finance import (
     LedgerTransaction,
     Settlement,
 )
+from beluno.modules.activity.events import ActivityItem, ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.errors import base_currency_changed
 from beluno.modules.finance.fx import convert, parse_rate
@@ -194,7 +195,16 @@ async def consolidate(
     await ctx.session.flush()
     await ledger.append(kind="conversion", postings=postings, consolidation_id=consolidation.id)
     await ledger.finish()
-    await _record(ctx, consolidation, "finance.ledger_consolidated")
+    await _record(
+        ctx,
+        consolidation,
+        "finance.ledger_consolidated",
+        item(
+            ActivityType.LEDGER_CONSOLIDATED,
+            base_currency=base,
+            currencies=sorted(open_balances),
+        ),
+    )
     return await consolidation_view(ctx, consolidation)
 
 
@@ -252,8 +262,18 @@ async def reverse_consolidation(
     consolidation.updated_at = ctx.now
     await ctx.session.flush()
     await ledger.finish()
-    await _record(ctx, consolidation, "finance.consolidation_reversed")
-    return await consolidation_view(ctx, consolidation)
+    view = await consolidation_view(ctx, consolidation)
+    await _record(
+        ctx,
+        consolidation,
+        "finance.consolidation_reversed",
+        item(
+            ActivityType.CONSOLIDATION_REVERSED,
+            base_currency=consolidation.base_currency,
+            currencies=[rate.currency for rate, _ in view.rates],
+        ),
+    )
+    return view
 
 
 async def open_consolidation_exists(ctx: CommandContext, plan_id: UUID) -> bool:
@@ -295,7 +315,9 @@ async def _settled_since(ctx: CommandContext, plan_id: UUID, ledger_seq: int) ->
     return found.first() is not None
 
 
-async def _record(ctx: CommandContext, consolidation: Consolidation, action: str) -> None:
+async def _record(
+    ctx: CommandContext, consolidation: Consolidation, action: str, activity: ActivityItem
+) -> None:
     await record_mutation(
         ctx,
         action=action,
@@ -306,4 +328,5 @@ async def _record(ctx: CommandContext, consolidation: Consolidation, action: str
         scope_id=consolidation.plan_id,
         plan_id=consolidation.plan_id,
         metadata={"version": consolidation.version, "state": consolidation.state},
+        activity=activity,
     )

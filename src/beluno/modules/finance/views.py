@@ -21,6 +21,7 @@ from beluno.db.models.finance import (
     LedgerPosting,
     LedgerTransaction,
 )
+from beluno.db.models.plans import Plan
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.preview import SettlementPreview, simplify_debts
 
@@ -32,6 +33,12 @@ class AccountView:
 
 
 @dataclass(frozen=True)
+class CurrencyPreview:
+    currency: str
+    preview: SettlementPreview
+
+
+@dataclass(frozen=True)
 class LedgerSnapshot:
     plan_id: UUID
     head: LedgerHead | None
@@ -40,6 +47,8 @@ class LedgerSnapshot:
     confirmations: list[LedgerConfirmation]
     # Every base-currency change, oldest first, with its frozen rate.
     base_changes: list[tuple[BaseCurrencyChange, FxSnapshot]]
+    # Suggested transfers per currency, so people can settle up offline.
+    suggestions: list[CurrencyPreview]
 
 
 async def get_ledger(ctx: CommandContext, plan_id: UUID) -> LedgerSnapshot:
@@ -74,13 +83,44 @@ async def ledger_snapshot(ctx: CommandContext, plan_id: UUID) -> LedgerSnapshot:
             .order_by(LedgerConfirmation.confirmed_at, LedgerConfirmation.participant_id)
         )
         confirmations = list(found.scalars())
+    accounts = [AccountView(account, balance) for account, balance in rows.all()]
+    base_currency = (
+        await ctx.session.execute(select(Plan.base_currency).where(Plan.id == plan_id))
+    ).scalar_one()
     return LedgerSnapshot(
         plan_id=plan_id,
         head=head,
-        accounts=[AccountView(account, balance) for account, balance in rows.all()],
+        accounts=accounts,
         confirmations=confirmations,
         base_changes=await list_base_changes(ctx, plan_id),
+        suggestions=suggest_settlements(
+            accounts, base_currency, head.settle_tolerance_minor if head else 0
+        ),
     )
+
+
+def suggest_settlements(
+    accounts: list[AccountView], base_currency: str, tolerance: int
+) -> list[CurrencyPreview]:
+    """Transfers that would square each currency (the tolerance applies to the base)."""
+
+    previews = []
+    for code in sorted({view.account.currency for view in accounts}):
+        balances = {
+            view.account.participant_id: view.balance_minor
+            for view in accounts
+            if view.account.currency == code and view.account.participant_id is not None
+        }
+        fund = sum(
+            -view.balance_minor
+            for view in accounts
+            if view.account.currency == code and view.account.participant_id is None
+        )
+        within = tolerance if code == base_currency else 0
+        previews.append(
+            CurrencyPreview(code, simplify_debts(balances, fund_available=fund, tolerance=within))
+        )
+    return previews
 
 
 async def list_base_changes(
@@ -238,12 +278,6 @@ async def _current_descriptions(
     return dict(rows.all())
 
 
-@dataclass(frozen=True)
-class CurrencyPreview:
-    currency: str
-    preview: SettlementPreview
-
-
 async def settlement_preview(
     ctx: CommandContext, plan_id: UUID, *, currency: str | None
 ) -> list[CurrencyPreview]:
@@ -252,27 +286,11 @@ async def settlement_preview(
     access = await load_plan(ctx, plan_id)
     require_plan(access, PlanAction.VIEW_FINANCE)
     snapshot = await ledger_snapshot(ctx, plan_id)
-    tolerance = snapshot.head.settle_tolerance_minor if snapshot.head else 0
-    currencies = sorted({view.account.currency for view in snapshot.accounts})
-    if currency is not None:
-        currencies = [code for code in currencies if code == currency]
-    previews = []
-    for code in currencies:
-        balances = {
-            view.account.participant_id: view.balance_minor
-            for view in snapshot.accounts
-            if view.account.currency == code and view.account.participant_id is not None
-        }
-        fund = sum(
-            -view.balance_minor
-            for view in snapshot.accounts
-            if view.account.currency == code and view.account.participant_id is None
-        )
-        within = tolerance if code == access.plan.base_currency else 0
-        previews.append(
-            CurrencyPreview(code, simplify_debts(balances, fund_available=fund, tolerance=within))
-        )
-    return previews
+    return [
+        preview
+        for preview in snapshot.suggestions
+        if currency is None or preview.currency == currency
+    ]
 
 
 async def transaction_view(ctx: CommandContext, transaction: LedgerTransaction) -> TransactionView:

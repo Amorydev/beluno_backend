@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import select
@@ -19,7 +20,7 @@ from beluno.contracts.errors import conflict
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.merges import lock_plan_for_merge, transfer_merged_balances
-from beluno.modules.plans.changes import bump, record_participant_change
+from beluno.modules.plans.changes import bump, guest_linked, record_participant_change
 
 
 async def transfer_guest_participations(
@@ -76,9 +77,14 @@ async def transfer_guest_participations(
             f"Confirm merging {len(conflicts)} guest participation(s) into this account",
         )
     for row in guest_rows:
+        # Members hear of it only when the guest was with them in the plan and the
+        # account still is.
+        linked = row.access_state == AccessState.ACTIVE.value
         if row.plan_id in existing:
+            into = existing[row.plan_id]
             row.access_state = AccessState.MERGED.value
-            row.merged_into_participant_id = existing[row.plan_id]
+            row.merged_into_participant_id = into.id
+            linked = linked and into.active
             action = "plan_participant.merged"
         else:
             row.user_id = target_user_id
@@ -89,9 +95,22 @@ async def transfer_guest_participations(
             action = "plan_participant.claimed"
         bump(row, ctx)
         await ctx.session.flush()
-        await record_participant_change(ctx, row, action)
+        await record_participant_change(
+            ctx,
+            row,
+            action,
+            activity=guest_linked(row.merged_into_participant_id or row.id, row.id)
+            if linked
+            else None,
+        )
         if row.access_state == AccessState.MERGED.value:
             await transfer_merged_balances(ctx, row.plan_id, row.id)
+
+
+@dataclass(frozen=True)
+class _TargetRow:
+    id: UUID
+    active: bool
 
 
 async def _target_rows_by_plan(
@@ -99,19 +118,22 @@ async def _target_rows_by_plan(
     guest_user_id: UUID,
     target_user_id: UUID,
     plan_ids: list[UUID],
-) -> dict[UUID, UUID]:
-    """Map plan → the target account's non-merged participant ID, read as the target."""
+) -> dict[UUID, _TargetRow]:
+    """Map plan → the target account's non-merged participant row, read as the target."""
 
     if not plan_ids:
         return {}
     await ctx.act_as(target_user_id)
     rows = await ctx.session.execute(
-        select(PlanParticipant.plan_id, PlanParticipant.id).where(
+        select(PlanParticipant.plan_id, PlanParticipant.id, PlanParticipant.access_state).where(
             PlanParticipant.user_id == target_user_id,
             PlanParticipant.plan_id.in_(plan_ids),
             PlanParticipant.access_state != AccessState.MERGED.value,
         )
     )
-    mapping = {plan_id: participant_id for plan_id, participant_id in rows.all()}
+    mapping = {
+        plan_id: _TargetRow(participant_id, state == AccessState.ACTIVE.value)
+        for plan_id, participant_id, state in rows.all()
+    }
     await ctx.act_as(guest_user_id)
     return mapping

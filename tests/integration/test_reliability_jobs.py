@@ -72,14 +72,15 @@ async def test_compaction_job_removes_old_changes_and_raises_floors(
 
     removed = await tasks.compact_sync_changes.func(0)
 
-    assert removed == 2
+    # The plan, its creation's feed event, and the owner's row.
+    assert removed == 3
     assert (
         admin.scalar("SELECT count(*) FROM sync_audit.change_log WHERE scope_id = %s", plan["id"])
         == 0
     )
     assert admin.fetch(
         "SELECT last_seq, floor_seq FROM sync_audit.scope_heads WHERE scope_id = %s", plan["id"]
-    ) == [(2, 2)]
+    ) == [(3, 3)]
     assert (
         admin.scalar(
             "SELECT floor_seq FROM sync_audit.scope_heads WHERE scope_id = %s", fresh["id"]
@@ -94,6 +95,18 @@ async def test_compaction_job_removes_old_changes_and_raises_floors(
         headers=owner.headers,
     )
     assert pulled.json()["scopes"][0]["status"] == "ok"
+
+    # Feed events follow the same retention.
+    # Feed rows are append-only for every role; age them with the guard paused.
+    admin.execute("ALTER TABLE activity.events DISABLE TRIGGER events_append_only")
+    admin.execute(
+        "UPDATE activity.events SET occurred_at = now() - interval '200 days' WHERE scope_id = %s",
+        plan["id"],
+    )
+    admin.execute("ALTER TABLE activity.events ENABLE TRIGGER events_append_only")
+    assert await tasks.purge_activity_events.func(0) == 1
+    assert admin.fetch("SELECT scope_id::text FROM activity.events") == [(fresh["id"],)]
+    assert await tasks.purge_activity_events.func(0) == 0
 
 
 async def test_purge_job_removes_only_expired_operation_records(

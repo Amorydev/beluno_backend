@@ -42,12 +42,15 @@ and operator. Fix the cause before replaying a job that failed repeatedly.
 - Offline window: `BELUNO_SYNC_OFFLINE_WINDOW_DAYS` (90).
 - Change rows and tombstones: `BELUNO_SYNC_CHANGE_RETENTION_DAYS` (180).
 - Idempotency records: `BELUNO_SYNC_OPERATION_RETENTION_DAYS` (180).
+- Activity feed events: `BELUNO_SYNC_CHANGE_RETENTION_DAYS` (180).
 
 The daily `sync.compact_changes` job deletes change rows older than the
 retention cutoff in committed batches and raises `scope_heads.floor_seq`; a
 cursor below the floor receives `resync_required` and bootstraps again. The SQL
 gate refuses cutoffs inside the configured offline window (and never accepts
-one under 90 days). Never delete change, operation, or head rows by hand as a
+one under 90 days). The daily `activity.purge_events` job removes activity feed
+events older than the retention cutoff in batches (same retention floor as
+change rows). Never delete change, operation, activity, or head rows by hand as a
 rollback.
 
 ## Database restore

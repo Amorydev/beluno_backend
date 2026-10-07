@@ -10,7 +10,11 @@ from beluno.modules.finance.maintenance import reconcile_ledgers
 from beluno.modules.finance.market_rates import ingest_market_rates, rate_provider
 from beluno.modules.iam.email_challenges import DELIVER_TASK_NAME, EMAIL_QUEUE, deliver_challenge
 from beluno.modules.iam.maintenance import purge_expired_auth_records
-from beluno.modules.sync_audit.maintenance import compact_changes, purge_operations
+from beluno.modules.sync_audit.maintenance import (
+    compact_changes,
+    purge_activity,
+    purge_operations,
+)
 from beluno.worker.deadletter import queue_health
 from beluno.worker.runtime import get_email_sender, get_worker_runtime
 
@@ -109,3 +113,17 @@ async def ingest_finance_market_rates(timestamp: int) -> int:
 
     del timestamp
     return await ingest_market_rates(get_worker_runtime(), rate_provider())
+
+
+@app.periodic(cron="47 3 * * *", periodic_id="activity.purge_events")
+@app.task(
+    name="activity.purge_events",
+    queue="maintenance",
+    retry=3,
+    queueing_lock="activity:purge_events",
+)
+async def purge_activity_events(timestamp: int) -> int:
+    """Daily: drop feed events older than the change-log retention."""
+
+    del timestamp
+    return await purge_activity(get_worker_runtime())

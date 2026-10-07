@@ -105,7 +105,8 @@ async def test_handshake_lists_scopes_by_current_access(
     }
     assert owner_view["scopes"][0]["scope"] == f"user:{owner.user_id}"
     heads = {entry["scope"]: entry["head"] for entry in owner_view["scopes"]}
-    assert heads[f"plan:{private['id']}"] == 2 and heads[f"user:{owner.user_id}"] >= 2
+    # The plan, its plan.created feed event, and the owner's row.
+    assert heads[f"plan:{private['id']}"] == 3 and heads[f"user:{owner.user_id}"] >= 2
 
     member_scopes = {
         entry["scope"]: entry["access"] for entry in (await handshake(api, member))["scopes"]
@@ -148,6 +149,15 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
         "plan_invite",
         "ledger",
         "budget",
+        # The plan was created, Grandma joined, and the budget was set.
+        "activity_event",
+        "activity_event",
+        "activity_event",
+    ]
+    assert [item["data"]["type"] for item in snapshot[6:]] == [
+        "plan.created",
+        "member.joined",
+        "budget.changed",
     ]
     plan_item = snapshot[0]
     assert plan_item["data"]["title"] == "Dinner" and plan_item["version"] == 1
@@ -163,7 +173,7 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
 
     # Nothing new: an empty page with the same position.
     quiet = await pull_once(api, owner, scope, cursor)
-    assert quiet["changes"] == [] and quiet["has_more"] is False and quiet["head"] == 6
+    assert quiet["changes"] == [] and quiet["has_more"] is False and quiet["head"] == 9
 
     renamed = await api.patch(
         f"/v1/plans/{plan['id']}",
@@ -183,10 +193,12 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
     assert deleted.status_code == 204
 
     changes, cursor, _ = await drain(api, owner, scope, quiet["cursor"])
-    # Two plan edits collapse into one item carrying the latest state; the delete is a tombstone.
+    # Two plan edits collapse into one item carrying the latest state; the delete is a
+    # tombstone, followed by its feed event.
     assert [(item["entity_type"], item["operation"], item["seq"]) for item in changes] == [
-        ("plan", "upsert", 8),
-        ("budget", "delete", 9),
+        ("plan", "upsert", 11),
+        ("budget", "delete", 12),
+        ("activity_event", "upsert", 13),
     ]
     assert changes[0]["data"]["title"] == "Brunch" and changes[0]["version"] == 3
     assert changes[1]["data"] is None and changes[1]["version"] == 2
@@ -194,7 +206,7 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
 
     # Replaying the previous cursor returns the same sequences again.
     replay = await pull_once(api, owner, scope, quiet["cursor"])
-    assert [item["seq"] for item in replay["changes"]] == [8, 9]
+    assert [item["seq"] for item in replay["changes"]] == [11, 12, 13]
     assert replay["cursor"] == cursor
 
 
@@ -208,11 +220,12 @@ async def test_pages_stop_at_the_watermark_and_snapshot_pages_cover_everything(
     scope = f"plan:{plan['id']}"
 
     snapshot, cursor, pages = await drain(api, owner, scope, None, page_size=10)
-    assert pages == 2
-    assert len(snapshot) == 14  # plan + owner + 12 placeholders
-    assert len({item["entity_id"] for item in snapshot}) == 14
+    # plan + owner + 12 placeholders, and a feed event for the plan and each newcomer
+    assert pages == 3
+    assert len(snapshot) == 27
+    assert len({item["entity_id"] for item in snapshot}) == 27
 
-    # 12 RSVP/role changes to pull; interleave a new change while paging.
+    # 12 role changes (each with its feed event) to pull; interleave a change while paging.
     people = [item for item in snapshot if item["entity_type"] == "plan_participant"]
     placeholders = [item for item in people if item["data"]["identity_kind"] == "placeholder"]
     for item in placeholders:
@@ -224,7 +237,7 @@ async def test_pages_stop_at_the_watermark_and_snapshot_pages_cover_everything(
         assert response.status_code == 200, response.text
     first = await pull_once(api, owner, scope, cursor, page_size=10)
     assert first["has_more"] is True and len(first["changes"]) == 10
-    assert first["head"] == 26
+    assert first["head"] == 51
     late = await api.patch(
         f"/v1/plans/{plan['id']}",
         json={"title": "Late"},
@@ -232,12 +245,16 @@ async def test_pages_stop_at_the_watermark_and_snapshot_pages_cover_everything(
     )
     assert late.status_code == 200
     second = await pull_once(api, owner, scope, first["cursor"], page_size=10)
-    assert second["has_more"] is False
-    assert [item["seq"] for item in second["changes"]] == [25, 26]
-    assert second["head"] == 27
+    assert second["has_more"] is True
+    assert [item["seq"] for item in second["changes"]] == list(range(38, 48))
     third = await pull_once(api, owner, scope, second["cursor"], page_size=10)
-    assert [item["seq"] for item in third["changes"]] == [27]
-    assert third["changes"][0]["data"]["title"] == "Late"
+    # The page stops at the watermark of the first pull, not at the later change.
+    assert third["has_more"] is False
+    assert [item["seq"] for item in third["changes"]] == [48, 49, 50, 51]
+    assert third["head"] == 52
+    fourth = await pull_once(api, owner, scope, third["cursor"], page_size=10)
+    assert [item["seq"] for item in fourth["changes"]] == [52]
+    assert fourth["changes"][0]["data"]["title"] == "Late"
 
 
 async def test_visibility_follows_role_and_revocation(
@@ -264,8 +281,13 @@ async def test_visibility_follows_role_and_revocation(
         "plan",
         "plan_participant",
         "plan_invite",
+        "activity_event",
     }
-    assert {item["entity_type"] for item in member_items} == {"plan", "plan_participant"}
+    assert {item["entity_type"] for item in member_items} == {
+        "plan",
+        "plan_participant",
+        "activity_event",
+    }
     pending = {
         item["entity_id"]
         for item in manager_items
@@ -273,6 +295,12 @@ async def test_visibility_follows_role_and_revocation(
     }
     assert pending == {applied.json()["participant"]["id"]}
     assert not any(item["entity_id"] in pending for item in member_items)
+    # A pending request never shows up in the feed either.
+    assert not any(
+        item["data"]["summary"].get("participant_id") in pending
+        for item in manager_items + member_items
+        if item["entity_type"] == "activity_event"
+    )
     assert (await pull_once(api, outsider, scope, None))["status"] == "unavailable"
     assert (await pull_once(api, applicant, scope, None))["status"] == "unavailable"
 
@@ -501,7 +529,7 @@ async def test_unknown_future_entity_types_are_skipped(
             ],
         )
     page = await pull_once(api, owner, scope, cursor)
-    assert page["changes"] == [] and page["has_more"] is False and page["head"] == 3
+    assert page["changes"] == [] and page["has_more"] is False and page["head"] == 4
 
 
 async def test_the_maximum_page_size_never_skips_changes(
@@ -547,7 +575,8 @@ async def test_the_maximum_page_size_never_skips_changes(
     assert first["has_more"] is True and first["changes"] == []
     second = await pull_once(api, owner, scope, first["cursor"], page_size=500)
     assert second["has_more"] is False
-    assert [(item["entity_type"], item["seq"]) for item in second["changes"]] == [("plan", 603)]
+    # Three creation rows, 600 unknown ones, then the rename.
+    assert [(item["entity_type"], item["seq"]) for item in second["changes"]] == [("plan", 604)]
     oversized = await api.post(
         "/v1/sync/pull",
         json={"scopes": [{"scope": scope, "cursor": cursor}], "page_size": 501},

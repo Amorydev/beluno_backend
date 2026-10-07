@@ -109,6 +109,7 @@ async def test_commands_sync_and_changes_are_measured(
     assert points(reader, "beluno.sync.pull.pages") == {
         (("scope_type", "plan"), ("status", "ok")): 1
     }
-    assert points(reader, "beluno.sync.pull.items")[(("scope_type", "plan"),)] == 2
+    # The plan, its owner, and the plan.created feed event.
+    assert points(reader, "beluno.sync.pull.items")[(("scope_type", "plan"),)] == 3
     assert points(reader, "beluno.sync.changes.appended")[()] >= 6
     assert (("command", "plan.create"),) in points(reader, "beluno.command.duration")

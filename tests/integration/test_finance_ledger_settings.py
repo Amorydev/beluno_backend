@@ -67,6 +67,8 @@ async def test_small_base_currency_balances_count_as_settled_without_changing_po
     assert preview.json()[0]["transfers"] == [
         {"from_participant_id": bea, "to_participant_id": ann, "amount_minor": 3}
     ]
+    # The ledger entity carries the same suggestions, so settling up works offline.
+    assert before["suggestions"] == preview.json()
 
     member = await configure(api, trip.members["Bea"], trip, settle_tolerance_minor=5)
     assert member.status_code == 403
@@ -80,6 +82,7 @@ async def test_small_base_currency_balances_count_as_settled_without_changing_po
     assert await ledger_balances(api, trip.owner, trip) == exact
     preview = await api.get(trip.path("/ledger/settlement-preview"), headers=trip.owner.headers)
     assert preview.json()[0]["transfers"] == []
+    assert body["suggestions"] == preview.json()
 
     # The tolerance is in the base currency; other currencies still settle exactly.
     await add_expense(

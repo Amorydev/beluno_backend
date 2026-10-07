@@ -415,6 +415,10 @@ class LedgerResponse(BaseModel):
     base_changes: list[BaseCurrencyChangeResponse] = Field(
         description="Base-currency changes, oldest first: the chain base values are read through"
     )
+    suggestions: list[SettlementPreviewResponse] = Field(
+        description="Transfers that would square each currency, as the settlement preview "
+        "suggests them; never netted across plans or currencies"
+    )
     version: int
 
 
