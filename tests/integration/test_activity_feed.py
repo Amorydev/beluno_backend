@@ -17,6 +17,7 @@ from beluno.testkit.database import AdminDatabase
 from beluno.testkit.finance import (
     add_expense,
     equal_expense,
+    exercise_money_and_members,
     finance_plan,
     if_match,
     join_with_invite,
@@ -311,129 +312,9 @@ async def test_account_events_land_in_the_persons_own_scope(
 async def test_every_release_one_event_type_is_written(
     api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
 ) -> None:
-    trip = await finance_plan(api, identity_provider, admin, members=("Bea", "Dan"))
-    ann, bea, dan = (trip.people[name] for name in ("Ann", "Bea", "Dan"))
+    trip = await exercise_money_and_members(api, identity_provider, admin, memo=SECRET)
+    ann, dan = trip.people["Ann"], trip.people["Dan"]
     owner = trip.owner
-
-    async def ok(response: httpx.Response) -> dict[str, Any]:
-        assert response.status_code in (200, 201, 204), response.text
-        return response.json() if response.status_code != 204 else {}
-
-    voided = await add_expense(api, owner, trip, equal_expense(600, ann, [ann, bea]))
-    await ok(
-        await api.post(trip.path(f"/expenses/{voided['id']}/void"), headers=if_match(1, owner))
-    )
-    refunded = await add_expense(api, owner, trip, equal_expense(600, ann, [ann, bea]))
-    await ok(
-        await api.post(
-            trip.path(f"/expenses/{refunded['id']}/refunds"),
-            json={"amount_minor": 100, "recipient": {"participant_id": ann}},
-            headers=if_match(1, owner),
-        )
-    )
-    settlement = {"currency": "USD", "amount_minor": 50, "occurred_on": "2026-10-07"}
-    await ok(
-        await api.post(
-            trip.path("/waivers"),
-            json={"debtor_participant_id": bea, "creditor_participant_id": ann, **settlement},
-            headers=owner.headers,
-        )
-    )
-    paid = await ok(
-        await api.post(
-            trip.path("/settlements"),
-            json={"from_participant_id": bea, "to_participant_id": ann, **settlement},
-            headers=owner.headers,
-        )
-    )
-    await ok(
-        await api.post(trip.path(f"/settlements/{paid['id']}/reverse"), headers=if_match(1, owner))
-    )
-    kitty = {"participant_id": ann, "currency": "USD", "occurred_on": "2026-10-07"}
-    await ok(
-        await api.post(
-            trip.path("/fund/contributions"),
-            json={**kitty, "amount_minor": 500},
-            headers=owner.headers,
-        )
-    )
-    await ok(
-        await api.post(
-            trip.path("/fund/withdrawals"),
-            json={**kitty, "amount_minor": 200},
-            headers=owner.headers,
-        )
-    )
-    await ok(
-        await api.post(
-            trip.path("/fund/counts"),
-            json={"currency": "USD", "counted_minor": 300},
-            headers=owner.headers,
-        )
-    )
-    await ok(
-        await api.post(
-            trip.path("/budgets"),
-            json={"scope": "total", "limit_minor": 9_000},
-            headers=owner.headers,
-        )
-    )
-    await add_expense(api, owner, trip, equal_expense(3_000, ann, [ann, bea], currency="JPY"))
-    consolidation = await ok(
-        await api.post(
-            trip.path("/ledger/consolidations"),
-            json={"base_currency": "USD", "rates": [{"currency": "JPY", "rate": "0.0067"}]},
-            headers=owner.headers,
-        )
-    )
-    await ok(
-        await api.post(
-            trip.path(f"/ledger/consolidations/{consolidation['id']}/reverse"),
-            headers=if_match(1, owner),
-        )
-    )
-    version = (await api.get(trip.path(), headers=owner.headers)).json()["version"]
-    retimed = await ok(
-        await api.patch(
-            trip.path(),
-            json={"timing": {"mode": "date", "start_date": "2027-03-20", "end_date": "2027-03-27"}},
-            headers=if_match(version, owner),
-        )
-    )
-    await ok(
-        await api.post(
-            trip.path("/base-currency"),
-            json={"currency": "EUR", "rate": {"rate": "0.9"}},
-            headers=if_match(retimed["version"], owner),
-        )
-    )
-    await ok(
-        await api.patch(
-            trip.path(f"/participants/{dan}"),
-            json={"capabilities": ["expenses.manage"]},
-            headers=if_match(1, owner),
-        )
-    )
-    await ok(
-        await api.patch(
-            trip.path(f"/participants/{dan}"), json={"role": "viewer"}, headers=if_match(2, owner)
-        )
-    )
-    await ok(
-        await api.post(
-            trip.path("/ledger/adjustments"),
-            json={
-                "currency": "EUR",
-                "memo": SECRET,
-                "entries": [
-                    {"participant_id": ann, "amount_minor": 250},
-                    {"participant_id": dan, "amount_minor": -250},
-                ],
-            },
-            headers=owner.headers,
-        )
-    )
-    await ok(await api.post(trip.path("/leave"), headers=trip.members["Bea"].headers))
 
     events = await feed(api, owner, f"plan:{trip.plan_id}")
     [adjusted] = [event["summary"] for event in events if event["type"] == "ledger.adjusted"]
