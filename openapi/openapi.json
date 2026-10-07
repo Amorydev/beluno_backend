@@ -8083,6 +8083,374 @@
         "title": "RateRequest",
         "type": "object"
       },
+      "RecapCategory": {
+        "properties": {
+          "category": {
+            "enum": [
+              "food",
+              "lodging",
+              "transport",
+              "activities",
+              "shopping",
+              "groceries",
+              "fees",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "share_basis_points": {
+            "description": "Of the total spent, in 1/100 of a percent; all categories add up to 10000",
+            "title": "Share Basis Points",
+            "type": "integer"
+          },
+          "spent_minor": {
+            "title": "Spent Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "category",
+          "spent_minor",
+          "share_basis_points"
+        ],
+        "title": "RecapCategory",
+        "type": "object"
+      },
+      "RecapPerson": {
+        "properties": {
+          "active": {
+            "description": "False: left or was removed with money still open",
+            "title": "Active",
+            "type": "boolean"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          },
+          "settled": {
+            "description": "Square by the ledger's rule (base-currency balances within the tolerance)",
+            "title": "Settled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "participant_id",
+          "active",
+          "settled"
+        ],
+        "title": "RecapPerson",
+        "type": "object"
+      },
+      "RecapResponse": {
+        "properties": {
+          "all_settled": {
+            "description": "The ledger's status is settled",
+            "title": "All Settled",
+            "type": "boolean"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/RecapCategory"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "crew": {
+            "items": {
+              "$ref": "#/components/schemas/RecapPerson"
+            },
+            "title": "Crew",
+            "type": "array"
+          },
+          "currency": {
+            "description": "The plan's base currency",
+            "title": "Currency",
+            "type": "string"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Local last day",
+            "title": "End Date"
+          },
+          "estimated_rates": {
+            "description": "Some conversions used estimated rates",
+            "title": "Estimated Rates",
+            "type": "boolean"
+          },
+          "itinerary_done": {
+            "title": "Itinerary Done",
+            "type": "integer"
+          },
+          "itinerary_total": {
+            "description": "Items not cancelled",
+            "title": "Itinerary Total",
+            "type": "integer"
+          },
+          "people": {
+            "description": "Active participants, placeholders included",
+            "title": "People",
+            "type": "integer"
+          },
+          "per_person_per_day_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Person Per Day Minor"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "polls_decided": {
+            "title": "Polls Decided",
+            "type": "integer"
+          },
+          "settled_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Once settled: the date of the last settlement still standing, as entered",
+            "title": "Settled On"
+          },
+          "share": {
+            "$ref": "#/components/schemas/RecapShareCard"
+          },
+          "spent_minor": {
+            "description": "Paid expenses net of refunds, in the base currency",
+            "title": "Spent Minor",
+            "type": "integer"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Local first day (also for timed plans)",
+            "title": "Start Date"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/RecapStop"
+            },
+            "title": "Stops",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "top_place": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecapTopPlace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unconverted": {
+            "description": "Some spending had no rate to the base currency",
+            "title": "Unconverted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "plan_id",
+          "title",
+          "start_date",
+          "end_date",
+          "days",
+          "stops",
+          "people",
+          "currency",
+          "spent_minor",
+          "per_person_per_day_minor",
+          "unconverted",
+          "estimated_rates",
+          "categories",
+          "top_place",
+          "itinerary_done",
+          "itinerary_total",
+          "polls_decided",
+          "crew",
+          "all_settled",
+          "settled_on",
+          "share"
+        ],
+        "title": "RecapResponse",
+        "type": "object"
+      },
+      "RecapShareCard": {
+        "description": "Only these fields may go on a public card. Names, balances, booking codes,\naddresses, and notes never do; the app draws the card on the device.",
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days"
+          },
+          "people": {
+            "title": "People",
+            "type": "integer"
+          },
+          "route": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Route",
+            "type": "array"
+          },
+          "spent_complete": {
+            "description": "False when some spending had no rate to the base currency; hide the total",
+            "title": "Spent Complete",
+            "type": "boolean"
+          },
+          "spent_minor": {
+            "description": "Shown only when the person chooses to",
+            "title": "Spent Minor",
+            "type": "integer"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          }
+        },
+        "required": [
+          "route",
+          "start_date",
+          "days",
+          "people",
+          "currency",
+          "spent_minor",
+          "spent_complete"
+        ],
+        "title": "RecapShareCard",
+        "type": "object"
+      },
+      "RecapStop": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "nights": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "From the stop's dates, when both are set",
+            "title": "Nights"
+          }
+        },
+        "required": [
+          "name",
+          "code",
+          "nights"
+        ],
+        "title": "RecapStop",
+        "type": "object"
+      },
+      "RecapTopPlace": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "of_people": {
+            "description": "Active participants who can answer (not placeholders)",
+            "title": "Of People",
+            "type": "integer"
+          },
+          "place_id": {
+            "format": "uuid",
+            "title": "Place Id",
+            "type": "string"
+          },
+          "wanted_by": {
+            "title": "Wanted By",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "place_id",
+          "name",
+          "wanted_by",
+          "of_people"
+        ],
+        "title": "RecapTopPlace",
+        "type": "object"
+      },
       "RedeemInviteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -24078,6 +24446,85 @@
         "summary": "Vote",
         "tags": [
           "planning"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/recap": {
+      "get": {
+        "description": "Spending, the plan, decisions, and who has settled; for anyone who sees the money.\n``share`` holds the only fields a public card may show.",
+        "operationId": "get_recap_v1_plans__plan_id__recap_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Recap",
+        "tags": [
+          "recap"
         ]
       }
     },
