@@ -16,8 +16,9 @@ from pydantic import BaseModel
 from sqlalchemy import Select, select
 from sqlalchemy.orm import InstrumentedAttribute
 
-from beluno.api import finance_projection
+from beluno.api import finance_projection, planning_projection
 from beluno.api.finance_projection import FINANCE_TYPES
+from beluno.api.planning_projection import PLANNING_TYPES
 from beluno.api.presenters import (
     crew_response,
     invite_response,
@@ -50,14 +51,21 @@ Pager = Callable[
 
 SNAPSHOT_ORDER: dict[str, tuple[str, ...]] = {
     "user": ("user", "session", "plan_access", "crew", "activity_event"),
-    "plan": ("plan", "plan_participant", "plan_invite", *FINANCE_TYPES, "activity_event"),
+    "plan": (
+        "plan",
+        "plan_participant",
+        "plan_invite",
+        *FINANCE_TYPES,
+        *PLANNING_TYPES,
+        "activity_event",
+    ),
 }
 
 VISIBLE_TYPES: dict[tuple[str, AccessLevel], frozenset[str]] = {
     ("user", AccessLevel.SELF): frozenset(SNAPSHOT_ORDER["user"]),
     ("plan", AccessLevel.MANAGER): frozenset(SNAPSHOT_ORDER["plan"]),
     ("plan", AccessLevel.MEMBER): frozenset(
-        {"plan", "plan_participant", *FINANCE_TYPES, "activity_event"}
+        {"plan", "plan_participant", *FINANCE_TYPES, *PLANNING_TYPES, "activity_event"}
     ),
 }
 
@@ -209,6 +217,8 @@ LOADERS: dict[str, Loader] = {
     "fund_movement": finance_projection.load_fund_movement,
     "fund_count": finance_projection.load_fund_count,
     "consolidation": finance_projection.load_consolidation,
+    "place": planning_projection.load_place,
+    "itinerary_item": planning_projection.load_item,
 }
 
 
@@ -314,6 +324,8 @@ PAGERS: dict[str, Pager] = {
     "fund_movement": finance_projection.page_fund_movements,
     "fund_count": finance_projection.page_fund_counts,
     "consolidation": finance_projection.page_consolidations,
+    "place": planning_projection.page_places,
+    "itinerary_item": planning_projection.page_items,
 }
 
 

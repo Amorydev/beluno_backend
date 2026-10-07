@@ -60,6 +60,9 @@ The `guest` role belongs to guest identities, which never pass
 | plan.ledger.confirm | allow | allow | allow | allow | allow | deny |
 | plan.ledger.consolidate | allow | allow | deny | deny | deny | deny |
 | plan.base_currency.change | allow | allow | deny | deny | deny | deny |
+| plan.planning.contribute | allow | allow | allow | deny | allow | deny |
+| plan.planning.manage | allow | allow | deny | deny | deny | deny |
+| plan.planning.respond | allow | allow | allow | allow | allow | deny |
 <!-- plan-matrix:end -->
 
 State narrowing (applies on top of the table):
@@ -68,6 +71,12 @@ State narrowing (applies on top of the table):
   requires `draft`, `planning`, or `active`. `completed`, `archived`, and
   `cancelled` plans are read-only except state changes, duplication, and
   deletion.
+- Planning (places, itinerary) is for trips only and requires `draft`, `planning`,
+  `active`, or `settling`. A place or item is edited or deleted by whoever added
+  it (while they still hold `plan.planning.contribute`) or by anyone with
+  `plan.planning.manage`. Wanting to go and going / not going are each
+  participant's own answers: the database refuses an answer written for someone
+  else.
 - Finance writes (expenses, budgets, fund, adjustments) require `draft`,
   `planning`, `active`, or `settling`; settlements and waivers also accept
   `completed`, because people pay each other back after the plan is over.

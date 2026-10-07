@@ -120,6 +120,15 @@ BODIES: dict[tuple[str, str], Body] = {
     ("PUT", "/v1/plans/{plan_id}/rsvp"): lambda _a, _b: {"status": "declined"},
     ("POST", "/v1/plans/{plan_id}/settlements"): money,
     ("POST", "/v1/plans/{plan_id}/state"): lambda _a, _b: {"state": "cancelled"},
+    ("POST", "/v1/plans/{plan_id}/places"): lambda _a, _b: {"name": "Taken"},
+    ("PUT", "/v1/plans/{plan_id}/places/{place_id}"): lambda _a, _b: {"name": "Taken"},
+    ("PUT", "/v1/plans/{plan_id}/places/{place_id}/reaction"): lambda _a, _b: {"wants": False},
+    ("POST", "/v1/plans/{plan_id}/places/{place_id}/add-to-plan"): lambda _a, _b: {},
+    ("POST", "/v1/plans/{plan_id}/itinerary"): lambda _a, _b: {"title": "Taken"},
+    ("PUT", "/v1/plans/{plan_id}/itinerary/{item_id}"): lambda _a, _b: {"title": "Taken"},
+    ("PUT", "/v1/plans/{plan_id}/itinerary/{item_id}/attendance"): lambda _a, _b: {
+        "status": "not_going"
+    },
     ("POST", "/v1/plans/{plan_id}/waivers"): lambda a, b: {
         "debtor_participant_id": b,
         "creditor_participant_id": a,
@@ -137,7 +146,8 @@ QUERY = {"currency": "USD"}
 def victim_state(admin: AdminDatabase, plan_id: str, crew_id: str, session_id: str) -> Any:
     tables = admin.fetch(
         "SELECT table_schema || '.' || table_name FROM information_schema.columns "
-        "WHERE column_name = 'plan_id' AND table_schema IN ('plans', 'finance', 'activity') "
+        "WHERE column_name = 'plan_id' "
+        "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places') "
         "ORDER BY 1"
     )
     counts = {

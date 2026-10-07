@@ -43,6 +43,10 @@ class ActivityType(StrEnum):
     PLAN_CREATED = "plan.created"
     PLAN_DATES_CHANGED = "plan.dates_changed"
     PLAN_STATE_CHANGED = "plan.state_changed"
+    PLACE_SAVED = "place.saved"
+    PLACE_ADDED_TO_PLAN = "place.added_to_plan"
+    ITINERARY_ITEM_ADDED = "itinerary.item_added"
+    ITINERARY_ITEM_DONE = "itinerary.item_done"
     ACCOUNT_GUEST_UPGRADED = "account.guest_upgraded"
     ACCOUNT_GUEST_MERGED = "account.guest_merged"
 
@@ -87,6 +91,8 @@ SUMMARY_KEYS = frozenset(
         "end_date",
         "previous_start_date",
         "previous_end_date",
+        "day",
+        "item_id",
     }
 )
 

@@ -68,7 +68,8 @@ def rows_left(admin: AdminDatabase, plan_id: str) -> dict[str, int]:
 
     tables = admin.fetch(
         "SELECT table_schema || '.' || table_name FROM information_schema.columns "
-        "WHERE column_name = 'plan_id' AND table_schema IN ('plans', 'finance', 'activity') "
+        "WHERE column_name = 'plan_id' "
+        "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places') "
         "ORDER BY 1"
     )
     counts = {
@@ -116,6 +117,24 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
         trip.path("/duplicate"), json={"title": "Same trip again"}, headers=owner.headers
     )
     assert copy.status_code == 201, copy.text
+    place = await api.post(trip.path("/places"), json={"name": "Temple"}, headers=owner.headers)
+    assert place.status_code == 201, place.text
+    await api.put(
+        trip.path(f"/places/{place.json()['id']}/reaction"),
+        json={"wants": True},
+        headers=owner.headers,
+    )
+    stop = await api.post(
+        trip.path("/itinerary"),
+        json={"title": "Temple", "place_id": place.json()["id"]},
+        headers=owner.headers,
+    )
+    assert stop.status_code == 201, stop.text
+    await api.put(
+        trip.path(f"/itinerary/{stop.json()['id']}/attendance"),
+        json={"status": "going"},
+        headers=owner.headers,
+    )
     crew = await api.post(
         "/v1/crews", json={"name": "Trip crew", "from_plan_id": trip.plan_id}, headers=owner.headers
     )

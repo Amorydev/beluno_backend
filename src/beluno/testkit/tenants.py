@@ -23,7 +23,8 @@ async def full_tenant(
     api: httpx.AsyncClient, provider: IdentityProviderStub, admin: AdminDatabase
 ) -> FullTenant:
     """A used trip (see ``exercise_money_and_members``) plus a commitment, kitty
-    settings, a ledger confirmation, join and claim links, and a crew."""
+    settings, a ledger confirmation, join and claim links, a crew, a wanted place, and an
+    itinerary item with a cost and an answer."""
 
     trip = await exercise_money_and_members(api, provider, admin)
     owner = trip.owner
@@ -61,6 +62,26 @@ async def full_tenant(
         trip.path("/ledger/confirm"), json={"ledger_seq": seq}, headers=owner.headers
     )
     assert confirmed.status_code == 200, confirmed.text
+    place = await created(trip.path("/places"), {"name": "Senso-ji", "category": "sight"})
+    reacted = await api.put(
+        trip.path(f"/places/{place['id']}/reaction"), json={"wants": True}, headers=owner.headers
+    )
+    assert reacted.status_code == 200, reacted.text
+    stop = await created(
+        trip.path("/itinerary"),
+        {
+            "title": "Temple",
+            "day": "2027-03-21",
+            "place_id": place["id"],
+            "estimated_cost": {"currency": "EUR", "amount_minor": 500},
+        },
+    )
+    going = await api.put(
+        trip.path(f"/itinerary/{stop['id']}/attendance"),
+        json={"status": "going"},
+        headers=owner.headers,
+    )
+    assert going.status_code == 200, going.text
     budgets = (await api.get(trip.path("/budgets"), headers=owner.headers)).json()["budgets"]
     assert budgets
     return FullTenant(
@@ -76,5 +97,7 @@ async def full_tenant(
             "invite_id": (await listed("/invites"))[0]["id"],
             "crew_id": crew["id"],
             "session_id": owner.session_id,
+            "place_id": place["id"],
+            "item_id": stop["id"],
         },
     )
