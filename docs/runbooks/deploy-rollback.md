@@ -128,6 +128,12 @@ delivers a batch with one `send_each` call (10-second HTTP timeout); FCM outages
 credential problems back off up to five attempts, then fail; tokens FCM no longer
 accepts are deleted.
 
+### News from the team
+
+`uv run python scripts/news.py --key <slug> --operator <name> --title-vi ... --body-vi ...
+--title-en ... --body-en ...` (worker database role) queues news for everyone who turned
+news on; the worker delivers it within a minute, outside quiet hours. A key is sent once.
+
 ## Paid plans
 
 The API verifies purchases; the worker confirms Google ones (`billing.acknowledge_purchase`,

@@ -21,12 +21,14 @@ target_metadata = None
 
 
 def get_url() -> str:
-    settings = Settings()
-    if settings.migration_database_dsn is not None:
-        return settings.migration_database_dsn
+    # A URL the caller set (``run_migrations``, tests) wins over the environment and
+    # ``.env``: a developer's local settings must never redirect another database's run.
     configured_url = config.get_main_option("sqlalchemy.url")
     if configured_url and "placeholder" not in configured_url:
         return configured_url
+    settings = Settings()
+    if settings.migration_database_dsn is not None:
+        return settings.migration_database_dsn
     raise RuntimeError("BELUNO_MIGRATION_DATABASE_URL is required for migrations")
 
 

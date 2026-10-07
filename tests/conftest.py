@@ -32,6 +32,10 @@ from beluno.testkit.identity import IdentityProviderStub
 from beluno.testkit.media import MediaServices, media_services
 from beluno.token_hashing import TokenHasher
 
+# Tests build the settings they need: a developer's local .env (README setup) must not
+# leak into them.
+Settings.model_config["env_file"] = None
+
 
 class HealthyDatabase:
     async def check(self) -> bool:
