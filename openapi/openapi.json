@@ -146,6 +146,51 @@
         "title": "AdjustmentSplit",
         "type": "object"
       },
+      "AppleNotificationRequest": {
+        "properties": {
+          "signedPayload": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Signedpayload",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signedPayload"
+        ],
+        "title": "AppleNotificationRequest",
+        "type": "object"
+      },
+      "ApplePurchaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The trip a Trip Pass unlocks",
+            "title": "Plan Id"
+          },
+          "signed_transaction": {
+            "description": "StoreKit 2 `Transaction.jwsRepresentation`; set `appAccountToken` to the user id when buying",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Signed Transaction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signed_transaction"
+        ],
+        "title": "ApplePurchaseRequest",
+        "type": "object"
+      },
       "AttendanceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2744,6 +2789,73 @@
         "title": "EmailVerifyRequest",
         "type": "object"
       },
+      "EntitlementsResponse": {
+        "properties": {
+          "active_trip_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None: no limit (Pro, or not enforced)",
+            "title": "Active Trip Limit"
+          },
+          "active_trips": {
+            "description": "Your own trips in progress without a Trip Pass",
+            "title": "Active Trips",
+            "type": "integer"
+          },
+          "pro": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pro_product_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pro Product Ids",
+            "type": "array"
+          },
+          "receipts_per_trip": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For trips without a Trip Pass or Pro",
+            "title": "Receipts Per Trip"
+          },
+          "trip_pass_product_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Trip Pass Product Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pro",
+          "active_trips",
+          "active_trip_limit",
+          "receipts_per_trip",
+          "trip_pass_product_ids",
+          "pro_product_ids"
+        ],
+        "title": "EntitlementsResponse",
+        "type": "object"
+      },
       "EqualSplit": {
         "additionalProperties": false,
         "properties": {
@@ -3880,6 +3992,66 @@
           "amount_minor"
         ],
         "title": "FundTarget",
+        "type": "object"
+      },
+      "GooglePurchaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The trip a Trip Pass unlocks",
+            "title": "Plan Id"
+          },
+          "product_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Product Id",
+            "type": "string"
+          },
+          "purchase_token": {
+            "description": "Set `obfuscatedAccountId` to the user id when buying",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Purchase Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "purchase_token"
+        ],
+        "title": "GooglePurchaseRequest",
+        "type": "object"
+      },
+      "GooglePushRequest": {
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/PubSubMessage"
+          },
+          "subscription": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "GooglePushRequest",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -7117,6 +7289,47 @@
         "title": "PlanDuplicateRequest",
         "type": "object"
       },
+      "PlanEntitlementResponse": {
+        "properties": {
+          "receipt_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Limit"
+          },
+          "receipts": {
+            "title": "Receipts",
+            "type": "integer"
+          },
+          "unlocked_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "trip_pass",
+                  "pro"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unlocked By"
+          }
+        },
+        "required": [
+          "unlocked_by",
+          "receipts",
+          "receipt_limit"
+        ],
+        "title": "PlanEntitlementResponse",
+        "type": "object"
+      },
       "PlanInviteCreateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -8253,6 +8466,29 @@
         "title": "PostingResponse",
         "type": "object"
       },
+      "ProResponse": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "store": {
+            "enum": [
+              "apple",
+              "google"
+            ],
+            "title": "Store",
+            "type": "string"
+          }
+        },
+        "required": [
+          "store",
+          "expires_at"
+        ],
+        "title": "ProResponse",
+        "type": "object"
+      },
       "ProblemReportRequest": {
         "additionalProperties": false,
         "properties": {
@@ -8427,6 +8663,29 @@
           "max_version"
         ],
         "title": "ProtocolInfo",
+        "type": "object"
+      },
+      "PubSubMessage": {
+        "properties": {
+          "data": {
+            "default": "",
+            "maxLength": 100000,
+            "title": "Data",
+            "type": "string"
+          },
+          "messageId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Messageid"
+          }
+        },
+        "title": "PubSubMessage",
         "type": "object"
       },
       "PublicProblemResponse": {
@@ -8644,6 +8903,75 @@
           "changes"
         ],
         "title": "PullScopeResponse",
+        "type": "object"
+      },
+      "PurchaseResponse": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "product": {
+            "enum": [
+              "trip_pass",
+              "pro"
+            ],
+            "title": "Product",
+            "type": "string"
+          },
+          "purchased_at": {
+            "format": "date-time",
+            "title": "Purchased At",
+            "type": "string"
+          },
+          "store": {
+            "enum": [
+              "apple",
+              "google"
+            ],
+            "title": "Store",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "store",
+          "product",
+          "plan_id",
+          "purchased_at",
+          "expires_at",
+          "active"
+        ],
+        "title": "PurchaseResponse",
         "type": "object"
       },
       "PushOperation": {
@@ -13783,6 +14111,53 @@
         ]
       }
     },
+    "/v1/me/entitlements": {
+      "get": {
+        "description": "Pro, the free limits, and the store product ids to sell.",
+        "operationId": "get_entitlements_v1_me_entitlements_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitlementsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Entitlements",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
     "/v1/me/export": {
       "get": {
         "description": "The caller's profile, devices, crews, own packing lists, and every plan they are\nstill in, as JSON.",
@@ -14502,6 +14877,220 @@
         "summary": "Rename Passkey",
         "tags": [
           "passkeys"
+        ]
+      }
+    },
+    "/v1/me/purchases/apple": {
+      "post": {
+        "description": "Record an App Store purchase (also to restore one); safe to repeat.",
+        "operationId": "record_apple_purchase_v1_me_purchases_apple_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplePurchaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Record Apple Purchase",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/me/purchases/google": {
+      "post": {
+        "description": "Record a Google Play purchase (also to restore one); safe to repeat.",
+        "operationId": "record_google_purchase_v1_me_purchases_google_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GooglePurchaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Record Google Purchase",
+        "tags": [
+          "billing"
         ]
       }
     },
@@ -17595,6 +18184,95 @@
         "summary": "Duplicate Plan",
         "tags": [
           "plans"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/entitlement": {
+      "get": {
+        "description": "Whether a Trip Pass or the owner's Pro unlocks the trip, and its receipt limit.",
+        "operationId": "get_plan_entitlement_v1_plans__plan_id__entitlement_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanEntitlementResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Plan Entitlement",
+        "tags": [
+          "billing"
         ]
       }
     },
@@ -30218,6 +30896,144 @@
         "summary": "Waive Debt",
         "tags": [
           "finance"
+        ]
+      }
+    },
+    "/v1/store-notifications/apple": {
+      "post": {
+        "description": "App Store Server Notifications (version 2): renewals, expiries, refunds.",
+        "operationId": "apple_notification_v1_store_notifications_apple_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppleNotificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "summary": "Apple Notification",
+        "tags": [
+          "billing"
+        ]
+      }
+    },
+    "/v1/store-notifications/google": {
+      "post": {
+        "description": "Google Play real-time developer notifications, pushed by Pub/Sub.",
+        "operationId": "google_notification_v1_store_notifications_google_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GooglePushRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "summary": "Google Notification",
+        "tags": [
+          "billing"
         ]
       }
     },

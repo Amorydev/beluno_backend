@@ -6,6 +6,7 @@ from uuid import UUID
 
 import procrastinate
 
+from beluno.modules.billing import ACKNOWLEDGE_TASK, BILLING_QUEUE, acknowledge_purchase
 from beluno.modules.finance.maintenance import reconcile_ledgers
 from beluno.modules.finance.market_rates import ingest_market_rates, rate_provider
 from beluno.modules.iam.email_challenges import DELIVER_TASK_NAME, EMAIL_QUEUE, deliver_challenge
@@ -217,3 +218,16 @@ async def dispatch_push_notifications(timestamp: int) -> int:
 
     del timestamp
     return await dispatch_notifications(get_worker_runtime(), get_push_sender())
+
+
+@app.task(
+    name=ACKNOWLEDGE_TASK,
+    queue=BILLING_QUEUE,
+    # Google refunds purchases left unconfirmed for three days; retries span about a day.
+    retry=procrastinate.RetryStrategy(max_attempts=10, exponential_wait=3),
+)
+async def acknowledge_google_purchase(purchase_id: str, payload_version: int = 1) -> bool:
+    if payload_version != 1:
+        raise ValueError(f"Unsupported purchase payload version: {payload_version}")
+    runtime = get_worker_runtime()
+    return await acknowledge_purchase(runtime, runtime.google_play, UUID(purchase_id))

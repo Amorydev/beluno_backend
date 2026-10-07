@@ -22,11 +22,13 @@ from beluno.authorization.access import (
 )
 from beluno.authorization.policy import (
     CAPABILITY_ROLES,
+    EDITABLE_PLAN_STATES,
     PLAN_MANAGERS,
     AccessState,
     Capability,
     PlanAction,
     PlanRole,
+    PlanState,
     can_manage_participant,
 )
 from beluno.contracts.errors import (
@@ -40,6 +42,7 @@ from beluno.contracts.errors import (
 from beluno.db.ids import new_id
 from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanParticipant
+from beluno.modules import billing
 from beluno.modules.activity.events import ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.plans.changes import bump, record_participant_change, record_plan_change
@@ -422,6 +425,10 @@ async def transfer_ownership(
     )
     if target.identity_kind != "user":
         raise invalid_state("The new owner must be a registered participant")
+    if access.plan.type == "trip" and PlanState(access.plan.state) in EDITABLE_PLAN_STATES:
+        # The trip becomes one of the new owner's own: the free limit applies to them.
+        assert target.user_id is not None
+        await billing.require_room_for_trip(ctx, target.user_id, plan_id)
     current.role = PlanRole.ADMIN.value
     bump(current, ctx)
     await ctx.session.flush()

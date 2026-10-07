@@ -21,6 +21,7 @@ from beluno import __version__
 from beluno.api.commands import build_registry
 from beluno.api.routers import (
     auth,
+    billing,
     crews,
     exports,
     finance,
@@ -45,6 +46,7 @@ from beluno.modules.context import Runtime, utc_now
 from beluno.modules.iam.external_identity import ExternalIdentityVerifier
 from beluno.observability.context import get_request_id, reset_request_id, set_request_id
 from beluno.observability.setup import configure_observability, logger, safe_extra
+from beluno.stores import GooglePlay
 from beluno.sync.executor import CommandRunner
 from beluno.token_hashing import TokenHasher
 
@@ -129,6 +131,7 @@ def create_app(
     *,
     identity_verifier: ExternalIdentityVerifier | None = None,
     clock: Callable[[], datetime] | None = None,
+    google_play: GooglePlay | None = None,
 ) -> FastAPI:
     active_settings = settings or get_settings()
     active_database = database or Database(active_settings)
@@ -139,6 +142,7 @@ def create_app(
         hasher=TokenHasher.from_settings(active_settings),
         identity_verifier=identity_verifier or ExternalIdentityVerifier(active_settings),
         clock=clock or utc_now,
+        google_play_client=google_play,
     )
 
     @asynccontextmanager
@@ -175,6 +179,7 @@ def create_app(
         exports.router,
         recap.router,
         support.router,
+        billing.router,
         invites.router,
         sync.router,
     ):
