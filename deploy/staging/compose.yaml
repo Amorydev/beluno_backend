@@ -1,0 +1,226 @@
+# Staging-shaped stack that runs on any single host with Docker Compose.
+#
+#   cp deploy/staging/env.example deploy/staging/.env   # then replace every CHANGE_ME
+#   docker compose -f deploy/staging/compose.yaml up -d --build
+#
+# Startup order: postgres (healthy) -> migrate (runs to completion) -> api, worker.
+# Telemetry: api/worker --OTLP--> otel-collector <--scrape-- prometheus -> alertmanager;
+# grafana reads prometheus. Nothing is published beyond localhost unless
+# BELUNO_PUBLISH_ADDRESS says so; put a TLS-terminating reverse proxy in front of the API.
+#
+# All secrets come from the .env file next to this file (never committed).
+
+x-beluno-image: &beluno-image
+  # Built from the repository root by default; set BELUNO_IMAGE to a registry tag to
+  # run a published image instead (then use "up -d" without --build).
+  image: ${BELUNO_IMAGE:-beluno-backend:staging}
+
+# Hardening shared by every Beluno process: no write access to the image, no extra
+# privileges. /tmp stays writable for libraries that expect a scratch directory.
+x-beluno-hardening: &beluno-hardening
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+# Settings every Beluno process reads. Kill switches and sync limits pass through
+# so an operator can flip them in .env and recreate the containers.
+x-beluno-base-environment: &beluno-base-environment
+  # "development" is the default because the bundled PostgreSQL and collector speak
+  # plain text. staging/production additionally require sslmode=require on the
+  # process's database URL, SMTP email, and an https OTLP endpoint (see env.example).
+  # BELUNO_PROCESS_ROLE (set per service below) means each process needs only its
+  # own database credentials.
+  BELUNO_ENVIRONMENT: ${BELUNO_ENVIRONMENT:-development}
+  BELUNO_LOG_LEVEL: ${BELUNO_LOG_LEVEL:-INFO}
+  BELUNO_RELEASE: ${BELUNO_RELEASE:-staging}
+  BELUNO_SENTRY_DSN: ${BELUNO_SENTRY_DSN:-}
+  BELUNO_OTEL_EXPORTER_OTLP_ENDPOINT: ${BELUNO_OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+
+x-beluno-app-environment: &beluno-app-environment
+  <<: *beluno-base-environment
+  BELUNO_API_MAX_REQUEST_BYTES: ${BELUNO_API_MAX_REQUEST_BYTES:-1048576}
+  # Identity (the API is its own token issuer).
+  BELUNO_AUTH_ISSUER: ${BELUNO_AUTH_ISSUER:-beluno}
+  BELUNO_AUTH_AUDIENCE: ${BELUNO_AUTH_AUDIENCE:-beluno-api}
+  BELUNO_AUTH_SIGNING_KEYS: ${BELUNO_AUTH_SIGNING_KEYS:?generate with scripts/generate_signing_key.py}
+  BELUNO_TOKEN_HASH_KEY: ${BELUNO_TOKEN_HASH_KEY:?generate with scripts/generate_signing_key.py --with-token-hash-key}
+  BELUNO_AUTH_GOOGLE_CLIENT_IDS: ${BELUNO_AUTH_GOOGLE_CLIENT_IDS:-[]}
+  BELUNO_AUTH_APPLE_CLIENT_IDS: ${BELUNO_AUTH_APPLE_CLIENT_IDS:-[]}
+  BELUNO_AUTH_MAGIC_LINK_URL: ${BELUNO_AUTH_MAGIC_LINK_URL:-}
+  # Email (console prints sign-in codes to the container log; use smtp for real users).
+  BELUNO_EMAIL_BACKEND: ${BELUNO_EMAIL_BACKEND:-console}
+  BELUNO_EMAIL_FROM: ${BELUNO_EMAIL_FROM:-}
+  BELUNO_SMTP_HOST: ${BELUNO_SMTP_HOST:-}
+  BELUNO_SMTP_PORT: ${BELUNO_SMTP_PORT:-587}
+  BELUNO_SMTP_USERNAME: ${BELUNO_SMTP_USERNAME:-}
+  BELUNO_SMTP_PASSWORD: ${BELUNO_SMTP_PASSWORD:-}
+  BELUNO_SMTP_SECURITY: ${BELUNO_SMTP_SECURITY:-starttls}
+  # Kill switches: reads and recovery stay available while the entrypoint is off.
+  BELUNO_INVITES_ENABLED: ${BELUNO_INVITES_ENABLED:-true}
+  BELUNO_GUEST_ACCESS_ENABLED: ${BELUNO_GUEST_ACCESS_ENABLED:-true}
+  BELUNO_PARTICIPANT_CLAIMS_ENABLED: ${BELUNO_PARTICIPANT_CLAIMS_ENABLED:-true}
+  BELUNO_FINANCE_WRITES_ENABLED: ${BELUNO_FINANCE_WRITES_ENABLED:-true}
+  BELUNO_SYNC_PUSH_ENABLED: ${BELUNO_SYNC_PUSH_ENABLED:-true}
+  BELUNO_SYNC_PULL_ENABLED: ${BELUNO_SYNC_PULL_ENABLED:-true}
+  BELUNO_SYNC_DISABLED_COMMANDS: ${BELUNO_SYNC_DISABLED_COMMANDS:-[]}
+  # Sync kernel: retention must cover the offline window.
+  BELUNO_SYNC_OFFLINE_WINDOW_DAYS: ${BELUNO_SYNC_OFFLINE_WINDOW_DAYS:-90}
+  BELUNO_SYNC_CHANGE_RETENTION_DAYS: ${BELUNO_SYNC_CHANGE_RETENTION_DAYS:-180}
+  BELUNO_SYNC_OPERATION_RETENTION_DAYS: ${BELUNO_SYNC_OPERATION_RETENTION_DAYS:-180}
+  BELUNO_SYNC_PUSH_MAX_OPERATIONS: ${BELUNO_SYNC_PUSH_MAX_OPERATIONS:-100}
+  BELUNO_SYNC_PUSH_MAX_BYTES: ${BELUNO_SYNC_PUSH_MAX_BYTES:-1048576}
+  BELUNO_SYNC_PULL_PAGE_SIZE: ${BELUNO_SYNC_PULL_PAGE_SIZE:-200}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-beluno}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set the PostgreSQL superuser password}
+      BELUNO_MIGRATOR_DB_PASSWORD: ${BELUNO_MIGRATOR_DB_PASSWORD:?set the migrator role password}
+      BELUNO_API_DB_PASSWORD: ${BELUNO_API_DB_PASSWORD:?set the api role password}
+      BELUNO_WORKER_DB_PASSWORD: ${BELUNO_WORKER_DB_PASSWORD:?set the worker role password}
+      BELUNO_SCHEDULER_DB_PASSWORD: ${BELUNO_SCHEDULER_DB_PASSWORD:?set the scheduler role password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Runs once, on an empty data directory only.
+      - ./postgres/init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    healthcheck:
+      # -h 127.0.0.1 skips the init-time server that listens on the socket only.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # One-shot: Alembic migrations, then the job-queue schema and grants, both under
+  # the migrator role. Safe to re-run; api and worker wait for it to succeed.
+  migrate:
+    <<: [*beluno-image, *beluno-hardening]
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: ["python", "scripts/bootstrap_database.py"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    environment:
+      <<: *beluno-base-environment
+      BELUNO_PROCESS_ROLE: migrate
+      BELUNO_MIGRATION_DATABASE_URL: postgresql+psycopg://migrator:${BELUNO_MIGRATOR_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-beluno}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: [*beluno-image, *beluno-hardening]
+    restart: unless-stopped
+    # The image's HEALTHCHECK (GET /health/live) applies. The default command runs uvicorn.
+    environment:
+      <<: *beluno-app-environment
+      BELUNO_PROCESS_ROLE: api
+      BELUNO_API_DATABASE_URL: postgresql+psycopg://api_runtime:${BELUNO_API_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-beluno}
+      # Trusted proxy addresses for X-Forwarded-For. Abuse limits key on the client
+      # address, so list only the reverse proxy (never "*" on a reachable port).
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+    ports:
+      - "${BELUNO_PUBLISH_ADDRESS:-127.0.0.1}:${BELUNO_API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: [*beluno-image, *beluno-hardening]
+    command: ["python", "-m", "beluno.worker.main"]
+    restart: unless-stopped
+    # Lets an in-flight job finish before the container is killed.
+    stop_grace_period: 30s
+    healthcheck:
+      disable: true
+    environment:
+      <<: *beluno-app-environment
+      BELUNO_PROCESS_ROLE: worker
+      BELUNO_WORKER_DATABASE_URL: postgresql+psycopg://worker_runtime:${BELUNO_WORKER_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-beluno}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # One-shot, not a daemon: it defers the heartbeat job and exits. Periodic jobs
+  # (retention, reconciliation, queue health, ...) are scheduled by the worker itself.
+  # Not started by default; run it as a queue smoke test:
+  #   docker compose -f deploy/staging/compose.yaml run --rm scheduler
+  scheduler:
+    <<: [*beluno-image, *beluno-hardening]
+    profiles: ["scheduler"]
+    command: ["python", "-m", "beluno.scheduler.main"]
+    restart: "no"
+    healthcheck:
+      disable: true
+    environment:
+      <<: *beluno-base-environment
+      BELUNO_PROCESS_ROLE: scheduler
+      BELUNO_SCHEDULER_DATABASE_URL: postgresql+psycopg://scheduler_runtime:${BELUNO_SCHEDULER_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-beluno}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.162.0
+    restart: unless-stopped
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    # OTLP gRPC (4317) and the prometheus exporter (8889) stay on the internal network.
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${BELUNO_PUBLISH_ADDRESS:-127.0.0.1}:9090:9090"
+    depends_on:
+      - otel-collector
+      - alertmanager
+
+  alertmanager:
+    image: prom/alertmanager:v0.29.0
+    restart: unless-stopped
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "${BELUNO_PUBLISH_ADDRESS:-127.0.0.1}:9093:9093"
+
+  grafana:
+    image: grafana/grafana:12.4.12
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set the Grafana admin password}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "${BELUNO_PUBLISH_ADDRESS:-127.0.0.1}:3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

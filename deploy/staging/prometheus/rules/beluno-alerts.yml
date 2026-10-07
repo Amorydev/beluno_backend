@@ -1,0 +1,150 @@
+# Alert rules for the Beluno backend.
+#
+# Metric names follow the OpenTelemetry Collector prometheus exporter: dots become
+# underscores, the unit is appended (ms -> _milliseconds), counters end in _total,
+# histograms expose _bucket/_sum/_count. Resource attributes are copied to labels
+# (service_name, ...) by resource_to_telemetry_conversion.
+#
+# Histograms use the SDK default buckets (..., 100, 250, 500, 750, 1000, ... ms), so
+# a quantile near 300 ms is interpolated inside the 250-500 ms bucket. The latency
+# alerts are therefore early indicators; confirm exact values in the load tests.
+
+groups:
+  - name: beluno-finance
+    rules:
+      - alert: LedgerDrift
+        # A reconciliation finding is always an incident (ledgers are append-only and
+        # must recompute exactly). The counter series only appears with the first
+        # finding, and increase() cannot see a series' first sample, so the second
+        # branch catches a series that was absent 15 minutes ago.
+        expr: |
+          (sum by (problem) (increase(beluno_finance_ledger_drift_total[15m])) > 0)
+          or
+          (sum by (problem) (beluno_finance_ledger_drift_total)
+            unless sum by (problem) (beluno_finance_ledger_drift_total offset 15m))
+        # Reconciliation runs once a day; keep the alert open long enough to be seen.
+        keep_firing_for: 6h
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ledger drift detected ({{ $labels.problem }})"
+          description: >-
+            Reconciliation found a ledger that does not match its postings.
+            Stop financial writes if needed (BELUNO_FINANCE_WRITES_ENABLED=false)
+            and follow docs/runbooks/finance-operations.md.
+
+      - alert: LedgerLockWaitHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(beluno_finance_ledger_lock_wait_milliseconds_bucket[5m]))
+          ) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ledger lock wait p95 above 1s"
+          description: >-
+            Finance commands wait more than a second for a plan's ledger head.
+            A hot plan or a stuck transaction is likely; check pg_locks and the
+            command retry counter.
+
+  - name: beluno-jobs
+    rules:
+      - alert: JobQueueOldestWaitingHigh
+        # Gauge refreshed by the worker every five minutes; max because every
+        # worker reports the same database-wide figure.
+        expr: max(beluno_jobs_queue{measure="oldest_waiting_seconds"}) > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Oldest queued job has waited over 5 minutes"
+          description: "Workers are down, saturated, or blocked. Check the worker container and scripts/jobs.py health."
+
+      - alert: JobsFailed
+        # Procrastinate keeps jobs that exhausted their retries as status failed
+        # (the dead-letter queue).
+        expr: max(beluno_jobs_queue{measure="failed"}) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dead-letter jobs present"
+          description: "Inspect with scripts/jobs.py list --status failed, fix the cause, then replay."
+
+  - name: beluno-api
+    rules:
+      - alert: HighServerErrorRatio
+        expr: |
+          sum(rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[10m]))
+          /
+          sum(rate(http_server_duration_milliseconds_count[10m]))
+          > 0.005
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP 5xx ratio above 0.5% for 10 minutes"
+          description: "Compare with the previous release and consider rolling back (docs/runbooks/deploy-rollback.md)."
+
+      - alert: QuickExpenseLatencyAboveTarget
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(beluno_command_duration_milliseconds_bucket{command="expense.create"}[10m]))
+          ) > 300
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "expense.create p95 above 300 ms"
+          description: "Quick expense creation is slower than its latency target."
+
+      - alert: SettleUpLatencyAboveTarget
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(beluno_command_duration_milliseconds_bucket{command="settlement.record"}[10m]))
+          ) > 300
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "settlement.record p95 above 300 ms"
+          description: "Settling up is slower than its latency target."
+
+      - alert: SyncPullLatencyAboveTarget
+        # Pull is not a catalog command, so it is measured from the HTTP server
+        # histogram. http_target carries the route template, not the raw path.
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_duration_milliseconds_bucket{http_method="POST", http_target="/v1/sync/pull"}[10m]))
+          ) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "POST /v1/sync/pull p95 above 1 s"
+          description: "Sync pull is slower than its latency target."
+
+  # Alerts about the monitoring path itself: without them a dead worker or
+  # collector would silence every alert above.
+  - name: beluno-monitoring
+    rules:
+      - alert: CollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus cannot scrape the OpenTelemetry Collector"
+          description: "No Beluno metric is being collected."
+
+      - alert: WorkerQueueMetricsMissing
+        # The queue gauge is reported by the worker; the collector drops series
+        # that stop updating, so a dead worker shows up as absence.
+        expr: absent(beluno_jobs_queue)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No job queue metrics received"
+          description: "The worker is not running or not exporting telemetry; queue and drift alerts cannot fire."

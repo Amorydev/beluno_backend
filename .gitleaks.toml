@@ -1,0 +1,23 @@
+title = "Beluno gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# Each entry names one reviewed false positive of the generic-api-key rule and matches
+# the exact flagged text in the exact file, so a real secret anywhere else still fails.
+
+[[allowlists]]
+description = "Elliptic-curve type check in the signing-key loader (code, not a key)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^src/beluno/auth\.py$''']
+regexTarget = "secret"
+regexes = ['''^ec\.SECP256R1$''']
+
+[[allowlists]]
+description = "Column list in the identity phase notes (prose, not a key)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^plans/261005-2356-beluno-backend-plan/phase-03-identity-groups-plans\.md$''']
+regexTarget = "secret"
+regexes = ['''^join/leave/responded$''']

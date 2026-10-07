@@ -1,0 +1,32 @@
+# Keep the build context to what the image needs: pyproject.toml, uv.lock,
+# README.md, alembic.ini, src/, alembic/, sql/, and scripts/.
+
+.git
+.github
+.claude
+.kilo
+
+# Local environments, caches, and secrets never enter the build context.
+.venv
+.env
+.env.*
+!.env.example
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.hypothesis
+.coverage
+coverage.xml
+htmlcov
+
+# Not needed at run time.
+tests
+plans
+docs
+openapi
+deploy
+docker-compose.test.yml
+Dockerfile
+.dockerignore

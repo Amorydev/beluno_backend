@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - name: beluno
+    type: file
+    # Dashboards live in the repository; edits in the UI are not persisted.
+    allowUiUpdates: false
+    disableDeletion: true
+    options:
+      path: /var/lib/grafana/dashboards

@@ -5,7 +5,7 @@ import secrets
 import pytest
 from pydantic import ValidationError
 
-from beluno.config import EmailBackend, Environment, Settings, SmtpSecurity
+from beluno.config import EmailBackend, Environment, ProcessRole, Settings, SmtpSecurity
 from beluno.testkit.environment import generate_signing_keys_json
 
 
@@ -70,3 +70,20 @@ def test_sync_retention_and_page_size_are_bounded() -> None:
             _env_file=None, sync_offline_window_days=90, sync_change_retention_days=30
         ).assert_retention_requirements()
     Settings(_env_file=None, sync_pull_page_size=500).assert_retention_requirements()  # type: ignore[call-arg]
+
+
+def test_each_process_needs_only_its_own_database_url() -> None:
+    names = {
+        ProcessRole.API: "api_database_url",
+        ProcessRole.WORKER: "worker_database_url",
+        ProcessRole.SCHEDULER: "scheduler_database_url",
+        ProcessRole.MIGRATE: "migration_database_url",
+    }
+    others = dict.fromkeys(names.values())
+    for role, own in names.items():
+        alone = {**others, own: "postgresql+psycopg://a:b@db/beluno?sslmode=require"}
+        secure_settings(process_role=role, **alone).assert_runtime_requirements()
+        with pytest.raises(RuntimeError, match="DATABASE_URL"):
+            secure_settings(process_role=role, **others).assert_runtime_requirements()
+    with pytest.raises(RuntimeError, match="BELUNO_MIGRATION_DATABASE_URL"):
+        secure_settings(migration_database_url=None).assert_runtime_requirements()

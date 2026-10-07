@@ -31,6 +31,16 @@ class SmtpSecurity(StrEnum):
     NONE = "none"
 
 
+class ProcessRole(StrEnum):
+    """Which process this is; in staging/production each needs only its own database URL."""
+
+    ALL = "all"
+    API = "api"
+    WORKER = "worker"
+    SCHEDULER = "scheduler"
+    MIGRATE = "migrate"
+
+
 SECURE_ENVIRONMENTS = frozenset({Environment.STAGING, Environment.PRODUCTION})
 TLS_SSL_MODES = frozenset({"require", "verify-ca", "verify-full"})
 MIN_TOKEN_HASH_KEY_LENGTH = 32
@@ -46,6 +56,9 @@ class Settings(BaseSettings):
     )
 
     environment: Environment = Environment.DEVELOPMENT
+    # ``all`` (the default) requires every database URL; a deployment that gives each
+    # process only its own credentials names the process here.
+    process_role: ProcessRole = ProcessRole.ALL
     log_level: str = "INFO"
     release: str = "dev"
     api_database_url: SecretStr | None = Field(
@@ -190,12 +203,26 @@ class Settings(BaseSettings):
         if self.environment not in SECURE_ENVIRONMENTS:
             return
 
-        required_dsn_names = {
-            "BELUNO_API_DATABASE_URL": self.api_database_dsn,
-            "BELUNO_WORKER_DATABASE_URL": self._secret_value(self.worker_database_url),
-            "BELUNO_SCHEDULER_DATABASE_URL": self._secret_value(self.scheduler_database_url),
-            "BELUNO_MIGRATION_DATABASE_URL": self._secret_value(self.migration_database_url),
+        dsn_names = {
+            ProcessRole.API: ("BELUNO_API_DATABASE_URL", self.api_database_dsn),
+            ProcessRole.WORKER: (
+                "BELUNO_WORKER_DATABASE_URL",
+                self._secret_value(self.worker_database_url),
+            ),
+            ProcessRole.SCHEDULER: (
+                "BELUNO_SCHEDULER_DATABASE_URL",
+                self._secret_value(self.scheduler_database_url),
+            ),
+            ProcessRole.MIGRATE: (
+                "BELUNO_MIGRATION_DATABASE_URL",
+                self._secret_value(self.migration_database_url),
+            ),
         }
+        required_dsn_names = dict(
+            dsn_names.values()
+            if self.process_role is ProcessRole.ALL
+            else [dsn_names[self.process_role]]
+        )
         missing = [name for name, value in required_dsn_names.items() if value is None]
         if self.auth_signing_keys is None:
             missing.append("BELUNO_AUTH_SIGNING_KEYS")
