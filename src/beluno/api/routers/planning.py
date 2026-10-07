@@ -1,7 +1,8 @@
-"""Trip planning over REST: places, the itinerary, polls, and bookings (trips only).
+"""Trip planning over REST: places, the itinerary, polls, bookings, tasks, and packing
+(trips only).
 
-Every write is also a sync push command; reads here mirror the ``place`` and
-``itinerary_item``, ``poll``, and ``booking`` sync entities.
+Every write is also a sync push command; reads here mirror the ``place``,
+``itinerary_item``, ``poll``, ``booking``, ``task``, and ``packing_item`` sync entities.
 """
 
 from __future__ import annotations
@@ -16,8 +17,10 @@ from beluno.api.http import IdempotencyKey, IfMatch, command_call, finish, finis
 from beluno.api.planning_projection import (
     booking_response,
     item_response,
+    packing_response,
     place_response,
     poll_response,
+    task_response,
 )
 from beluno.api.problems import problem_responses
 from beluno.contracts.planning import (
@@ -30,6 +33,12 @@ from beluno.contracts.planning import (
     ItineraryItemCreateRequest,
     ItineraryItemRequest,
     ItineraryItemResponse,
+    PackedRequest,
+    PackingItemCreateRequest,
+    PackingItemRequest,
+    PackingItemResponse,
+    PackingListResponse,
+    PackingTemplateRequest,
     PlaceCreateRequest,
     PlaceReactionRequest,
     PlaceRequest,
@@ -37,11 +46,15 @@ from beluno.contracts.planning import (
     PollCreateRequest,
     PollOutcomeRequest,
     PollResponse,
+    TaskCreateRequest,
+    TaskRequest,
+    TaskResponse,
+    TaskStatusRequest,
     VoteRequest,
 )
 from beluno.modules.context import open_context
 from beluno.modules.iam import rate_limits
-from beluno.modules.planning import bookings, itinerary, places, polls
+from beluno.modules.planning import bookings, itinerary, packing, places, polls, tasks
 from beluno.sync.commands import EmptyPayload
 
 router = APIRouter(prefix="/v1/plans/{plan_id}", tags=["planning"])
@@ -431,3 +444,203 @@ async def reveal_booking_secrets(
     return BookingSecretsResponse(
         confirmation_code=revealed.confirmation_code, private_notes=revealed.private_notes
     )
+
+
+@router.get("/tasks", response_model=list[TaskResponse], responses=READ_ERRORS)
+async def list_tasks(plan_id: UUID, runtime: RuntimeDep, actor: ActorDep) -> list[TaskResponse]:
+    """Tasks by due date (undated last)."""
+
+    async with open_context(runtime, actor) as ctx:
+        rows = await tasks.list_tasks(ctx, plan_id)
+    return [task_response(row) for row in rows]
+
+
+@router.post(
+    "/tasks",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TaskResponse,
+    responses=WRITE_ERRORS,
+)
+async def create_task(
+    plan_id: UUID,
+    body: TaskCreateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> TaskResponse:
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.TASK_CREATE, call, body))
+
+
+@router.get("/tasks/{task_id}", response_model=TaskResponse, responses=READ_ERRORS)
+async def get_task(
+    plan_id: UUID, task_id: UUID, runtime: RuntimeDep, actor: ActorDep, response: Response
+) -> TaskResponse:
+    async with open_context(runtime, actor) as ctx:
+        task = await tasks.get_task(ctx, plan_id, task_id)
+    set_etag(response, task.version)
+    return task_response(task)
+
+
+@router.put("/tasks/{task_id}", response_model=TaskResponse, responses=WRITE_ERRORS)
+async def update_task(
+    plan_id: UUID,
+    task_id: UUID,
+    body: TaskRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> TaskResponse:
+    """Replace the task (whoever added it, or an organiser)."""
+
+    call = command_call(idempotency_key, if_match=if_match, plan_id=plan_id, task_id=task_id)
+    return finish(response, await runner.run(actor, commands.TASK_UPDATE, call, body))
+
+
+@router.post("/tasks/{task_id}/status", response_model=TaskResponse, responses=WRITE_ERRORS)
+async def set_task_status(
+    plan_id: UUID,
+    task_id: UUID,
+    body: TaskStatusRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> TaskResponse:
+    """Move the task along (its assignee, whoever added it, or an organiser)."""
+
+    call = command_call(idempotency_key, plan_id=plan_id, task_id=task_id)
+    return finish(response, await runner.run(actor, commands.TASK_SET_STATUS, call, body))
+
+
+@router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT, responses=WRITE_ERRORS)
+async def delete_task(
+    plan_id: UUID,
+    task_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    idempotency_key: IdempotencyKey = None,
+) -> Response:
+    call = command_call(idempotency_key, plan_id=plan_id, task_id=task_id)
+    return finish_empty(await runner.run(actor, commands.TASK_DELETE, call, EmptyPayload()))
+
+
+@router.get("/packing", response_model=list[PackingItemResponse], responses=READ_ERRORS)
+async def list_packing(
+    plan_id: UUID, runtime: RuntimeDep, actor: ActorDep
+) -> list[PackingItemResponse]:
+    """The shared list and your own private items; nobody sees another's private list."""
+
+    async with open_context(runtime, actor) as ctx:
+        rows = await packing.list_items(ctx, plan_id)
+    return [packing_response(row) for row in rows]
+
+
+@router.post(
+    "/packing",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PackingItemResponse,
+    responses=WRITE_ERRORS,
+)
+async def create_packing_item(
+    plan_id: UUID,
+    body: PackingItemCreateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> PackingItemResponse:
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.PACKING_CREATE, call, body))
+
+
+@router.post("/packing/templates", response_model=PackingListResponse, responses=WRITE_ERRORS)
+async def apply_packing_template(
+    plan_id: UUID,
+    body: PackingTemplateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> PackingListResponse:
+    """Add a template's items to the shared list or your own; applying it again adds nothing."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.PACKING_APPLY_TEMPLATE, call, body))
+
+
+@router.put(
+    "/packing/{packing_item_id}", response_model=PackingItemResponse, responses=WRITE_ERRORS
+)
+async def update_packing_item(
+    plan_id: UUID,
+    packing_item_id: UUID,
+    body: PackingItemRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> PackingItemResponse:
+    """Replace a shared item (whoever added it, or an organiser) or one of your own."""
+
+    call = command_call(
+        idempotency_key, if_match=if_match, plan_id=plan_id, packing_item_id=packing_item_id
+    )
+    return finish(response, await runner.run(actor, commands.PACKING_UPDATE, call, body))
+
+
+@router.post(
+    "/packing/{packing_item_id}/packed",
+    response_model=PackingItemResponse,
+    responses=WRITE_ERRORS,
+)
+async def set_packing_packed(
+    plan_id: UUID,
+    packing_item_id: UUID,
+    body: PackedRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> PackingItemResponse:
+    """Tick or untick: anyone in the trip on the shared list, the owner on a private one."""
+
+    call = command_call(idempotency_key, plan_id=plan_id, packing_item_id=packing_item_id)
+    return finish(response, await runner.run(actor, commands.PACKING_SET_PACKED, call, body))
+
+
+@router.post(
+    "/packing/{packing_item_id}/share",
+    response_model=PackingItemResponse,
+    responses=WRITE_ERRORS,
+)
+async def share_packing_item(
+    plan_id: UUID,
+    packing_item_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> PackingItemResponse:
+    """Move one of your private items to the shared list (never back)."""
+
+    call = command_call(idempotency_key, plan_id=plan_id, packing_item_id=packing_item_id)
+    return finish(response, await runner.run(actor, commands.PACKING_SHARE, call, EmptyPayload()))
+
+
+@router.delete(
+    "/packing/{packing_item_id}", status_code=status.HTTP_204_NO_CONTENT, responses=WRITE_ERRORS
+)
+async def delete_packing_item(
+    plan_id: UUID,
+    packing_item_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    idempotency_key: IdempotencyKey = None,
+) -> Response:
+    call = command_call(idempotency_key, plan_id=plan_id, packing_item_id=packing_item_id)
+    return finish_empty(await runner.run(actor, commands.PACKING_DELETE, call, EmptyPayload()))

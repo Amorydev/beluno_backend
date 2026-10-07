@@ -5,7 +5,8 @@
 * Claim into an existing account: each row is relinked to the account. When the
   account already participates in that plan, the guest row is merged into the
   account's row (``merged_into_participant_id``) only after explicit consent;
-  participant IDs and every historical reference stay unchanged.
+  participant IDs and every historical reference stay unchanged. Private packing
+  items move to the account.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from beluno.contracts.errors import conflict
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.merges import lock_plan_for_merge, transfer_merged_balances
+from beluno.modules.planning import packing
 from beluno.modules.plans.changes import bump, guest_linked, record_participant_change
 
 
@@ -105,6 +107,8 @@ async def transfer_guest_participations(
         )
         if row.access_state == AccessState.MERGED.value:
             await transfer_merged_balances(ctx, row.plan_id, row.id)
+    # The guest's private packing lists follow their participation.
+    await packing.transfer_private_items(ctx, guest_user_id, target_user_id)
 
 
 @dataclass(frozen=True)

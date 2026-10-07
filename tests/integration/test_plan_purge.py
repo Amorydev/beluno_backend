@@ -70,7 +70,7 @@ def rows_left(admin: AdminDatabase, plan_id: str) -> dict[str, int]:
         "SELECT table_schema || '.' || table_name FROM information_schema.columns "
         "WHERE column_name = 'plan_id' "
         "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places', 'decisions', "
-        "'bookings') "
+        "'bookings', 'coordination') "
         "ORDER BY 1"
     )
     counts = {
@@ -169,6 +169,19 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
         headers=owner.headers,
     )
     assert applied.status_code == 200, applied.text
+    for path, body in (
+        ("/tasks", {"title": "Print vouchers", "booking_id": booking.json()["id"]}),
+        ("/packing", {"name": "Earplugs", "visibility": "private"}),
+    ):
+        added = await api.post(trip.path(path), json=body, headers=owner.headers)
+        assert added.status_code == 201, added.text
+    private_item = added.json()["id"]
+    template = await api.post(
+        trip.path("/packing/templates"),
+        json={"template_id": "onsen", "items": [{"name": "Yukata"}]},
+        headers=owner.headers,
+    )
+    assert template.status_code == 200, template.text
     crew = await api.post(
         "/v1/crews", json={"name": "Trip crew", "from_plan_id": trip.plan_id}, headers=owner.headers
     )
@@ -215,6 +228,12 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
         for item in items
         if item["entity_type"] == "plan_access" and item["entity_id"] == trip.plan_id
     } == {(trip.plan_id, "delete")}
+    # So do the private packing items of the plan, kept in their owner's scope.
+    assert {
+        (item["entity_id"], item["operation"])
+        for item in items
+        if item["entity_type"] == "packing_item"
+    } == {(private_item, "delete")}
     assert (crew.json()["id"], "upsert") in {
         (item["entity_id"], item["operation"]) for item in items if item["entity_type"] == "crew"
     }

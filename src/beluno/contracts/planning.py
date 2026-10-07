@@ -400,3 +400,134 @@ class BookingSecretsResponse(BaseModel):
 
     confirmation_code: str | None
     private_notes: str | None
+
+
+TaskStatus = Literal["open", "in_progress", "done"]
+PackingCategory = Literal[
+    "clothes", "toiletries", "documents", "electronics", "gear", "food", "health", "other"
+]
+PackingVisibility = Literal["shared", "private"]
+TemplateId = Annotated[
+    str, StringConstraints(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_.-]*$")
+]
+
+
+class TaskRequest(BaseModel):
+    """A task with one assignee; due on a date, optionally at a local time in a zone.
+
+    ``remind_at`` is recorded as an intent; reminders are delivered with notifications.
+    Link it to an itinerary item or a booking, not both.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Title
+    note: LongText | None = None
+    assignee_participant_id: UUID | None = None
+    due_date: date | None = None
+    due_time: time | None = None
+    due_timezone: TimezoneName | None = None
+    remind_at: datetime | None = None
+    status: TaskStatus | None = Field(
+        default=None, description="Left out: a new task is open, an edit keeps the status"
+    )
+    item_id: UUID | None = None
+    booking_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> TaskRequest:
+        if self.due_time is not None and (
+            self.due_date is None or self.due_timezone is None or self.due_time.tzinfo is not None
+        ):
+            raise ValueError("due_time is a local time on due_date in due_timezone")
+        if self.due_timezone is not None and self.due_time is None:
+            raise ValueError("due_timezone belongs to due_time")
+        if self.item_id is not None and self.booking_id is not None:
+            raise ValueError("link a task to an itinerary item or a booking, not both")
+        if self.remind_at is not None and self.remind_at.tzinfo is None:
+            raise ValueError("remind_at must include a UTC offset")
+        return self
+
+
+class TaskCreateRequest(TaskRequest):
+    id: UUID | None = None
+
+
+class TaskStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: TaskStatus
+
+
+class TaskResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    title: str
+    note: str | None
+    assignee_participant_id: UUID | None
+    due_date: date | None
+    due_time: time | None
+    due_timezone: str | None
+    remind_at: datetime | None
+    status: TaskStatus
+    completed_at: datetime | None
+    completed_by_user_id: UUID | None
+    item_id: UUID | None
+    booking_id: UUID | None
+    created_by_user_id: UUID
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PackingItemRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Title
+    category: PackingCategory = "other"
+    quantity: int = Field(default=1, ge=1, le=99)
+    bringer_participant_id: UUID | None = Field(
+        default=None, description="Who's bringing it (shared items only)"
+    )
+
+
+class PackingItemCreateRequest(PackingItemRequest):
+    id: UUID | None = None
+    visibility: PackingVisibility = "shared"
+
+
+class PackedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    packed: bool
+
+
+class PackingTemplateRequest(BaseModel):
+    """A packing template the app localised; applied once per list (again: no duplicates)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: TemplateId
+    visibility: PackingVisibility = "shared"
+    items: list[PackingItemRequest] = Field(min_length=1, max_length=100)
+
+
+class PackingItemResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    visibility: PackingVisibility
+    owner_user_id: UUID | None
+    name: str
+    category: PackingCategory
+    quantity: int
+    bringer_participant_id: UUID | None
+    packed: bool
+    template_id: str | None
+    created_by_user_id: UUID
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class PackingListResponse(BaseModel):
+    items: list[PackingItemResponse]
