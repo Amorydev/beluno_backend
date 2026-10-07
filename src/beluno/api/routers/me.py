@@ -54,6 +54,25 @@ async def update_profile(
     return finish(response, await runner.run(actor, commands.PROFILE_UPDATE, call, body))
 
 
+@router.delete(
+    "",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=problem_responses(401, 403, 409, 503),
+)
+async def delete_account(
+    runner: RunnerDep, actor: ActorDep, idempotency_key: IdempotencyKey = None
+) -> Response:
+    """Delete your account (needs a recent sign-in).
+
+    You become "Former member" in every plan and money history stays intact.
+    Refused with 409 OWNER_TRANSFER_REQUIRED while you own a plan someone else is
+    still in; plans you own alone are scheduled for deletion.
+    """
+
+    call = command_call(idempotency_key)
+    return finish_empty(await runner.run(actor, commands.PROFILE_DELETE, call, EmptyPayload()))
+
+
 @router.get(
     "/sessions", response_model=list[SessionResponse], responses=problem_responses(401, 503)
 )

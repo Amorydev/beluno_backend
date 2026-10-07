@@ -7,6 +7,7 @@ from typing import Any
 from beluno.api.presenters import profile_response
 from beluno.contracts.errors import not_found
 from beluno.contracts.iam import ProfileUpdateRequest, UserProfileResponse
+from beluno.modules import account_deletion
 from beluno.modules.context import CommandContext
 from beluno.modules.iam import users
 from beluno.modules.iam.sessions import find_session, revoke_session
@@ -39,6 +40,12 @@ async def _revoke_session(ctx: CommandContext, call: CommandCall, body: EmptyPay
     await revoke_session(ctx, target, reason="user_revoked")
 
 
+async def _delete_account(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> None:
+    """Delete the caller's account (recent sign-in); they become "Former member"."""
+
+    await account_deletion.delete_account(ctx)
+
+
 PROFILE_UPDATE = Command(
     name="profile.update",
     payload_model=ProfileUpdateRequest,
@@ -57,4 +64,12 @@ SESSION_REVOKE = Command(
     status=204,
 )
 
-COMMANDS: list[Command[Any, Any]] = [PROFILE_UPDATE, SESSION_REVOKE]
+PROFILE_DELETE = Command(
+    name="profile.delete",
+    payload_model=EmptyPayload,
+    response_model=None,
+    handler=_delete_account,
+    status=204,
+)
+
+COMMANDS: list[Command[Any, Any]] = [PROFILE_UPDATE, SESSION_REVOKE, PROFILE_DELETE]

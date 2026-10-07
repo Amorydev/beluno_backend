@@ -258,6 +258,22 @@ async def update_profile(
     return user
 
 
+async def scrub_profile(ctx: CommandContext, user: User, *, display_name: str, status: str) -> None:
+    """Remove everything personal from a deleted account; the ID stays for history."""
+
+    user.display_name = display_name
+    user.email = None
+    user.email_verified_at = None
+    user.locale = None
+    user.timezone = None
+    user.default_currency = None
+    user.status = status
+    user.version += 1
+    user.updated_at = ctx.now
+    await ctx.session.flush()
+    await _record_user_change(ctx, user, "user.deleted")
+
+
 async def _record_user_change(
     ctx: CommandContext,
     user: User,

@@ -14,12 +14,23 @@ Forward action:
   actor and requires that actor to have a participant row in the plan (people
   who just left included) or to own the user scope. ``activity.purge_events`` (worker) removes rows past the
   change-log retention.
+* Account deletion: ``iam.users.status`` gains ``deleted`` and sessions gain the
+  revoke reason ``account_deleted``. The SECURITY
+  DEFINER gate ``people.forget_member`` removes the acting user from other
+  people's crews (a crew left with nobody is tombstoned, so a deleted crew may
+  hold no members) and returns the crews it changed so their owners get change
+  rows. ``iam.forget_actor_credentials`` deletes the acting user's identities
+  and pending email challenges (the API has no DELETE grant on them).
 
-Lock/scan risk: new objects only.
+Lock/scan risk: new objects, plus brief ACCESS EXCLUSIVE locks on ``iam.users``,
+``iam.sessions``, and ``people.crews`` to replace one check constraint each
+(one scan each).
 
 Validation:
     SELECT relrowsecurity FROM pg_class WHERE oid = 'activity.events'::regclass;  -- t
     SELECT has_table_privilege('api_runtime', 'activity.events', 'INSERT');       -- f
+    SELECT pg_get_constraintdef(oid) FROM pg_constraint
+    WHERE conname = 'users_status_check';                                         -- has 'deleted'
 
 Compatibility: additive.
 
@@ -138,9 +149,82 @@ GRANT EXECUTE ON FUNCTION activity.append_events(jsonb) TO api_runtime;
 GRANT EXECUTE ON FUNCTION activity.purge_events(timestamptz, integer) TO worker_runtime;
 """
 
+DELETION_SQL = """
+ALTER TABLE iam.users
+    DROP CONSTRAINT users_status_check,
+    ADD CONSTRAINT users_status_check CHECK (status IN ('active', 'disabled', 'deleted'));
+ALTER TABLE iam.sessions
+    DROP CONSTRAINT sessions_revoked_reason_check,
+    ADD CONSTRAINT sessions_revoked_reason_check CHECK (
+        revoked_reason IN (
+            'logout', 'user_revoked', 'refresh_reuse', 'account_merged', 'account_deleted'
+        )
+    );
+
+ALTER TABLE people.crews
+    DROP CONSTRAINT crews_member_user_ids_check,
+    ADD CONSTRAINT crews_member_user_ids_check CHECK (
+        cardinality(member_user_ids) <= 50
+        AND array_position(member_user_ids, NULL) IS NULL
+        AND (cardinality(member_user_ids) >= 1 OR deleted_at IS NOT NULL)
+    );
+
+-- The acting user leaves every other person's crew (only their own ID is ever
+-- removed). Returns each changed crew with its new version, and whether it was
+-- tombstoned because nobody was left in it.
+CREATE FUNCTION people.forget_member()
+    RETURNS TABLE (crew_id uuid, owner_user_id uuid, version integer, removed boolean)
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+#variable_conflict use_column
+DECLARE
+    actor uuid := iam.actor_id();
+BEGIN
+    IF actor IS NULL THEN
+        RAISE EXCEPTION 'an actor is required' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN QUERY
+        UPDATE people.crews AS c
+        SET member_user_ids = array_remove(c.member_user_ids, actor),
+            deleted_at = CASE
+                WHEN cardinality(array_remove(c.member_user_ids, actor)) = 0
+                THEN transaction_timestamp() ELSE c.deleted_at END,
+            version = c.version + 1,
+            updated_at = transaction_timestamp()
+        WHERE actor = ANY (c.member_user_ids)
+          AND c.owner_user_id <> actor
+          AND c.deleted_at IS NULL
+        RETURNING c.id, c.owner_user_id, c.version, c.deleted_at IS NOT NULL;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION people.forget_member() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION people.forget_member() TO api_runtime;
+
+-- The acting user's sign-in identities and pending email challenges go; the API
+-- holds no DELETE grant on these tables, and this gate touches only the actor's.
+CREATE FUNCTION iam.forget_actor_credentials() RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    actor uuid := iam.actor_id();
+    actor_email text;
+BEGIN
+    IF actor IS NULL THEN
+        RAISE EXCEPTION 'an actor is required' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    SELECT email INTO actor_email FROM iam.users WHERE id = actor;
+    DELETE FROM iam.user_identities WHERE user_id = actor;
+    IF actor_email IS NOT NULL THEN
+        DELETE FROM iam.email_challenges WHERE email = actor_email;
+    END IF;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION iam.forget_actor_credentials() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION iam.forget_actor_credentials() TO api_runtime;
+"""
+
 
 def upgrade() -> None:
     op.execute(ACTIVITY_SQL)
+    op.execute(DELETION_SQL)
 
 
 def downgrade() -> None:
