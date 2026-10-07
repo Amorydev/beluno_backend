@@ -99,6 +99,8 @@ State narrowing (applies on top of the table):
 - Exports: every active participant (viewers and guests included) exports the
   plan as CSV or JSON, receiving exactly the entity types and rows their sync
   access level gives them, plus their own private packing items.
+- Recap: anyone with `plan.finance.view` (every role) reads it; its share-card
+  fields never include names, balances, booking codes, addresses, or notes.
 - Finance writes (expenses, budgets, fund, adjustments) require `draft`,
   `planning`, `active`, or `settling`; settlements and waivers also accept
   `completed`, because people pay each other back after the plan is over.
