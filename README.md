@@ -83,6 +83,14 @@ can be restored for 30 days (`BELUNO_PLAN_PURGE_AFTER_DAYS`); then it is purged
 with everything it holds.
 See `docs/adr/0009-activity-feed-and-account-deletion.md`.
 
+Exports are free and downloaded at once (nothing is stored): anyone in a plan gets
+`GET /v1/plans/{id}/export?format=csv` (one row per expense, original amount and
+base-currency snapshot; voided ones keep their amounts with `state` = `voided`) or `format=json` (every entity they sync), and
+`GET /v1/me/export` returns the account's own data and every plan it is still in.
+Exports hold exactly what the caller can already sync, so booking secrets, invite
+tokens, and other people's private packing items never appear; each is audited and
+rate-limited.
+
 ## Trip planning
 
 Trips have a plan: saved places (`/v1/plans/{id}/places`, with "want to go"
