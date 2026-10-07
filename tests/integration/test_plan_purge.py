@@ -116,6 +116,10 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
         trip.path("/duplicate"), json={"title": "Same trip again"}, headers=owner.headers
     )
     assert copy.status_code == 201, copy.text
+    crew = await api.post(
+        "/v1/crews", json={"name": "Trip crew", "from_plan_id": trip.plan_id}, headers=owner.headers
+    )
+    assert crew.status_code == 201, crew.text
     neighbour: FinancePlan = await finance_plan(api, identity_provider, admin, members=("Eve",))
     await add_expense(
         api,
@@ -138,12 +142,18 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
         admin.scalar(
             "SELECT count(*) FROM sync_audit.audit_events WHERE plan_id = %s", trip.plan_id
         )
-        == audited
-        > 0
+        == audited + 1
+        > 1
     )
     assert admin.fetch(
         "SELECT duplicated_from_plan_id FROM plans.plans WHERE id = %s", copy.json()["id"]
     ) == [(None,)]
+    assert admin.fetch(
+        "SELECT action FROM sync_audit.audit_events WHERE plan_id = %s AND action = 'plan.purged'",
+        trip.plan_id,
+    ) == [("plan.purged",)]
+    saved = (await api.get(f"/v1/crews/{crew.json()['id']}", headers=owner.headers)).json()
+    assert saved["source_plan_id"] is None
     assert (await api.get(trip.path(), headers=owner.headers)).status_code == 404
     # The owner's devices drop the plan; the neighbouring plan is untouched.
     items, _, _ = await pull_all(api, owner, f"user:{owner.user_id}", cursor)
@@ -152,6 +162,9 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
         for item in items
         if item["entity_type"] == "plan_access" and item["entity_id"] == trip.plan_id
     } == {(trip.plan_id, "delete")}
+    assert (crew.json()["id"], "upsert") in {
+        (item["entity_id"], item["operation"]) for item in items if item["entity_type"] == "crew"
+    }
     assert await ledger_balances(api, neighbour.owner, neighbour) == untouched
     assert admin.fetch("SELECT * FROM finance.reconcile_plan(%s)", neighbour.plan_id) == []
     assert await tasks.purge_deleted_plan_records.func(0) == 0
@@ -204,3 +217,50 @@ async def test_finance_history_stays_append_only_for_runtime_roles(
     assert admin.scalar(
         "SELECT count(*) FROM finance.expense_revisions WHERE plan_id = %s", trip.plan_id
     )
+
+
+async def test_nobody_can_bring_a_purge_forward(
+    api: httpx.AsyncClient,
+    identity_provider: IdentityProviderStub,
+    admin: AdminDatabase,
+    live_settings: Settings,
+) -> None:
+    trip = await finance_plan(api, identity_provider, admin)
+    bea = trip.members["Bea"]
+    admin.execute(
+        "UPDATE plans.plan_participants SET role = 'admin' WHERE id = %s", trip.people["Bea"]
+    )
+    assert live_settings.api_database_dsn is not None
+    dsn = live_settings.api_database_dsn.replace("postgresql+psycopg://", "postgresql://")
+    backdate = (
+        "UPDATE plans.plans SET deletion_scheduled_at = now() - interval '400 days' WHERE id = %s"
+    )
+    schedule_now = "UPDATE plans.plans SET deletion_scheduled_at = now() WHERE id = %s"
+    with psycopg.connect(dsn) as connection:
+        for actor, statement in (
+            (bea.user_id, schedule_now),  # an admin is not the owner
+            (trip.owner.user_id, backdate),  # the owner cannot backdate either
+        ):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege), connection.transaction():
+                connection.execute("SELECT set_config('app.actor_id', %s, true)", (actor,))
+                connection.execute(statement, (trip.plan_id,))
+    await schedule_deletion(api, trip.owner, trip.plan_id, admin, days_ago=0)
+    with (
+        psycopg.connect(dsn) as connection,
+        pytest.raises(psycopg.errors.InsufficientPrivilege),
+        connection.transaction(),
+    ):
+        connection.execute("SELECT set_config('app.actor_id', %s, true)", (trip.owner.user_id,))
+        connection.execute(backdate, (trip.plan_id,))
+
+
+async def test_only_the_purge_gate_deletes_finance_history(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
+) -> None:
+    trip = await finance_plan(api, identity_provider, admin)
+    ann = trip.people["Ann"]
+    await add_expense(api, trip.owner, trip, equal_expense(500, ann, [ann]))
+    # Even a role the write guards do not restrict meets the append-only trigger
+    # unless the purge flag is raised.
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        admin.execute("DELETE FROM finance.expense_revisions WHERE plan_id = %s", trip.plan_id)

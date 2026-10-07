@@ -87,3 +87,26 @@ def test_each_process_needs_only_its_own_database_url() -> None:
             secure_settings(process_role=role, **others).assert_runtime_requirements()
     with pytest.raises(RuntimeError, match="BELUNO_MIGRATION_DATABASE_URL"):
         secure_settings(migration_database_url=None).assert_runtime_requirements()
+
+
+def test_migrations_and_the_scheduler_need_no_keys_or_email() -> None:
+    bare = {
+        "api_database_url": None,
+        "worker_database_url": None,
+        "scheduler_database_url": None,
+        "migration_database_url": None,
+        "auth_signing_keys": None,
+        "token_hash_key": None,
+        "email_backend": EmailBackend.CONSOLE,
+    }
+    url = "postgresql+psycopg://a:b@db/beluno?sslmode=require"
+    secure_settings(
+        process_role=ProcessRole.MIGRATE, **{**bare, "migration_database_url": url}
+    ).assert_runtime_requirements()
+    secure_settings(
+        process_role=ProcessRole.SCHEDULER, **{**bare, "scheduler_database_url": url}
+    ).assert_runtime_requirements()
+    with pytest.raises(RuntimeError, match="BELUNO_AUTH_SIGNING_KEYS"):
+        secure_settings(
+            process_role=ProcessRole.WORKER, **{**bare, "worker_database_url": url}
+        ).assert_runtime_requirements()

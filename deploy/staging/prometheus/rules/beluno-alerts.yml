@@ -5,9 +5,9 @@
 # histograms expose _bucket/_sum/_count. Resource attributes are copied to labels
 # (service_name, ...) by resource_to_telemetry_conversion.
 #
-# Histograms use the SDK default buckets (..., 100, 250, 500, 750, 1000, ... ms), so
-# a quantile near 300 ms is interpolated inside the 250-500 ms bucket. The latency
-# alerts are therefore early indicators; confirm exact values in the load tests.
+# Latency histograms carry bucket bounds at every target (..., 200, 300, 500, 750,
+# 1000, ... ms; see beluno.observability.setup.latency_views), so the p95 alerts
+# compare against a real boundary.
 
 groups:
   - name: beluno-finance

@@ -6,7 +6,9 @@
 # Startup order: postgres (healthy) -> migrate (runs to completion) -> api, worker.
 # Telemetry: api/worker --OTLP--> otel-collector <--scrape-- prometheus -> alertmanager;
 # grafana reads prometheus. Nothing is published beyond localhost unless
-# BELUNO_PUBLISH_ADDRESS says so; put a TLS-terminating reverse proxy in front of the API.
+# BELUNO_PUBLISH_ADDRESS (API) or BELUNO_MONITORING_PUBLISH_ADDRESS (Grafana,
+# Prometheus, Alertmanager; the latter two have no authentication) says so; put a
+# TLS-terminating reverse proxy in front of the API.
 #
 # All secrets come from the .env file next to this file (never committed).
 
@@ -188,7 +190,7 @@ services:
       - ./prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     ports:
-      - "${BELUNO_PUBLISH_ADDRESS:-127.0.0.1}:9090:9090"
+      - "${BELUNO_MONITORING_PUBLISH_ADDRESS:-127.0.0.1}:9090:9090"
     depends_on:
       - otel-collector
       - alertmanager
@@ -200,7 +202,7 @@ services:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
     ports:
-      - "${BELUNO_PUBLISH_ADDRESS:-127.0.0.1}:9093:9093"
+      - "${BELUNO_MONITORING_PUBLISH_ADDRESS:-127.0.0.1}:9093:9093"
 
   grafana:
     image: grafana/grafana:12.4.12
@@ -215,7 +217,7 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
-      - "${BELUNO_PUBLISH_ADDRESS:-127.0.0.1}:3000:3000"
+      - "${BELUNO_MONITORING_PUBLISH_ADDRESS:-127.0.0.1}:3000:3000"
     depends_on:
       - prometheus
 

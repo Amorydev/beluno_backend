@@ -24,11 +24,19 @@ Forward action:
   device labels do not outlive a session by long. The worker holds no grant on
   sessions; cutoffs newer than seven days ago are refused.
 * A deleted crew keeps no name and no members: ``crews_name_check`` allows an
-  empty name on tombstones, and ``people.forget_member`` blanks the name of a
-  crew it empties.
+  empty name on tombstones, ``people.forget_member`` blanks the name of a crew it
+  empties, and crews deleted earlier are cleared now.
+* ``plans.guard_deletion_schedule``: in the guarded runtime only the plan's owner
+  may schedule or cancel its deletion, and a schedule is stamped with the current
+  time (never backdated), so nobody can bring a purge forward.
+* Indexes on ``plan_id`` (and the participant it references) for the finance and
+  feed tables that lacked one, and on ``plans.duplicated_from_plan_id``, so a
+  purge and its foreign-key checks do not scan whole tables.
 
-Lock/scan risk: replaces two functions (no table lock), adds two, and replaces one
-check constraint on ``people.crews`` (brief ACCESS EXCLUSIVE lock, one scan).
+Lock/scan risk: replaces two functions (no table lock), adds three and a trigger,
+replaces one check constraint on ``people.crews`` (brief ACCESS EXCLUSIVE lock, one
+scan), and builds seven indexes without CONCURRENTLY (SHARE locks block writes to
+those tables while they build; acceptable before launch, small tables).
 
 Validation:
     SELECT has_function_privilege('worker_runtime', 'plans.purge_deleted_plan(timestamptz)',
@@ -71,6 +79,7 @@ CREATE FUNCTION plans.purge_deleted_plan(p_cutoff timestamptz) RETURNS uuid
 DECLARE
     target uuid;
     now_at timestamptz := transaction_timestamp();
+    crew_changes jsonb;
 BEGIN
     IF p_cutoff IS NULL OR p_cutoff > now_at - interval '7 days' THEN
         RAISE EXCEPTION 'plans are purged no sooner than seven days after deletion is scheduled'
@@ -140,7 +149,31 @@ BEGIN
     DELETE FROM sync_audit.scope_heads WHERE scope_type = 'plan' AND scope_id = target;
     -- Copies keep their content; only the (unexposed) link to their source goes.
     UPDATE plans.plans SET duplicated_from_plan_id = NULL WHERE duplicated_from_plan_id = target;
+    -- Crews started from the plan forget it, and their owners' devices hear of it.
+    WITH changed AS (
+        UPDATE people.crews
+        SET source_plan_id = NULL, version = version + 1, updated_at = now_at
+        WHERE source_plan_id = target
+        RETURNING id, owner_user_id, version, deleted_at
+    )
+    SELECT coalesce(jsonb_agg(jsonb_build_object(
+               'changed_at', now_at,
+               'scope_type', 'user',
+               'scope_id', owner_user_id,
+               'entity_type', 'crew',
+               'entity_id', id,
+               'entity_version', version,
+               'operation', CASE WHEN deleted_at IS NULL THEN 'upsert' ELSE 'delete' END
+           ) ORDER BY id), '[]'::jsonb)
+    INTO crew_changes
+    FROM changed;
+    PERFORM sync_audit.append_changes(crew_changes);
     DELETE FROM plans.plans WHERE id = target;
+    INSERT INTO sync_audit.audit_events (
+        id, occurred_at, action, entity_type, entity_id, plan_id, metadata
+    ) VALUES (
+        gen_random_uuid(), now_at, 'plan.purged', 'plan', target, target, '{}'::jsonb
+    );
     RETURN target;
 END;
 $$;
@@ -176,6 +209,9 @@ GRANT EXECUTE ON FUNCTION iam.purge_stale_sessions(timestamptz) TO worker_runtim
 """
 
 CREWS_SQL = """
+UPDATE people.crews SET name = '', member_user_ids = '{}'
+WHERE deleted_at IS NOT NULL AND (name <> '' OR cardinality(member_user_ids) > 0);
+
 ALTER TABLE people.crews
     DROP CONSTRAINT crews_name_check,
     ADD CONSTRAINT crews_name_check CHECK (
@@ -212,10 +248,61 @@ $$;
 """
 
 
+SCHEDULE_SQL = """
+CREATE FUNCTION plans.guard_deletion_schedule() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF NOT iam.is_guarded_runtime()
+       OR NEW.deletion_scheduled_at IS NOT DISTINCT FROM OLD.deletion_scheduled_at THEN
+        RETURN NEW;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM plans.plan_participants
+        WHERE plan_id = NEW.id AND user_id = iam.actor_id()
+          AND role = 'owner' AND access_state = 'active'
+    ) THEN
+        RAISE EXCEPTION 'only the owner schedules or cancels deletion'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    -- A schedule starts the restore window now; it is never moved once set.
+    IF NEW.deletion_scheduled_at IS NOT NULL AND (
+        OLD.deletion_scheduled_at IS NOT NULL
+        OR abs(extract(epoch FROM NEW.deletion_scheduled_at - transaction_timestamp())) > 300
+    ) THEN
+        RAISE EXCEPTION 'deletion is scheduled at the current time only'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION plans.guard_deletion_schedule() FROM PUBLIC;
+CREATE TRIGGER plans_deletion_schedule_guard
+    BEFORE UPDATE OF deletion_scheduled_at ON plans.plans
+    FOR EACH ROW EXECUTE FUNCTION plans.guard_deletion_schedule();
+"""
+
+INDEXES_SQL = """
+CREATE INDEX events_plan_idx ON activity.events (plan_id) WHERE plan_id IS NOT NULL;
+CREATE INDEX plans_duplicated_from_idx ON plans.plans (duplicated_from_plan_id)
+    WHERE duplicated_from_plan_id IS NOT NULL;
+CREATE INDEX expense_payers_plan_participant_idx
+    ON finance.expense_payers (plan_id, participant_id);
+CREATE INDEX expense_splits_plan_participant_idx
+    ON finance.expense_splits (plan_id, participant_id);
+CREATE INDEX refund_shares_plan_participant_idx
+    ON finance.refund_shares (plan_id, participant_id);
+CREATE INDEX consolidation_lines_plan_participant_idx
+    ON finance.consolidation_lines (plan_id, participant_id);
+CREATE INDEX consolidation_rates_plan_idx ON finance.consolidation_rates (plan_id);
+"""
+
+
 def upgrade() -> None:
     op.execute(PURGE_SQL)
     op.execute(SESSIONS_SQL)
     op.execute(CREWS_SQL)
+    op.execute(SCHEDULE_SQL)
+    op.execute(INDEXES_SQL)
 
 
 def downgrade() -> None:

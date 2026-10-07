@@ -224,11 +224,17 @@ class Settings(BaseSettings):
             else [dsn_names[self.process_role]]
         )
         missing = [name for name, value in required_dsn_names.items() if value is None]
-        if self.auth_signing_keys is None:
+        # Migrations and the heartbeat scheduler issue no tokens and send no email.
+        serves_people = self.process_role in (
+            ProcessRole.ALL,
+            ProcessRole.API,
+            ProcessRole.WORKER,
+        )
+        if serves_people and self.auth_signing_keys is None:
             missing.append("BELUNO_AUTH_SIGNING_KEYS")
-        if self.token_hash_key is None:
+        if serves_people and self.token_hash_key is None:
             missing.append("BELUNO_TOKEN_HASH_KEY")
-        if self.email_backend is EmailBackend.SMTP:
+        if serves_people and self.email_backend is EmailBackend.SMTP:
             if not self.smtp_host:
                 missing.append("BELUNO_SMTP_HOST")
             if not self.email_from:
@@ -239,9 +245,13 @@ class Settings(BaseSettings):
         for name, dsn in required_dsn_names.items():
             assert dsn is not None
             self._assert_tls_database_url(name, dsn)
-        if self.email_backend is EmailBackend.CONSOLE:
+        if serves_people and self.email_backend is EmailBackend.CONSOLE:
             raise RuntimeError("BELUNO_EMAIL_BACKEND=console is only allowed outside staging")
-        if self.email_backend is EmailBackend.SMTP and self.smtp_security is SmtpSecurity.NONE:
+        if (
+            serves_people
+            and self.email_backend is EmailBackend.SMTP
+            and self.smtp_security is SmtpSecurity.NONE
+        ):
             raise RuntimeError("BELUNO_SMTP_SECURITY must use starttls or tls")
         if self.auth_magic_link_url is not None:
             self._assert_https_url("BELUNO_AUTH_MAGIC_LINK_URL", self.auth_magic_link_url)
