@@ -30,6 +30,7 @@ submitted values.
 | `VOTE_LOCKED` | 409 | The poll does not allow changing a vote once cast |
 | `POLL_NOT_DECIDED` | 409 | Only a closed single-choice poll with a winner (or a tie, with `option_id`) can be acted on |
 | `POLL_RESULT_CHANGED` | 409 | `result_version` does not match the poll's result |
+| `BOOKING_SECRETS_UNREADABLE` | 409 | A booking's sealed secrets cannot be opened (their key left `BELUNO_BOOKING_KEYS`, or the stored value was altered); nothing partial is returned |
 | `OUTCOME_ALREADY_APPLIED` | 409 | This action was already applied to the result with another option |
 | `LEDGER_CHANGED` | 409 | A confirmation named an older `ledger_seq`; review the latest entries and confirm again |
 | `FUND_NOT_EMPTY` | 409 | The kitty still holds money in a currency to consolidate; pay it out first |

@@ -65,6 +65,14 @@ The `decisions` schema holds a trip's polls:
 - **poll_results**: one immutable row written by `decisions.finalize_poll` (outcome `winner`, `tie`, `no_votes`, `passed`, `failed`; counts; eligible and voted). The API (`decisions.close_poll`, creator or organiser) and the worker (`decisions.close_due_poll`, every 5 minutes) both close through it, locking the poll first, so a race yields one result.
 - **poll_outcomes**: one per poll and action (`save_place`, `add_to_plan`), naming the option and the place or item it made. A tie is settled once: every action of the poll uses the option picked first. A free-text winner becomes one place, and its itinerary item points at it.
 
+### Bookings
+
+The `bookings` schema holds a trip's reservations:
+
+- **bookings**: kind (flight, lodging, transport, activity, restaurant, insurance, other), title, provider, start and end (local date, optional time in an IANA zone), optional place, traveler participant IDs (participants of the plan, checked by a guard), status `planned`/`confirmed`/`cancelled`, payment note, free-cancellation deadline, and whether each secret is set. Only the creator or an organiser changes one (a guard enforces it). Tombstoned on delete; items keep pointing at a deleted booking, and an unchanged reference stays valid. Itinerary items may point at one (`booking_id`).
+- **booking_secrets**: the confirmation code and private notes sealed with AES-256-GCM (fresh nonce, associated data binding the row and field) under a key from `BELUNO_BOOKING_KEYS`; rows remember their key so rotation keeps old ones readable. RLS (`bookings.actor_may_reveal`) lets only the travelers (a traveler merged into another participant counts as that participant), the creator, and the plan's owner/admins read or write them. A save that leaves a secret out keeps it (resealed under the active key); null clears it. Deleting a booking clears both.
+- The price is a finance cost commitment (`booking`, `price`): estimated while planned, committed once confirmed, cancelled with the booking unless an expense already paid it (that expense stays).
+
 ## Finance
 
 The `finance` schema holds each plan's ledger (ADR 0003). Amounts are `BIGINT`

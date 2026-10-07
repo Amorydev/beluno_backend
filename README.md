@@ -13,7 +13,7 @@ uv sync --all-groups
 cp .env.example .env
 
 # Generate signing keys and token hash key for local identity (ADR 0007)
-uv run python scripts/generate_signing_key.py --with-token-hash-key >> .env
+uv run python scripts/generate_signing_key.py --with-token-hash-key --with-booking-keys >> .env
 
 # Start a disposable PostgreSQL instance
 docker compose -f docker-compose.test.yml up -d
@@ -92,7 +92,13 @@ with local times, a lead, attendance, and an estimated cost that budgets count
 until an expense pays it), and polls (`/v1/plans/{id}/polls`: single choice or
 yes/no with a quorum, an optional deadline, open votes, one result however it
 closes, and outcome actions that save the winning place or put it on the
-itinerary). Sync carries them as `place`, `itinerary_item`, and `poll`.
+itinerary), and bookings (`/v1/plans/{id}/bookings`: kind, provider, local start
+and end, travelers, price counted once in budgets, payment note, free-cancellation
+deadline). A booking's confirmation code and private notes are sealed at rest
+(AES-GCM, `BELUNO_BOOKING_KEYS`), never listed or synced, and revealed only to its
+travelers, its creator, and organisers through an audited, rate-limited
+`POST .../bookings/{booking_id}/reveal`. Sync carries them as `place`,
+`itinerary_item`, `poll`, and `booking`.
 
 ## Finance
 

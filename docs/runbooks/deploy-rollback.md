@@ -76,6 +76,15 @@ production.
 
 Time each step and record it next to the drill timings.
 
+## Booking keys
+
+`BELUNO_BOOKING_KEYS` (API only) seals booking codes and private notes. To rotate,
+add a new key to the keyring, make it `active`, and redeploy; every booking saved
+afterwards is sealed with it, and old keys must stay until no row uses them
+(`SELECT key_id, count(*) FROM bookings.booking_secrets GROUP BY 1`). Losing a key
+loses those secrets; back the keyring up with the database credentials, never in
+the repository.
+
 ## Kill switches
 
 Flip one in the environment and restart the affected process. Clients keep their
