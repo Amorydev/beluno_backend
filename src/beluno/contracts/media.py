@@ -79,3 +79,18 @@ class SignedUrlResponse(BaseModel):
 
     url: str
     expires_at: datetime
+
+
+class ReceiptArchiveResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    state: Literal["pending", "building", "ready", "failed", "expired"]
+    failure: Literal["too_large", "storage"] | None
+    receipts: int | None = Field(description="Once ready: how many receipts the zip holds")
+    size_bytes: int | None
+    created_at: datetime
+    ready_at: datetime | None
+    expires_at: datetime | None = Field(description="The file is deleted then (a day later)")
+    download_url: str | None = Field(
+        description="While ready: a short-lived link to the zip (receipts plus receipts.csv)"
+    )

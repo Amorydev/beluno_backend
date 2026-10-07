@@ -23,6 +23,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID, ObjectIdentifier
 
+from beluno.db.ids import new_id
 from beluno.stores import (
     GOOGLE,
     PurchaseInvalid,
@@ -30,6 +31,8 @@ from beluno.stores import (
     StoreProduct,
     VerifiedPurchase,
 )
+from beluno.testkit.database import AdminDatabase
+from beluno.testkit.finance import FinancePlan
 
 BUNDLE_ID = "app.beluno.test"
 TRIP_PASS_ID = "beluno.trip_pass"
@@ -208,3 +211,18 @@ class FakeGooglePlay:
 
     async def push_is_authentic(self, authorization: str | None) -> bool:
         return authorization == f"Bearer {PUSH_TOKEN}"
+
+
+def pass_for(admin: AdminDatabase, trip: FinancePlan) -> None:
+    """A Trip Pass on the trip, as the store verification would record it."""
+
+    admin.execute(
+        "INSERT INTO billing.purchases (id, user_id, store, product, product_id, original_id,"
+        " plan_id, environment, purchased_at, created_at, updated_at) VALUES"
+        " (%s, %s, 'apple', 'trip_pass', %s, %s, %s, 'Sandbox', now(), now(), now())",
+        str(new_id()),
+        trip.owner.user_id,
+        TRIP_PASS_ID,
+        str(new_id()),
+        trip.plan_id,
+    )

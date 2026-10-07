@@ -47,3 +47,19 @@ class ObjectDeletion(Base):
 
     object_key: Mapped[str] = mapped_column(Text, primary_key=True)
     requested_at: Mapped[datetime]
+
+
+class ReceiptArchive(Base):
+    __tablename__ = "receipt_archives"
+    __table_args__ = SCHEMA
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    plan_id: Mapped[UUID]
+    requested_by_user_id: Mapped[UUID]
+    state: Mapped[str] = mapped_column(Text)
+    failure: Mapped[str | None] = mapped_column(Text)
+    receipts: Mapped[int | None]
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    created_at: Mapped[datetime]
+    ready_at: Mapped[datetime | None]
+    expires_at: Mapped[datetime | None]

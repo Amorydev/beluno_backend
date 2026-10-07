@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -42,6 +43,10 @@ def incoming_key(media_id: UUID) -> str:
 
 def ready_key(media_id: UUID) -> str:
     return f"media/{media_id}"
+
+
+def archive_key(archive_id: UUID) -> str:
+    return f"archives/{archive_id}.zip"
 
 
 @dataclass(frozen=True)
@@ -148,6 +153,16 @@ class ObjectStorage:
     async def write(self, key: str, data: bytes, content_type: str) -> None:
         def put() -> None:
             self.mover.put_object(Bucket=self.bucket, Key=key, Body=data, ContentType=content_type)
+
+        await anyio.to_thread.run_sync(put)
+
+    async def write_file(self, key: str, path: Path, content_type: str) -> None:
+        """Upload a file from disk (multipart for large ones), never whole in memory."""
+
+        def put() -> None:
+            self.mover.upload_file(
+                str(path), self.bucket, key, ExtraArgs={"ContentType": content_type}
+            )
 
         await anyio.to_thread.run_sync(put)
 

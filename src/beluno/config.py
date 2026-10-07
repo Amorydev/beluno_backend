@@ -122,6 +122,10 @@ class Settings(BaseSettings):
     media_receipt_max_bytes: int = Field(default=15 * 1024 * 1024, ge=1024)
     # Below clamd's default StreamMaxLength (25M): every file is scanned whole.
     media_image_max_bytes: int = Field(default=20 * 1024 * 1024, ge=1024)
+    # The receipts of one archive together; the worker builds it on its own disk.
+    receipt_archive_max_bytes: int = Field(default=2 * 1024**3, ge=1024)
+    # Where the worker writes zips while building them: a disk, not a RAM-backed /tmp.
+    receipt_archive_dir: str | None = None
     # Free limits; unset, nothing is limited. Receipts count per trip without a Trip
     # Pass (hangouts are always free); trips are the person's own trips in progress.
     media_receipts_per_plan: int | None = Field(default=None, ge=1)

@@ -74,3 +74,13 @@ ItemT = TypeVar("ItemT")
 class Page(BaseModel, Generic[ItemT]):
     items: list[ItemT]
     next_cursor: str | None = None
+
+
+# Also the full-width forms some spreadsheets read as the same signs.
+FORMULA_STARTS = frozenset("=+-@\t\r\uff1d\uff0b\uff0d\uff20")
+
+
+def spreadsheet_text(value: str) -> str:
+    """Free text that a spreadsheet would read as a formula is kept as text."""
+
+    return f"'{value}" if value[:1] in FORMULA_STARTS else value

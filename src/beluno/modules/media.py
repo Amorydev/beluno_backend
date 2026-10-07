@@ -161,7 +161,7 @@ async def create_media(
 
 async def upload_url(ctx: CommandContext, plan_id: UUID, media_id: UUID) -> SignedUrl:
     media = await _own_upload(ctx, plan_id, media_id)
-    url = _storage(ctx.runtime).upload_url(
+    url = storage_of(ctx.runtime).upload_url(
         incoming_key(media.id), media.declared_type, media.declared_size
     )
     return SignedUrl(url, ctx.now + UPLOAD_URL_TTL)
@@ -196,7 +196,7 @@ async def download_url(ctx: CommandContext, plan_id: UUID, media_id: UUID) -> Si
     if media.state != READY or media.content_type is None:
         raise invalid_state("the file is not ready")
     extension = EXTENSIONS.get(media.content_type, "bin")
-    url = _storage(ctx.runtime).download_url(
+    url = storage_of(ctx.runtime).download_url(
         ready_key(media.id),
         media.content_type,
         f"{media.kind}-{media.id}.{extension}",
@@ -333,7 +333,7 @@ async def process_media(runtime: Runtime, media_id: UUID) -> str:
         if media is None or media.deleted_at is not None or media.state != SCANNING:
             return media.state if media is not None else "missing"
         kind, declared_size = media.kind, media.declared_size
-    storage = _storage(runtime)
+    storage = storage_of(runtime)
     outcome, cleaned = await _inspect(runtime, storage, media_id, kind, declared_size)
     if cleaned is not None:
         await storage.write(ready_key(media_id), cleaned.data, cleaned.content_type)
@@ -413,7 +413,7 @@ async def delete_queued_objects(runtime: Runtime) -> int:
                 )
             ).scalars()
         )
-    storage = _storage(runtime)
+    storage = storage_of(runtime)
     removed: list[str] = []
     for key in keys:
         try:
@@ -462,7 +462,7 @@ async def _queue(ctx: CommandContext, key: str, due: datetime) -> None:
     await ctx.session.execute(QUEUE_KEY, {"key": key, "due": due})
 
 
-def _storage(runtime: Runtime) -> ObjectStorage:
+def storage_of(runtime: Runtime) -> ObjectStorage:
     try:
         return runtime.storage
     except StorageNotConfigured as error:

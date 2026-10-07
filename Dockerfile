@@ -55,6 +55,9 @@ RUN groupadd --system --gid 10001 beluno \
 # The application tree stays root-owned and read-only to the beluno user.
 COPY --from=builder /app /app
 
+# The worker builds receipt archives here (a volume in deployment; never the RAM /tmp).
+RUN mkdir -p /var/lib/beluno/archives && chown 10001:10001 /var/lib/beluno/archives
+
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1

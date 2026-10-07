@@ -21,6 +21,7 @@ from beluno.modules.media import (
 from beluno.modules.notifications import dispatch as dispatch_notifications
 from beluno.modules.planning.polls import close_due_polls
 from beluno.modules.plans.purge import purge_deleted_plans
+from beluno.modules.receipt_archives import BUILD_TASK, build_archive, fail_stale_archives
 from beluno.modules.sync_audit.maintenance import (
     compact_changes,
     purge_activity,
@@ -198,10 +199,12 @@ async def delete_media_objects(timestamp: int) -> int:
 @app.periodic(cron="37 * * * *", periodic_id="media.sweep")
 @app.task(name="media.sweep", queue="maintenance", retry=3, queueing_lock="media:sweep")
 async def sweep_media_uploads(timestamp: int) -> int:
-    """Hourly: re-queue files stuck scanning; drop uploads abandoned for a week."""
+    """Hourly: re-queue files stuck scanning; drop uploads abandoned for a week; fail
+    receipt archives a crash left unfinished."""
 
     del timestamp
-    return await sweep_media(get_worker_runtime())
+    runtime = get_worker_runtime()
+    return await sweep_media(runtime) + await fail_stale_archives(runtime)
 
 
 @app.periodic(cron="* * * * *", periodic_id="notifications.dispatch")
@@ -231,3 +234,18 @@ async def acknowledge_google_purchase(purchase_id: str, payload_version: int = 1
         raise ValueError(f"Unsupported purchase payload version: {payload_version}")
     runtime = get_worker_runtime()
     return await acknowledge_purchase(runtime, runtime.google_play, UUID(purchase_id))
+
+
+@app.task(
+    name=BUILD_TASK,
+    queue=MEDIA_QUEUE,
+    retry=0,
+    # One build at a time: zips take disk and bandwidth, and the queue serves scans too.
+    lock="media:receipt_archive",
+)
+async def build_receipt_archive(archive_id: str, payload_version: int = 1) -> str:
+    """Pack a plan's receipts into a zip for the person who asked (fails, never retries)."""
+
+    if payload_version != 1:
+        raise ValueError(f"Unsupported archive payload version: {payload_version}")
+    return await build_archive(get_worker_runtime(), UUID(archive_id))
