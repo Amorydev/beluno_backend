@@ -117,6 +117,17 @@ instead. Back up
 the `rustfs-data` volume with the database: a restored database pointing at missing
 objects shows files that cannot be downloaded.
 
+## Push notifications
+
+Set `BELUNO_FCM_SERVICE_ACCOUNT_JSON` (worker only) to a Firebase service account
+JSON with the Cloud Messaging role; without it notifications are recorded and
+marked skipped. The iOS app needs its APNs key uploaded to the Firebase project.
+`notifications.dispatch` runs every minute on the `media` queue, never two at once:
+it fans out the events queued in `engagement.fan_out_queue`, queues reminders, and
+delivers a batch with one `send_each` call (10-second HTTP timeout); FCM outages and
+credential problems back off up to five attempts, then fail; tokens FCM no longer
+accepts are deleted.
+
 ## Kill switches
 
 Flip one in the environment and restart the affected process. Clients keep their

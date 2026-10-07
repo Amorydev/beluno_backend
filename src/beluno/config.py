@@ -123,6 +123,9 @@ class Settings(BaseSettings):
     media_image_max_bytes: int = Field(default=20 * 1024 * 1024, ge=1024)
     # Free-plan receipt limit per plan; unset until paid plans exist.
     media_receipts_per_plan: int | None = Field(default=None, ge=1)
+    # Push: a Firebase service account JSON (FCM HTTP v1 for Android and iOS). Unset,
+    # notifications are recorded but not sent.
+    fcm_service_account_json: SecretStr | None = None
     token_hash_key: SecretStr | None = None
     # Keyring for secrets kept at rest (booking codes and notes); see beluno.secret_box.
     booking_keys: SecretStr | None = None

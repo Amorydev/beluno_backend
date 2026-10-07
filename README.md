@@ -159,6 +159,17 @@ place; anyone on the trip shares them, their uploader or an organiser edits them
 queue their objects, which the worker removes from storage. Configure
 `BELUNO_STORAGE_*` and `BELUNO_CLAMD_HOST` (see `.env.example`).
 
+## Notifications
+
+Push notifications go through Firebase Cloud Messaging (`firebase-admin`; set
+`BELUNO_FCM_SERVICE_ACCOUNT_JSON`, or they are recorded but not sent). Devices
+register their token per session (`PUT /v1/me/push-token`); people choose categories
+and quiet hours (`/v1/me/notification-settings`). The database turns activity
+(expenses and payments that involve you) and reminders (tasks due, polls closing)
+into an outbox the worker delivers every minute. Messages carry localisation keys
+for the app to render, never amounts, codes, or addresses: see
+`docs/contracts/push-notifications.md`.
+
 ## Finance
 
 Each plan has an append-only ledger in minor units (`docs/adr/0003-financial-ledger.md`):
