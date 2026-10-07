@@ -53,6 +53,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_prefix="BELUNO_",
         extra="ignore",
+        # Validation errors must not echo secrets (keys, keyrings, URLs) into logs.
+        hide_input_in_errors=True,
     )
 
     environment: Environment = Environment.DEVELOPMENT
@@ -99,6 +101,8 @@ class Settings(BaseSettings):
     auth_apple_client_ids: list[str] = Field(default_factory=list)
     auth_magic_link_url: str | None = None
     token_hash_key: SecretStr | None = None
+    # Keyring for secrets kept at rest (booking codes and notes); see beluno.secret_box.
+    booking_keys: SecretStr | None = None
 
     email_backend: EmailBackend = EmailBackend.CONSOLE
     email_from: str | None = None
@@ -150,6 +154,7 @@ class Settings(BaseSettings):
     @field_validator(
         "auth_signing_keys",
         "token_hash_key",
+        "booking_keys",
         "smtp_password",
         "sentry_dsn",
         "auth_magic_link_url",
@@ -169,6 +174,15 @@ class Settings(BaseSettings):
     def validate_token_hash_key(cls, value: SecretStr | None) -> SecretStr | None:
         if value is not None and len(value.get_secret_value()) < MIN_TOKEN_HASH_KEY_LENGTH:
             raise ValueError("token hash key must contain at least 32 characters")
+        return value
+
+    @field_validator("booking_keys")
+    @classmethod
+    def validate_booking_keys(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None:
+            from beluno.secret_box import SecretBox
+
+            SecretBox.from_json(value.get_secret_value())
         return value
 
     @property
@@ -234,6 +248,8 @@ class Settings(BaseSettings):
             missing.append("BELUNO_AUTH_SIGNING_KEYS")
         if serves_people and self.token_hash_key is None:
             missing.append("BELUNO_TOKEN_HASH_KEY")
+        if self.process_role in (ProcessRole.ALL, ProcessRole.API) and self.booking_keys is None:
+            missing.append("BELUNO_BOOKING_KEYS")
         if serves_people and self.email_backend is EmailBackend.SMTP:
             if not self.smtp_host:
                 missing.append("BELUNO_SMTP_HOST")

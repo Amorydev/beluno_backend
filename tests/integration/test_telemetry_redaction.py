@@ -25,6 +25,7 @@ pytestmark = pytest.mark.integration
 EMAIL = "linh.private@example.com"
 DESCRIPTION = "Dinner at Linh's flat, 12 Hang Bac"
 NOTES = "card ending 4471"
+BOOKING_CODE = "PNR-ZX81QK"
 
 
 async def test_spans_and_logs_hold_no_secrets_or_personal_text(
@@ -72,6 +73,20 @@ async def test_spans_and_logs_hold_no_secrets_or_personal_text(
             headers=linh.headers,
         )
         assert added.status_code == 201, added.text
+        booked = await api.post(
+            f"/v1/plans/{plan['id']}/bookings",
+            json={
+                "kind": "flight",
+                "title": "VN 301",
+                "secrets": {"confirmation_code": BOOKING_CODE},
+            },
+            headers=linh.headers,
+        )
+        assert booked.status_code == 201, booked.text
+        revealed = await api.post(
+            f"/v1/plans/{plan['id']}/bookings/{booked.json()['id']}/reveal", headers=linh.headers
+        )
+        assert revealed.json()["confirmation_code"] == BOOKING_CODE
         # Security events: an unknown invite link and a replayed refresh token.
         await api.post("/v1/invites/redeem", json={"token": "x" * 43}, headers=linh.headers)
         rotated = await api.post("/v1/auth/refresh", json={"refresh_token": linh.refresh_token})
@@ -102,6 +117,7 @@ async def test_spans_and_logs_hold_no_secrets_or_personal_text(
         EMAIL,
         DESCRIPTION,
         NOTES,
+        BOOKING_CODE,
         "Secretname",
     ]
     for secret in secrets:

@@ -1,6 +1,7 @@
 """Trip planning as REST responses and plan-scope sync entities.
 
-``place``, ``itinerary_item``, and ``poll``.
+``place``, ``booking``, ``itinerary_item``, and ``poll``. Bookings never carry
+their secrets, only whether each is set.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from sqlalchemy import select
 
 from beluno.contracts.planning import (
     AttendanceResponse,
+    BookingResponse,
     ItineraryItemResponse,
     PlaceResponse,
     PollOptionResponse,
@@ -19,16 +21,18 @@ from beluno.contracts.planning import (
     PollResponse,
     PollResultResponse,
 )
+from beluno.db.models.bookings import Booking
 from beluno.db.models.decisions import Poll
 from beluno.db.models.schedule_places import ItineraryItem, Place
 from beluno.modules.context import CommandContext
+from beluno.modules.planning.bookings import BookingView, booking_views
 from beluno.modules.planning.itinerary import ItemView, item_views
 from beluno.modules.planning.places import PlaceView, place_views
 from beluno.modules.planning.polls import PollView, poll_views
 from beluno.sync.pull import SnapshotRow
 from beluno.sync.scopes import AccessLevel, ScopeKey
 
-PLANNING_TYPES = ("place", "itinerary_item", "poll")
+PLANNING_TYPES = ("place", "booking", "itinerary_item", "poll")
 
 
 def place_response(view: PlaceView) -> PlaceResponse:
@@ -66,6 +70,7 @@ def item_response(view: ItemView) -> ItineraryItemResponse:
         note=entry.note,
         place_id=entry.place_id,
         lead_participant_id=entry.lead_participant_id,
+        booking_id=entry.booking_id,
         status=entry.status,  # type: ignore[arg-type]
         order_key=entry.order_key,
         attendance=[
@@ -77,6 +82,35 @@ def item_response(view: ItemView) -> ItineraryItemResponse:
         version=entry.version,
         created_at=entry.created_at,
         updated_at=entry.updated_at,
+    )
+
+
+def booking_response(view: BookingView) -> BookingResponse:
+    booking = view.booking
+    return BookingResponse(
+        id=booking.id,
+        plan_id=booking.plan_id,
+        kind=booking.kind,  # type: ignore[arg-type]
+        title=booking.title,
+        provider=booking.provider,
+        start_date=booking.start_date,
+        start_time=booking.start_time,
+        start_timezone=booking.start_timezone,
+        end_date=booking.end_date,
+        end_time=booking.end_time,
+        end_timezone=booking.end_timezone,
+        place_id=booking.place_id,
+        traveler_ids=list(booking.traveler_ids),
+        status=booking.status,  # type: ignore[arg-type]
+        payment_note=booking.payment_note,  # type: ignore[arg-type]
+        free_cancellation_until=booking.free_cancellation_until,
+        has_confirmation_code=booking.has_confirmation_code,
+        has_private_notes=booking.has_private_notes,
+        commitment_id=view.commitment_id,
+        created_by_user_id=booking.created_by_user_id,
+        version=booking.version,
+        created_at=booking.created_at,
+        updated_at=booking.updated_at,
     )
 
 
@@ -143,6 +177,8 @@ async def present_planning_current(ctx: CommandContext, entity: object) -> BaseM
         return item_response((await item_views(ctx, [entity]))[0])
     if isinstance(entity, Poll):
         return poll_response((await poll_views(ctx, [entity]))[0])
+    if isinstance(entity, Booking):
+        return booking_response((await booking_views(ctx, [entity]))[0])
     return None
 
 
@@ -213,4 +249,28 @@ async def page_polls(
     return [
         SnapshotRow(view.poll.id, view.poll.version, poll_response(view))
         for view in await poll_views(ctx, rows)
+    ]
+
+
+async def load_booking(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID
+) -> BaseModel | None:
+    booking = await ctx.session.get(Booking, id)
+    if booking is None or booking.plan_id != scope.scope_id or booking.deleted_at is not None:
+        return None
+    return booking_response((await booking_views(ctx, [booking]))[0])
+
+
+async def page_bookings(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(Booking).where(
+        Booking.plan_id == scope.scope_id, Booking.deleted_at.is_(None)
+    )
+    if after is not None:
+        statement = statement.where(Booking.id > after)
+    rows = list((await ctx.session.execute(statement.order_by(Booking.id).limit(limit))).scalars())
+    return [
+        SnapshotRow(view.booking.id, view.booking.version, booking_response(view))
+        for view in await booking_views(ctx, rows)
     ]

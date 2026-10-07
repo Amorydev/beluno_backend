@@ -64,6 +64,7 @@ class ItineraryItem(Base):
     note: Mapped[str | None] = mapped_column(Text)
     place_id: Mapped[UUID | None]
     lead_participant_id: Mapped[UUID | None]
+    booking_id: Mapped[UUID | None]
     status: Mapped[str] = mapped_column(Text)
     order_key: Mapped[str] = mapped_column(Text)
     created_by_user_id: Mapped[UUID]

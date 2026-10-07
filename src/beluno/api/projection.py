@@ -220,6 +220,7 @@ LOADERS: dict[str, Loader] = {
     "place": planning_projection.load_place,
     "itinerary_item": planning_projection.load_item,
     "poll": planning_projection.load_poll,
+    "booking": planning_projection.load_booking,
 }
 
 
@@ -328,6 +329,7 @@ PAGERS: dict[str, Pager] = {
     "place": planning_projection.page_places,
     "itinerary_item": planning_projection.page_items,
     "poll": planning_projection.page_polls,
+    "booking": planning_projection.page_bookings,
 }
 
 

@@ -1,7 +1,7 @@
-"""Trip planning over REST: saved places, the itinerary, and polls (trips only).
+"""Trip planning over REST: places, the itinerary, polls, and bookings (trips only).
 
 Every write is also a sync push command; reads here mirror the ``place`` and
-``itinerary_item``, and ``poll`` sync entities.
+``itinerary_item``, ``poll``, and ``booking`` sync entities.
 """
 
 from __future__ import annotations
@@ -13,11 +13,20 @@ from fastapi import APIRouter, Response, status
 from beluno.api.commands import planning as commands
 from beluno.api.dependencies import ActorDep, RunnerDep, RuntimeDep
 from beluno.api.http import IdempotencyKey, IfMatch, command_call, finish, finish_empty, set_etag
-from beluno.api.planning_projection import item_response, place_response, poll_response
+from beluno.api.planning_projection import (
+    booking_response,
+    item_response,
+    place_response,
+    poll_response,
+)
 from beluno.api.problems import problem_responses
 from beluno.contracts.planning import (
     AddPlaceToPlanRequest,
     AttendanceRequest,
+    BookingCreateRequest,
+    BookingRequest,
+    BookingResponse,
+    BookingSecretsResponse,
     ItineraryItemCreateRequest,
     ItineraryItemRequest,
     ItineraryItemResponse,
@@ -31,7 +40,8 @@ from beluno.contracts.planning import (
     VoteRequest,
 )
 from beluno.modules.context import open_context
-from beluno.modules.planning import itinerary, places, polls
+from beluno.modules.iam import rate_limits
+from beluno.modules.planning import bookings, itinerary, places, polls
 from beluno.sync.commands import EmptyPayload
 
 router = APIRouter(prefix="/v1/plans/{plan_id}", tags=["planning"])
@@ -329,3 +339,95 @@ async def apply_poll_outcome(
 
     call = command_call(idempotency_key, plan_id=plan_id, poll_id=poll_id)
     return finish(response, await runner.run(actor, commands.POLL_APPLY_OUTCOME, call, body))
+
+
+@router.get("/bookings", response_model=list[BookingResponse], responses=READ_ERRORS)
+async def list_bookings(
+    plan_id: UUID, runtime: RuntimeDep, actor: ActorDep
+) -> list[BookingResponse]:
+    """Bookings by start date; codes and private notes are never listed (see ``reveal``)."""
+
+    async with open_context(runtime, actor) as ctx:
+        views = await bookings.list_bookings(ctx, plan_id)
+    return [booking_response(view) for view in views]
+
+
+@router.post(
+    "/bookings",
+    status_code=status.HTTP_201_CREATED,
+    response_model=BookingResponse,
+    responses=WRITE_ERRORS,
+)
+async def create_booking(
+    plan_id: UUID,
+    body: BookingCreateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> BookingResponse:
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.BOOKING_CREATE, call, body))
+
+
+@router.get("/bookings/{booking_id}", response_model=BookingResponse, responses=READ_ERRORS)
+async def get_booking(
+    plan_id: UUID, booking_id: UUID, runtime: RuntimeDep, actor: ActorDep, response: Response
+) -> BookingResponse:
+    async with open_context(runtime, actor) as ctx:
+        view = await bookings.get_booking(ctx, plan_id, booking_id)
+    set_etag(response, view.booking.version)
+    return booking_response(view)
+
+
+@router.put("/bookings/{booking_id}", response_model=BookingResponse, responses=WRITE_ERRORS)
+async def update_booking(
+    plan_id: UUID,
+    booking_id: UUID,
+    body: BookingRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> BookingResponse:
+    """Replace the booking (whoever added it, or an organiser); cancelling keeps a paid cost."""
+
+    call = command_call(idempotency_key, if_match=if_match, plan_id=plan_id, booking_id=booking_id)
+    return finish(response, await runner.run(actor, commands.BOOKING_UPDATE, call, body))
+
+
+@router.delete(
+    "/bookings/{booking_id}", status_code=status.HTTP_204_NO_CONTENT, responses=WRITE_ERRORS
+)
+async def delete_booking(
+    plan_id: UUID,
+    booking_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    idempotency_key: IdempotencyKey = None,
+) -> Response:
+    call = command_call(idempotency_key, plan_id=plan_id, booking_id=booking_id)
+    return finish_empty(await runner.run(actor, commands.BOOKING_DELETE, call, EmptyPayload()))
+
+
+@router.post(
+    "/bookings/{booking_id}/reveal",
+    response_model=BookingSecretsResponse,
+    responses=problem_responses(401, 403, 404, 409, 429, 503),
+)
+async def reveal_booking_secrets(
+    plan_id: UUID, booking_id: UUID, runtime: RuntimeDep, actor: ActorDep, response: Response
+) -> BookingSecretsResponse:
+    """The confirmation code and private notes, for the booking's travelers, whoever added
+    it, and organisers. Every reveal is audited and rate-limited; nothing caches it."""
+
+    await rate_limits.enforce_rate_limit(
+        runtime, rate_limits.BOOKING_REVEAL_PER_USER, str(actor.user_id)
+    )
+    async with open_context(runtime, actor) as ctx:
+        revealed = await bookings.reveal(ctx, plan_id, booking_id)
+    response.headers["Cache-Control"] = "no-store"
+    return BookingSecretsResponse(
+        confirmation_code=revealed.confirmation_code, private_notes=revealed.private_notes
+    )

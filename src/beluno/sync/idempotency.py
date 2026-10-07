@@ -35,8 +35,15 @@ class StoredOutcome:
     operation_id: UUID
 
 
-def request_hash(command: Command[Any, Any], call: CommandCall, payload: BaseModel) -> bytes:
-    """Canonical digest of everything that makes two requests the same command."""
+def request_hash(
+    ctx: CommandContext, command: Command[Any, Any], call: CommandCall, payload: BaseModel
+) -> bytes:
+    """Keyed digest of everything that makes two requests the same command.
+
+    HMAC with the token hash key, not a plain hash: payloads can hold secrets (a
+    booking's confirmation code), and a stored plain digest of a short secret could
+    be brute-forced from a database copy.
+    """
 
     canonical = {
         "command": command.name,
@@ -46,7 +53,7 @@ def request_hash(command: Command[Any, Any], call: CommandCall, payload: BaseMod
         "payload": payload.model_dump(mode="json", exclude_unset=True),
     }
     encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(encoded.encode("utf-8")).digest()
+    return ctx.runtime.require_hasher().digest("operation_request", encoded)
 
 
 def key_reused() -> BelunoError:
@@ -78,7 +85,7 @@ async def reserve(
     existing = await find(ctx, actor.user_id, command.name, call.idempotency_key)
     if existing is None:
         return None
-    if existing.request_hash != request_hash(command, call, payload):
+    if existing.request_hash != request_hash(ctx, command, call, payload):
         raise key_reused()
     return StoredOutcome(
         status=existing.response_status,
@@ -122,7 +129,7 @@ async def store(
             actor_user_id=actor.user_id,
             command=command.name,
             idempotency_key=call.idempotency_key,
-            request_hash=request_hash(command, call, payload),
+            request_hash=request_hash(ctx, command, call, payload),
             source=call.source,
             session_id=actor.session_id,
             device_id=call.device_id,

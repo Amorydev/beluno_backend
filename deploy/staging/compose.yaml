@@ -127,6 +127,8 @@ services:
     environment:
       <<: *beluno-app-environment
       BELUNO_PROCESS_ROLE: api
+      # Required from .env (only the API seals and reveals booking secrets).
+      BELUNO_BOOKING_KEYS: ${BELUNO_BOOKING_KEYS:?}
       BELUNO_API_DATABASE_URL: postgresql+psycopg://api_runtime:${BELUNO_API_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-beluno}
       # Trusted proxy addresses for X-Forwarded-For. Abuse limits key on the client
       # address, so list only the reverse proxy (never "*" on a reachable port).

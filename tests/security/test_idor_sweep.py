@@ -139,6 +139,11 @@ BODIES: dict[tuple[str, str], Body] = {
     ("POST", "/v1/plans/{plan_id}/polls/{poll_id}/outcome"): lambda _a, _b: {
         "action": "add_to_plan"
     },
+    ("POST", "/v1/plans/{plan_id}/bookings"): lambda _a, _b: {"kind": "other", "title": "Taken"},
+    ("PUT", "/v1/plans/{plan_id}/bookings/{booking_id}"): lambda _a, _b: {
+        "kind": "other",
+        "title": "Taken",
+    },
     ("POST", "/v1/plans/{plan_id}/waivers"): lambda a, b: {
         "debtor_participant_id": b,
         "creditor_participant_id": a,
@@ -157,7 +162,8 @@ def victim_state(admin: AdminDatabase, plan_id: str, crew_id: str, session_id: s
     tables = admin.fetch(
         "SELECT table_schema || '.' || table_name FROM information_schema.columns "
         "WHERE column_name = 'plan_id' "
-        "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places', 'decisions') "
+        "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places', 'decisions', "
+        "'bookings') "
         "ORDER BY 1"
     )
     counts = {

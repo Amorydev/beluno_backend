@@ -154,6 +154,45 @@ Design:
   - feed events `poll.created` and `poll.closed`;
   - the purge gate removes decisions rows before places.
 
+## Slice 3 design: Bookings
+
+Decisions (user, 2026-10-07):
+- **Revealing** a booking's confirmation code and private notes is open to its travelers, its creator, and organisers. Anyone else sees them masked.
+- **"Create expense from booking"** uses the existing expense API with the booking's `commitment_id`; there is no new command.
+- **Assigning a booking from a poll outcome** is dropped.
+- **After review:**
+  - A secret left out of a save keeps its value; `null` clears it.
+  - Deleting a booking clears its secrets.
+  - An unchanged reference to a deleted booking or place stays valid.
+  - Idempotency digests are keyed (HMAC), so stored digests never expose payload secrets.
+  - Sentry never receives stack-frame variables.
+
+Design:
+- **Status:** `planned`, `confirmed`, or `cancelled`.
+- **Migration `000013_bookings`** fills the `bookings` schema:
+  - `bookings`:
+    - kind: flight, lodging, transport, activity, restaurant, insurance, or other;
+    - title, provider;
+    - start and end, each a local date, optional time, and zone;
+    - optional place, traveler participant IDs, status, payment note (`prepaid`, `pay_at_property`, `each_paid_own`, `personal`);
+    - `free_cancellation_until`.
+  - `booking_secrets`: AES-GCM ciphertexts of the confirmation code and private notes, the key ID, nonce per field, and AAD bound to the booking and field.
+    - RLS lets only those who may reveal read or write it.
+    - Lists, sync, logs, and feed never carry the plaintext; responses only say whether each secret is set.
+  - Itinerary items gain an optional `booking_id`.
+- **Keyring:** `BELUNO_BOOKING_KEYS` holds `{"active": kid, "keys": {kid: base64 32-byte key}}`. Rows remember their key, and a write re-encrypts with the active key.
+- **Price** goes through `CostCommitmentPort` (`booking`, kind `price`):
+  - planned → estimated;
+  - confirmed → committed;
+  - cancelled → cancel. An expense that already paid it stays (existing semantics).
+- **Reveal:** `POST /v1/plans/{id}/bookings/{booking_id}/reveal` returns the plaintext.
+  - It is not a command, so the plaintext is never stored as a replayable response.
+  - It is audited and rate-limited per user.
+- **Sync, feed, and purge:**
+  - plan-scope entity `booking`, masked;
+  - feed events `booking.added`, `booking.confirmed`, `booking.cancelled`;
+  - the purge gate removes booking rows after items and before places.
+
 ## Progress Notes (2026-10-07)
 
 - Slice 1 (Itinerary and Places) is done on `feat/planning-itinerary-places`.

@@ -82,6 +82,11 @@ State narrowing (applies on top of the table):
   `plan.planning.respond`, voting for themselves while it is open and before its
   deadline. The creator or an organiser closes it early, deletes it while open, and
   applies its outcome.
+- Bookings: anyone with `plan.planning.contribute` adds one; whoever added it or
+  an organiser edits, cancels, or deletes it. Its confirmation code and private
+  notes are revealed (audited, rate-limited) only to its travelers, whoever added
+  it, and organisers; RLS keeps the sealed row from everyone else. The database
+  refuses booking changes by anyone but its creator or an organiser.
 - Finance writes (expenses, budgets, fund, adjustments) require `draft`,
   `planning`, `active`, or `settling`; settlements and waivers also accept
   `completed`, because people pay each other back after the plan is over.

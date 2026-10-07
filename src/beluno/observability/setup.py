@@ -34,6 +34,8 @@ def configure_observability(app: FastAPI | None, settings: Settings) -> None:
             release=settings.release,
             before_send=redact_sentry_event,
             send_default_pii=False,
+            # Frame locals hold request payloads (booking codes, notes): never send them.
+            include_local_variables=False,
             # Request bodies carry sign-in secrets and personal data; never attach them.
             max_request_body_size="never",
         )
@@ -92,8 +94,17 @@ def instrument_api(app: FastAPI, tracer_provider: TracerProvider | None = None) 
 
 
 def redact_sentry_event(event: Event, _: Hint) -> Event | None:
-    """Sentry's final boundary: no payload reaches the exporter unredacted."""
+    """Sentry's final boundary: no payload reaches the exporter unredacted.
 
+    Stack frames lose their local variables too, whatever the SDK setting.
+    """
+
+    for exception in (event.get("exception") or {}).get("values") or []:
+        for frame in (exception.get("stacktrace") or {}).get("frames") or []:
+            frame.pop("vars", None)
+    for thread in (event.get("threads") or {}).get("values") or []:
+        for frame in (thread.get("stacktrace") or {}).get("frames") or []:
+            frame.pop("vars", None)
     return cast(Event, redact(event))
 
 

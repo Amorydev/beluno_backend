@@ -19,6 +19,7 @@ TRUNCATE
     finance.plan_ledger_heads,
     sync_audit.audit_events, sync_audit.change_log, sync_audit.scope_heads,
     sync_audit.operations,
+    bookings.booking_secrets, bookings.bookings,
     decisions.poll_outcomes, decisions.poll_results, decisions.poll_votes,
     decisions.poll_electorate, decisions.poll_options, decisions.polls,
     schedule_places.item_attendance, schedule_places.itinerary_items,

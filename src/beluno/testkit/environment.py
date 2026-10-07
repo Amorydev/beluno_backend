@@ -17,6 +17,7 @@ from pydantic import SecretStr
 
 from beluno.config import EmailBackend, Environment, Settings
 from beluno.modules.iam.email_delivery import OutboundEmail
+from beluno.secret_box import new_keyring_json
 from beluno.testkit.identity import APPLE_CLIENT_ID, GOOGLE_CLIENT_ID
 
 # Synthetic credentials for disposable local/CI databases only.
@@ -58,6 +59,7 @@ def build_settings(
         migration_database_url=SecretStr(migration_dsn),
         auth_signing_keys=SecretStr(generate_signing_keys_json()),
         token_hash_key=SecretStr(secrets.token_urlsafe(48)),
+        booking_keys=SecretStr(new_keyring_json("test")),
         auth_google_client_ids=[GOOGLE_CLIENT_ID],
         auth_apple_client_ids=[APPLE_CLIENT_ID],
         auth_magic_link_url="https://app.beluno.test/auth/email",
