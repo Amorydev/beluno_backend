@@ -22,6 +22,7 @@ from beluno.api.commands import build_registry
 from beluno.api.routers import (
     auth,
     crews,
+    exports,
     finance,
     health,
     internal,
@@ -163,6 +164,7 @@ def create_app(
         finance.fx_router,
         finance.router,
         planning.router,
+        exports.router,
         invites.router,
         sync.router,
     ):
