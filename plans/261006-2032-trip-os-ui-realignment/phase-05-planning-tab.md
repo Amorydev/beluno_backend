@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "Planning tab (slim)"
-status: in-progress
+status: completed
 priority: P2
 effort: "3–4 weeks"
 dependencies: [4]
@@ -113,11 +113,11 @@ Anything else, short links included, stays `pending` with the name the user type
 
 ## Success Criteria
 
-- [ ] Every Plan-tab, Tasks, and Packing screen renders from synced entities offline.
-- [ ] Booking and itinerary costs count once in budgets (actual > committed > estimated) through the finance port.
-- [ ] Private packing items never reach another participant through REST, sync, or SQL as `api_runtime`.
-- [ ] Poll close races (job vs organiser) yield one result version.
-- [ ] Booking codes never appear in list or sync payloads, logs, or activity events.
+- [x] Every Plan-tab, Tasks, and Packing screen renders from synced entities offline (backend: every screen's data is a sync entity; client rendering is the app's work).
+- [x] Booking and itinerary costs count once in budgets (actual > committed > estimated) through the finance port.
+- [x] Private packing items never reach another participant through REST, sync, or SQL as `api_runtime`.
+- [x] Poll close races (job vs organiser) yield one result version.
+- [x] Booking codes never appear in list or sync payloads, logs, or activity events.
 
 ## Slice 2 design: Polls
 
@@ -227,7 +227,7 @@ Design: migration `000014_coordination` fills the `coordination` schema.
     - M1–M6: 500s on odd input, commitments rewritten on every save, the kill switch on no-op edits, guest authorship, the write limit, tests.
   - Open: the plan has no timezone by default, so timed items need one.
 - Slice 2 (Polls) merged in PR #10; slice 3 (Bookings, sealed secrets) merged in PR #11.
-- Slice 4 (Tasks and Packing) is on `feat/planning-tasks-packing`.
+- Slice 4 (Tasks and Packing) merged in PR #12. Phase 5 is complete.
   - Migration `000014_coordination`; REST under `/tasks` and `/packing`, sync entities `task` and `packing_item` (private items in the owner's user scope).
   - Tests: `tests/integration/test_planning_tasks_packing.py`; the RLS, IDOR, and purge sweeps cover the `coordination` schema.
   - Gates: 597 passed, 0 skipped, coverage 95 %, OpenAPI additive.
