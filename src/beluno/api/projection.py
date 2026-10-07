@@ -16,8 +16,9 @@ from pydantic import BaseModel
 from sqlalchemy import Select, select
 from sqlalchemy.orm import InstrumentedAttribute
 
-from beluno.api import finance_projection, planning_projection
+from beluno.api import finance_projection, media_projection, planning_projection
 from beluno.api.finance_projection import FINANCE_TYPES
+from beluno.api.media_projection import MEDIA_TYPES
 from beluno.api.planning_projection import PLANNING_TYPES
 from beluno.api.presenters import (
     crew_response,
@@ -57,6 +58,7 @@ SNAPSHOT_ORDER: dict[str, tuple[str, ...]] = {
         "plan_invite",
         *FINANCE_TYPES,
         *PLANNING_TYPES,
+        *MEDIA_TYPES,
         "activity_event",
     ),
 }
@@ -65,7 +67,14 @@ VISIBLE_TYPES: dict[tuple[str, AccessLevel], frozenset[str]] = {
     ("user", AccessLevel.SELF): frozenset(SNAPSHOT_ORDER["user"]),
     ("plan", AccessLevel.MANAGER): frozenset(SNAPSHOT_ORDER["plan"]),
     ("plan", AccessLevel.MEMBER): frozenset(
-        {"plan", "plan_participant", *FINANCE_TYPES, *PLANNING_TYPES, "activity_event"}
+        {
+            "plan",
+            "plan_participant",
+            *FINANCE_TYPES,
+            *PLANNING_TYPES,
+            *MEDIA_TYPES,
+            "activity_event",
+        }
     ),
 }
 
@@ -223,6 +232,7 @@ LOADERS: dict[str, Loader] = {
     "booking": planning_projection.load_booking,
     "task": planning_projection.load_task,
     "packing_item": planning_projection.load_packing,
+    "media": media_projection.load_media,
 }
 
 
@@ -334,6 +344,7 @@ PAGERS: dict[str, Pager] = {
     "booking": planning_projection.page_bookings,
     "task": planning_projection.page_tasks,
     "packing_item": planning_projection.page_packing,
+    "media": media_projection.page_media,
 }
 
 

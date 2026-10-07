@@ -138,6 +138,8 @@ def plan_response(view: plan_service.PlanView) -> PlanResponse:
             "expected_size": plan.expected_size,
             "description": plan.description,
             "location_label": plan.location_label,
+            "cover_media_id": plan.cover_media_id,
+            "album_url": plan.album_url,
             "deletion_scheduled_at": plan.deletion_scheduled_at,
             "my_participant": participant_response(view.participant) if view.participant else None,
             "version": plan.version,

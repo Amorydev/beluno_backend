@@ -27,7 +27,7 @@ async def full_tenant(
     settings, a ledger confirmation, join and claim links, a crew, a wanted place, an
     itinerary item with a cost and an answer, a decided poll, a booking with sealed
     secrets, a done task, packing items (a shared template, a private item), and a
-    problem report with diagnostics, and a passkey."""
+    problem report with diagnostics, a passkey, and a receipt awaiting upload."""
 
     trip = await exercise_money_and_members(api, provider, admin)
     owner = trip.owner
@@ -134,6 +134,15 @@ async def full_tenant(
     )
     assert template.status_code == 200, template.text
     await created(trip.path("/packing"), {"name": "Earplugs", "visibility": "private"})
+    receipt = await created(
+        trip.path("/media"),
+        {
+            "kind": "receipt",
+            "content_type": "image/jpeg",
+            "size_bytes": 1024,
+            "expense_id": (await listed("/expenses"))[0]["id"],
+        },
+    )
     passkey_options = await api.post("/v1/me/passkeys/registration-options", headers=owner.headers)
     assert passkey_options.status_code == 200, passkey_options.text
     passkey = await api.post(
@@ -179,5 +188,6 @@ async def full_tenant(
             "task_id": task["id"],
             "packing_item_id": template.json()["items"][0]["id"],
             "passkey_id": passkey.json()["id"],
+            "media_id": receipt["id"],
         },
     )

@@ -23,6 +23,11 @@ def secure_settings(**overrides: object) -> Settings:
         "email_backend": EmailBackend.SMTP,
         "smtp_host": "smtp.example.com",
         "email_from": "Beluno <no-reply@example.com>",
+        "storage_endpoint_url": "http://rustfs:9000",
+        "storage_public_url": "https://media.beluno.example.com",
+        "storage_access_key_id": "beluno",
+        "storage_secret_access_key": secrets.token_urlsafe(30),
+        "clamd_host": "clamav",
         "webauthn_rp_id": "beluno.example.com",
         "webauthn_origins": ["https://beluno.example.com", "android:apk-key-hash:abc"],
         **overrides,
@@ -77,6 +82,17 @@ def test_secure_environments_need_the_passkey_relying_party() -> None:
     secure_settings(
         process_role=ProcessRole.WORKER, webauthn_rp_id="localhost"
     ).assert_runtime_requirements()
+
+
+def test_secure_environments_need_storage_and_a_scanner() -> None:
+    with pytest.raises(RuntimeError, match="BELUNO_STORAGE_SECRET_ACCESS_KEY"):
+        secure_settings(storage_secret_access_key=None).assert_runtime_requirements()
+    with pytest.raises(RuntimeError, match="BELUNO_CLAMD_HOST"):
+        secure_settings(clamd_host=None).assert_runtime_requirements()
+    # The API never scans, so it does not need the scanner.
+    secure_settings(process_role=ProcessRole.API, clamd_host=None).assert_runtime_requirements()
+    with pytest.raises(RuntimeError, match="https"):
+        secure_settings(storage_public_url="http://media.example.com").assert_runtime_requirements()
 
 
 def test_auth_requires_signing_keys_and_hash_key() -> None:

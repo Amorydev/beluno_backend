@@ -70,7 +70,7 @@ def rows_left(admin: AdminDatabase, plan_id: str) -> dict[str, int]:
         "SELECT table_schema || '.' || table_name FROM information_schema.columns "
         "WHERE column_name = 'plan_id' "
         "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places', 'decisions', "
-        "'bookings', 'coordination') "
+        "'bookings', 'coordination', 'media_memories') "
         "ORDER BY 1"
     )
     counts = {
@@ -176,6 +176,19 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
         added = await api.post(trip.path(path), json=body, headers=owner.headers)
         assert added.status_code == 201, added.text
     private_item = added.json()["id"]
+    receipt = await api.post(
+        trip.path("/media"),
+        json={
+            "kind": "receipt",
+            "content_type": "image/png",
+            "size_bytes": 10,
+            "expense_id": (await api.get(trip.path("/expenses"), headers=owner.headers)).json()[
+                "items"
+            ][0]["id"],
+        },
+        headers=owner.headers,
+    )
+    assert receipt.status_code == 201, receipt.text
     template = await api.post(
         trip.path("/packing/templates"),
         json={"template_id": "onsen", "items": [{"name": "Yukata"}]},
@@ -204,6 +217,11 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
     assert await tasks.purge_deleted_plan_records.func(0) == 1
 
     assert {table: count for table, count in rows_left(admin, trip.plan_id).items() if count} == {}
+    # Its stored files are queued for the worker to delete from storage.
+    assert sorted(admin.fetch("SELECT object_key FROM media_memories.object_deletions")) == [
+        (f"incoming/{receipt.json()['id']}",),
+        (f"media/{receipt.json()['id']}",),
+    ]
     assert (
         admin.scalar(
             "SELECT count(*) FROM sync_audit.audit_events WHERE plan_id = %s", trip.plan_id

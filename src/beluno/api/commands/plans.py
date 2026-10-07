@@ -67,6 +67,8 @@ async def _update(ctx: CommandContext, call: CommandCall, body: PlanUpdateReques
         expected_size=body.expected_size if "expected_size" in fields else service.UNSET,
         description=body.description if "description" in fields else service.UNSET,
         location_label=body.location_label if "location_label" in fields else service.UNSET,
+        cover_media_id=body.cover_media_id if "cover_media_id" in fields else service.UNSET,
+        album_url=body.album_url if "album_url" in fields else service.UNSET,
     )
     view = await service.update_plan(ctx, call.id("plan_id"), required_version(call), changes)
     return plan_response(view)

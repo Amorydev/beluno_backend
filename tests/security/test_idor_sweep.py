@@ -157,6 +157,11 @@ BODIES: dict[tuple[str, str], Body] = {
         "packed": False
     },
     ("PATCH", "/v1/me/passkeys/{passkey_id}"): lambda _a, _b: {"label": "Taken"},
+    ("POST", "/v1/plans/{plan_id}/media"): lambda _a, _b: {
+        "kind": "cover",
+        "content_type": "image/jpeg",
+        "size_bytes": 10,
+    },
     ("POST", "/v1/plans/{plan_id}/waivers"): lambda a, b: {
         "debtor_participant_id": b,
         "creditor_participant_id": a,
@@ -176,7 +181,7 @@ def victim_state(admin: AdminDatabase, plan_id: str, crew_id: str, session_id: s
         "SELECT table_schema || '.' || table_name FROM information_schema.columns "
         "WHERE column_name = 'plan_id' "
         "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places', 'decisions', "
-        "'bookings', 'coordination') "
+        "'bookings', 'coordination', 'media_memories') "
         "ORDER BY 1"
     )
     counts = {

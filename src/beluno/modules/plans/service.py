@@ -26,6 +26,7 @@ from beluno.contracts.errors import (
 from beluno.db.ids import new_id
 from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanParticipant
+from beluno.modules import media
 from beluno.modules.activity.events import ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.currencies import require_supported_currency
@@ -83,6 +84,8 @@ class PlanChanges:
     expected_size: int | None = UNSET
     description: str | None = UNSET
     location_label: str | None = UNSET
+    cover_media_id: UUID | None = UNSET
+    album_url: str | None = UNSET
 
 
 @dataclass(frozen=True)
@@ -159,6 +162,8 @@ def new_plan(
         expected_size=expected_size,
         description=description,
         location_label=location_label,
+        cover_media_id=None,
+        album_url=None,
         duplicated_from_plan_id=None,
         created_by_user_id=ctx.require_actor().user_id,
         deletion_scheduled_at=None,
@@ -293,6 +298,14 @@ async def update_plan(
         plan.description = changes.description
     if changes.location_label is not UNSET:
         plan.location_label = changes.location_label
+    if changes.album_url is not UNSET:
+        if plan.type != "trip" and changes.album_url is not None:
+            raise conflict("NOT_AVAILABLE_FOR_HANGOUT", "Albums are for trips")
+        plan.album_url = changes.album_url
+    if changes.cover_media_id is not UNSET:
+        if changes.cover_media_id is not None:
+            await media.ready_cover(ctx, plan.id, changes.cover_media_id)
+        plan.cover_media_id = changes.cover_media_id
     bump(plan, ctx)
     await ctx.session.flush()
     dates_after = plan_dates(plan)

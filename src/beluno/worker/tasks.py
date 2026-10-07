@@ -10,6 +10,13 @@ from beluno.modules.finance.maintenance import reconcile_ledgers
 from beluno.modules.finance.market_rates import ingest_market_rates, rate_provider
 from beluno.modules.iam.email_challenges import DELIVER_TASK_NAME, EMAIL_QUEUE, deliver_challenge
 from beluno.modules.iam.maintenance import purge_expired_auth_records
+from beluno.modules.media import (
+    MEDIA_QUEUE,
+    PROCESS_TASK,
+    delete_queued_objects,
+    process_media,
+    sweep_media,
+)
 from beluno.modules.planning.polls import close_due_polls
 from beluno.modules.plans.purge import purge_deleted_plans
 from beluno.modules.sync_audit.maintenance import (
@@ -22,7 +29,7 @@ from beluno.worker.runtime import get_email_sender, get_worker_runtime
 
 app = procrastinate.App(connector=procrastinate.PsycopgConnector())
 
-WORKER_QUEUES = ["maintenance", EMAIL_QUEUE]
+WORKER_QUEUES = ["maintenance", EMAIL_QUEUE, MEDIA_QUEUE]
 
 
 @app.task(queue="maintenance", retry=3, queueing_lock="maintenance:heartbeat")
@@ -157,3 +164,39 @@ async def close_due_poll_records(timestamp: int) -> int:
 
     del timestamp
     return await close_due_polls(get_worker_runtime())
+
+
+@app.task(
+    name=PROCESS_TASK,
+    queue=MEDIA_QUEUE,
+    retry=procrastinate.RetryStrategy(max_attempts=8, exponential_wait=5),
+)
+async def process_media_upload(media_id: str, payload_version: int = 1) -> str:
+    """Scan and clean one uploaded file (retries while storage or the scanner is down)."""
+
+    if payload_version != 1:
+        raise ValueError(f"Unsupported media payload version: {payload_version}")
+    return await process_media(get_worker_runtime(), UUID(media_id))
+
+
+@app.periodic(cron="*/10 * * * *", periodic_id="media.delete_objects")
+@app.task(
+    name="media.delete_objects",
+    queue="maintenance",
+    retry=3,
+    queueing_lock="media:delete_objects",
+)
+async def delete_media_objects(timestamp: int) -> int:
+    """Every 10 minutes: remove deleted files' objects from storage."""
+
+    del timestamp
+    return await delete_queued_objects(get_worker_runtime())
+
+
+@app.periodic(cron="37 * * * *", periodic_id="media.sweep")
+@app.task(name="media.sweep", queue="maintenance", retry=3, queueing_lock="media:sweep")
+async def sweep_media_uploads(timestamp: int) -> int:
+    """Hourly: re-queue files stuck scanning; drop uploads abandoned for a week."""
+
+    del timestamp
+    return await sweep_media(get_worker_runtime())

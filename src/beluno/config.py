@@ -106,6 +106,23 @@ class Settings(BaseSettings):
     webauthn_rp_id: str = "localhost"
     webauthn_rp_name: str = "Beluno"
     webauthn_origins: list[str] = Field(default_factory=lambda: ["http://localhost"])
+    # Media: S3-compatible storage (RustFS self-hosted). The worker reaches it at
+    # storage_endpoint_url; apps upload and download through presigned URLs signed for
+    # storage_public_url (the address they can reach; defaults to the endpoint).
+    storage_endpoint_url: str | None = None
+    storage_public_url: str | None = None
+    storage_region: str = "us-east-1"
+    storage_bucket: str = "beluno-media"
+    storage_access_key_id: SecretStr | None = None
+    storage_secret_access_key: SecretStr | None = None
+    # ClamAV daemon the worker streams every upload to before it is used.
+    clamd_host: str | None = None
+    clamd_port: int = Field(default=3310, ge=1, le=65_535)
+    media_receipt_max_bytes: int = Field(default=15 * 1024 * 1024, ge=1024)
+    # Below clamd's default StreamMaxLength (25M): every file is scanned whole.
+    media_image_max_bytes: int = Field(default=20 * 1024 * 1024, ge=1024)
+    # Free-plan receipt limit per plan; unset until paid plans exist.
+    media_receipts_per_plan: int | None = Field(default=None, ge=1)
     token_hash_key: SecretStr | None = None
     # Keyring for secrets kept at rest (booking codes and notes); see beluno.secret_box.
     booking_keys: SecretStr | None = None
@@ -277,6 +294,8 @@ class Settings(BaseSettings):
             raise RuntimeError("BELUNO_SMTP_SECURITY must use starttls or tls")
         if self.process_role in (ProcessRole.ALL, ProcessRole.API):
             self._assert_webauthn_party()
+        if self.process_role in (ProcessRole.ALL, ProcessRole.API, ProcessRole.WORKER):
+            self._assert_storage()
         if self.auth_magic_link_url is not None:
             self._assert_https_url("BELUNO_AUTH_MAGIC_LINK_URL", self.auth_magic_link_url)
         if self.otel_exporter_otlp_endpoint is not None:
@@ -300,6 +319,25 @@ class Settings(BaseSettings):
         """Compatibility alias for callers that previously used this method."""
 
         self.assert_runtime_requirements()
+
+    def _assert_storage(self) -> None:
+        missing = [
+            name
+            for name, value in (
+                ("BELUNO_STORAGE_ENDPOINT_URL", self.storage_endpoint_url),
+                ("BELUNO_STORAGE_ACCESS_KEY_ID", self.storage_access_key_id),
+                ("BELUNO_STORAGE_SECRET_ACCESS_KEY", self.storage_secret_access_key),
+            )
+            if not value
+        ]
+        if self.process_role in (ProcessRole.ALL, ProcessRole.WORKER) and not self.clamd_host:
+            missing.append("BELUNO_CLAMD_HOST")
+        if missing:
+            raise RuntimeError(f"Missing secure-environment configuration: {', '.join(missing)}")
+        # Apps fetch presigned URLs over the internet: only over TLS.
+        self._assert_https_url(
+            "BELUNO_STORAGE_PUBLIC_URL", self.storage_public_url or self.storage_endpoint_url
+        )
 
     def _assert_webauthn_party(self) -> None:
         """A real domain, and origins that are that domain (or a subdomain) over https,

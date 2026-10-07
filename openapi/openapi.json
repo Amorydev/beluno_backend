@@ -5024,6 +5024,214 @@
         "title": "MarketRatesResponse",
         "type": "object"
       },
+      "MediaCreateRequest": {
+        "additionalProperties": false,
+        "description": "Record a file before uploading it (works offline through sync push).",
+        "properties": {
+          "content_type": {
+            "description": "PDF only for receipts",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/heic",
+              "application/pdf"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "expense_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Receipts: the expense",
+            "title": "Expense Id"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "enum": [
+              "receipt",
+              "cover"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "size_bytes": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 104857600.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "content_type",
+          "size_bytes"
+        ],
+        "title": "MediaCreateRequest",
+        "type": "object"
+      },
+      "MediaResponse": {
+        "properties": {
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Once ready: the stored file's type",
+            "title": "Content Type"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expense_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Id"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "receipt",
+              "cover"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "rejection": {
+            "anyOf": [
+              {
+                "enum": [
+                  "type",
+                  "size",
+                  "malware",
+                  "unreadable",
+                  "missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "state": {
+            "enum": [
+              "awaiting_upload",
+              "scanning",
+              "ready",
+              "rejected"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "uploaded_by_user_id": {
+            "format": "uuid",
+            "title": "Uploaded By User Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "plan_id",
+          "kind",
+          "state",
+          "rejection",
+          "content_type",
+          "size_bytes",
+          "width",
+          "height",
+          "expense_id",
+          "uploaded_by_user_id",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MediaResponse",
+        "type": "object"
+      },
       "MemberContribution": {
         "properties": {
           "contributed_minor": {
@@ -6813,9 +7021,32 @@
             ],
             "title": "Activity"
           },
+          "album_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Album Url"
+          },
           "base_currency": {
             "title": "Base Currency",
             "type": "string"
+          },
+          "cover_media_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Media Id"
           },
           "created_at": {
             "format": "date-time",
@@ -6954,6 +7185,8 @@
           "expected_size",
           "description",
           "location_label",
+          "cover_media_id",
+          "album_url",
           "deletion_scheduled_at",
           "my_participant",
           "version",
@@ -7088,6 +7321,32 @@
               }
             ],
             "title": "Activity"
+          },
+          "album_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An https link to the trip's shared album; null clears",
+            "title": "Album Url"
+          },
+          "cover_media_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A ready cover file of this trip (organisers); null clears",
+            "title": "Cover Media Id"
           },
           "description": {
             "anyOf": [
@@ -9932,6 +10191,26 @@
           "shares"
         ],
         "title": "SharesSplit",
+        "type": "object"
+      },
+      "SignedUrlResponse": {
+        "description": "A presigned storage URL; upload with PUT and the declared Content-Type and size,\ndownload with GET. It stops working at ``expires_at``.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "title": "SignedUrlResponse",
         "type": "object"
       },
       "SpendResponse": {
@@ -21371,6 +21650,726 @@
         "summary": "List Transactions",
         "tags": [
           "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/media": {
+      "get": {
+        "operationId": "list_media_v1_plans__plan_id__media_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MediaResponse"
+                  },
+                  "title": "Response List Media V1 Plans  Plan Id  Media Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Media",
+        "tags": [
+          "media"
+        ]
+      },
+      "post": {
+        "description": "Record a receipt (anyone who adds expenses) or a trip cover (organisers).",
+        "operationId": "create_media_v1_plans__plan_id__media_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Media",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/media/{media_id}": {
+      "delete": {
+        "description": "Delete a file (its uploader or an organiser); storage forgets it soon after.",
+        "operationId": "delete_media_v1_plans__plan_id__media__media_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Media Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Media",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/media/{media_id}/download-url": {
+      "post": {
+        "description": "A short-lived link to a ready file, for anyone in the plan.",
+        "operationId": "media_download_url_v1_plans__plan_id__media__media_id__download_url_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Media Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignedUrlResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Media Download Url",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/media/{media_id}/upload-url": {
+      "post": {
+        "description": "Where to PUT the file (its uploader, while it awaits upload).",
+        "operationId": "media_upload_url_v1_plans__plan_id__media__media_id__upload_url_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Media Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignedUrlResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Media Upload Url",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/media/{media_id}/uploaded": {
+      "post": {
+        "description": "The upload finished: the file is scanned and cleaned before anyone sees it.",
+        "operationId": "media_uploaded_v1_plans__plan_id__media__media_id__uploaded_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Media Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Media Uploaded",
+        "tags": [
+          "media"
         ]
       }
     },

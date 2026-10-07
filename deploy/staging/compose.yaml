@@ -76,6 +76,15 @@ x-beluno-app-environment: &beluno-app-environment
   BELUNO_SYNC_PUSH_MAX_OPERATIONS: ${BELUNO_SYNC_PUSH_MAX_OPERATIONS:-100}
   BELUNO_SYNC_PUSH_MAX_BYTES: ${BELUNO_SYNC_PUSH_MAX_BYTES:-1048576}
   BELUNO_SYNC_PULL_PAGE_SIZE: ${BELUNO_SYNC_PULL_PAGE_SIZE:-200}
+  # Media: RustFS (self-hosted S3) below. Apps upload and download through presigned
+  # URLs signed for BELUNO_STORAGE_PUBLIC_URL, so publish RustFS behind the same TLS
+  # proxy as the API (staging/production require https there).
+  BELUNO_STORAGE_ENDPOINT_URL: ${BELUNO_STORAGE_ENDPOINT_URL:-http://rustfs:9000}
+  BELUNO_STORAGE_PUBLIC_URL: ${BELUNO_STORAGE_PUBLIC_URL:-}
+  BELUNO_STORAGE_BUCKET: ${BELUNO_STORAGE_BUCKET:-beluno-media}
+  BELUNO_STORAGE_ACCESS_KEY_ID: ${BELUNO_STORAGE_ACCESS_KEY_ID:?}
+  BELUNO_STORAGE_SECRET_ACCESS_KEY: ${BELUNO_STORAGE_SECRET_ACCESS_KEY:?}
+  BELUNO_CLAMD_HOST: ${BELUNO_CLAMD_HOST:-clamav}
 
 services:
   postgres:
@@ -158,6 +167,10 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      rustfs:
+        condition: service_started
+      clamav:
+        condition: service_started
 
   # One-shot, not a daemon: it defers the heartbeat job and exits. Periodic jobs
   # (retention, reconciliation, queue health, ...) are scheduled by the worker itself.
@@ -177,6 +190,32 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+
+  # Object storage for media (S3 API on 9000). Only the API's presigned URLs reach it
+  # from outside: publish it through the TLS proxy, never directly.
+  rustfs:
+    # Pin a reviewed release in .env (no floating tag reaches staging).
+    image: rustfs/rustfs:${RUSTFS_VERSION:?pin a RustFS release, e.g. 1.0.0-alpha.N}
+    restart: unless-stopped
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_ACCESS_KEY: ${BELUNO_STORAGE_ACCESS_KEY_ID:?}
+      RUSTFS_SECRET_KEY: ${BELUNO_STORAGE_SECRET_ACCESS_KEY:?}
+    volumes:
+      - rustfs-data:/data
+    ports:
+      - "${BELUNO_STORAGE_PUBLISH_ADDRESS:-127.0.0.1}:${BELUNO_STORAGE_PORT:-9000}:9000"
+
+  # Malware scanner the worker streams every upload to (keeps its signatures fresh).
+  clamav:
+    # clamd's default StreamMaxLength (25M) covers the media limits (20 MB images,
+    # 15 MB receipts); raise it in clamd.conf before raising those limits.
+    image: clamav/clamav:${CLAMAV_VERSION:-1.4}
+    restart: unless-stopped
+    volumes:
+      - clamav-data:/var/lib/clamav
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.162.0
@@ -231,6 +270,8 @@ services:
 
 volumes:
   postgres-data:
+  rustfs-data:
+  clamav-data:
   prometheus-data:
   alertmanager-data:
   grafana-data:

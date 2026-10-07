@@ -41,6 +41,7 @@ SYNC_PUSH_PER_USER = RateLimit("sync_push:user", 120, 600)
 BOOKING_REVEAL_PER_USER = RateLimit("booking_reveal:user", 30, 600)
 EXPORTS_PER_USER = RateLimit("export:user", 20, 3_600)
 PROBLEM_REPORTS_PER_USER = RateLimit("problem_report:user", 10, 86_400)
+MEDIA_URLS_PER_USER = RateLimit("media_url:user", 300, 600)
 PASSKEY_OPTIONS_PER_CLIENT = RateLimit("passkey_options:client", 60, 600)
 PASSKEY_SIGN_IN_PER_CLIENT = RateLimit("passkey_sign_in:client", 30, 600)
 # Each passkey added counts twice (options, then the response): ten an hour.

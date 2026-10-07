@@ -24,6 +24,7 @@ from beluno.contracts.common import (
     TimezoneName,
     Title,
     clean_text,
+    reject_control_characters,
 )
 
 PlanType = Literal["trip", "hangout"]
@@ -41,6 +42,15 @@ PlanStateName = Literal[
 ]
 AssignablePlanRole = Literal["admin", "member", "viewer"]
 RsvpAnswer = Literal["going", "maybe", "declined"]
+
+
+AlbumUrl = Annotated[
+    str,
+    AfterValidator(reject_control_characters),
+    StringConstraints(
+        max_length=2048, pattern=r"^https://[^\s\u200e\u200f\u202a-\u202e\u2066-\u2069]+$"
+    ),
+]
 
 
 class PlanTiming(BaseModel):
@@ -166,6 +176,12 @@ class PlanUpdateRequest(BaseModel):
     expected_size: int | None = Field(default=None, ge=1, le=50)
     description: LongText | None = None
     location_label: Label | None = None
+    cover_media_id: UUID | None = Field(
+        default=None, description="A ready cover file of this trip (organisers); null clears"
+    )
+    album_url: AlbumUrl | None = Field(
+        default=None, description="An https link to the trip's shared album; null clears"
+    )
 
 
 class PlanStateChangeRequest(BaseModel):
@@ -205,6 +221,8 @@ class PlanResponse(BaseModel):
     expected_size: int | None
     description: str | None
     location_label: str | None
+    cover_media_id: UUID | None
+    album_url: str | None
     deletion_scheduled_at: datetime | None
     my_participant: ParticipantResponse | None
     version: int
