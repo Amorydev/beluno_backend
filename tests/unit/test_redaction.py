@@ -33,3 +33,24 @@ def test_sentry_events_lose_credentials_and_contact_details() -> None:
     for secret in ("eyJsecret", "sid=1", "rt-secret", "a@example.com", "b@example.com"):
         assert secret not in flat
     assert redacted is not None and redacted["extra"]["event"] == "invite_unavailable"
+
+
+def test_sentry_events_lose_stack_frame_variables() -> None:
+    event = {
+        "exception": {
+            "values": [
+                {
+                    "stacktrace": {
+                        "frames": [{"function": "create_booking", "vars": {"draft": "HTL-77"}}]
+                    }
+                }
+            ]
+        }
+    }
+
+    redacted = redact_sentry_event(event, {})  # type: ignore[arg-type]
+
+    assert redacted is not None and "HTL-77" not in str(redacted)
+    assert redacted["exception"]["values"][0]["stacktrace"]["frames"] == [
+        {"function": "create_booking"}
+    ]
