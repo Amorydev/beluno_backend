@@ -12,7 +12,8 @@ the only credential they have, and they cannot sign in again):
    were active (or waiting for approval) become ``left``. Guests merged into the
    account, and their merged rows, lose the guest-era name too.
 3. Their crews are deleted, and they are removed from other people's crews. Their
-   private packing lists and problem reports are deleted.
+   private packing lists, problem reports, and trip memories are deleted (receipts
+   stay with the money they prove).
 4. Identities and email challenges go, the profile is scrubbed (no email,
    locale, zone, or currency; status ``deleted``), and every session is revoked.
 
@@ -35,7 +36,7 @@ from beluno.authorization.policy import AccessState, PlanRole
 from beluno.contracts.errors import conflict, step_up_required
 from beluno.db.models.people import Crew
 from beluno.db.models.plans import Plan, PlanParticipant
-from beluno.modules import support
+from beluno.modules import media, support
 from beluno.modules.context import CommandContext
 from beluno.modules.iam import users
 from beluno.modules.iam.sessions import revoke_all_sessions
@@ -102,6 +103,7 @@ async def delete_account(ctx: CommandContext) -> None:
     await _forget_crews(ctx, user.id)
     await packing.forget_private_items(ctx)
     await support.forget_reports(ctx)
+    await media.forget_memories(ctx)
     await ctx.session.execute(FORGET_CREDENTIALS)
     await revoke_all_sessions(ctx, user.id, reason="account_deleted")
     await users.scrub_profile(ctx, user, display_name=FORMER_MEMBER, status=DELETED)

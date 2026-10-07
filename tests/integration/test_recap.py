@@ -130,6 +130,7 @@ async def test_the_recap_counts_spending_plans_decisions_and_settling(
         "start_date": "2027-03-18",
         "days": 10,
         "people": 4,
+        "cover_media_id": None,
         "currency": "USD",
         "spent_minor": 4_000,
         "spent_complete": True,

@@ -1,4 +1,4 @@
-"""A plan's uploaded files: receipts on expenses, trip covers (and memories later).
+"""A plan's uploaded files: receipts on expenses, trip covers, and trip memories.
 
 The bytes never pass through the API:
 
@@ -20,15 +20,16 @@ from __future__ import annotations
 import functools
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from uuid import UUID
 
 import anyio
+from psycopg.errors import UniqueViolation
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 
 from beluno.authorization.access import PlanAccess, load_plan, require_plan
-from beluno.authorization.policy import PLAN_MANAGERS, PlanAction
+from beluno.authorization.policy import PLAN_MANAGERS, Decision, PlanAction, decide_plan
 from beluno.contracts.errors import (
     BelunoError,
     conflict,
@@ -36,12 +37,15 @@ from beluno.contracts.errors import (
     invalid_state,
     not_found,
     validation_error,
+    version_conflict,
 )
 from beluno.db.ids import new_id
 from beluno.db.models.finance import Expense
 from beluno.db.models.media import Media, ObjectDeletion
+from beluno.db.models.schedule_places import Place
 from beluno.media_files import IMAGE_TYPES, PDF, CleanFile, RejectedFile, clean
 from beluno.modules.context import CommandContext, Runtime, open_context
+from beluno.modules.iam import users
 from beluno.modules.plans.changes import record_plan_change
 from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
 from beluno.storage import (
@@ -62,6 +66,7 @@ PROCESS_TASK = "media.process"
 MEDIA_QUEUE = "media"  # its own queue: scanning never delays sign-in email
 STUCK_AFTER = timedelta(hours=1)
 ABANDONED_AFTER = timedelta(days=7)
+FORGET_MEMORIES = text("SELECT media_memories.forget_memories()")
 QUEUE_KEY = text(
     "INSERT INTO media_memories.object_deletions (object_key, requested_at) "
     "VALUES (:key, :due) ON CONFLICT (object_key) DO NOTHING"
@@ -69,6 +74,17 @@ QUEUE_KEY = text(
 DELETE_BATCH = 200
 logger = logging.getLogger("beluno.media")
 EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", PDF: "pdf"}
+
+
+MAX_HIGHLIGHTS = 20
+
+
+@dataclass(frozen=True)
+class MemoryFields:
+    caption: str | None = None
+    day: date | None = None
+    taken_time: time | None = None
+    place_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +102,7 @@ async def create_media(
     declared_type: str,
     declared_size: int,
     expense_id: UUID | None = None,
+    memory: MemoryFields | None = None,
 ) -> Media:
     access = await _plan(ctx, plan_id, kind)
     if declared_type == PDF and kind != RECEIPT:
@@ -101,6 +118,10 @@ async def create_media(
         await _check_receipt_quota(ctx, plan_id)
     elif expense_id is not None:
         raise validation_error("only receipts belong to an expense")
+    if memory is not None and kind != MEMORY:
+        raise validation_error("only memories have a caption, day, or place")
+    details = memory or MemoryFields()
+    await _require_place(ctx, plan_id, details.place_id)
     media = Media(
         id=media_id or new_id(),
         plan_id=plan_id,
@@ -114,6 +135,11 @@ async def create_media(
         width=None,
         height=None,
         expense_id=expense_id if kind == RECEIPT else None,
+        caption=details.caption,
+        day=details.day,
+        taken_time=details.taken_time,
+        place_id=details.place_id,
+        in_recap=False,
         uploaded_by_user_id=ctx.require_actor().user_id,
         version=1,
         created_at=ctx.now,
@@ -125,7 +151,9 @@ async def create_media(
             ctx.session.add(media)
             await ctx.session.flush()
     except IntegrityError as error:
-        raise conflict("ALREADY_EXISTS", "A resource with this id already exists") from error
+        if isinstance(error.orig, UniqueViolation):
+            raise conflict("ALREADY_EXISTS", "A resource with this id already exists") from error
+        raise validation_error("the file does not fit this plan") from error
     await _record(ctx, media, "media.added")
     return media
 
@@ -185,8 +213,7 @@ async def delete_media(ctx: CommandContext, plan_id: UUID, media_id: UUID) -> No
     access = await load_plan(ctx, plan_id, for_update=True)
     require_plan(access, PlanAction.VIEW)
     media = await _find(ctx, plan_id, media_id, for_update=True)
-    actor = ctx.require_actor().user_id
-    if media.uploaded_by_user_id != actor and access.role not in PLAN_MANAGERS:
+    if not await _may_delete(ctx, access, media):
         raise forbidden("Only the uploader or an organiser deletes this file")
     plan = access.plan
     if plan.cover_media_id == media.id:
@@ -198,6 +225,68 @@ async def delete_media(ctx: CommandContext, plan_id: UUID, media_id: UUID) -> No
         await record_plan_change(ctx, plan, "plan.cover_removed")
     media.deleted_at = ctx.now
     await _bump(ctx, media, "media.deleted", operation="delete")
+
+
+async def update_memory(
+    ctx: CommandContext,
+    plan_id: UUID,
+    media_id: UUID,
+    expected_version: int,
+    details: MemoryFields,
+) -> Media:
+    """Replace a memory's caption, day, time, and place (its uploader or an organiser)."""
+
+    access = await load_plan(ctx, plan_id)
+    require_plan(access, PlanAction.SHARE_MEMORIES)
+    media = await _find(ctx, plan_id, media_id, for_update=True)
+    if media.kind != MEMORY:
+        raise validation_error("only memories have a caption, day, or place")
+    if access.role not in PLAN_MANAGERS and not await users.is_actor_account(
+        ctx, media.uploaded_by_user_id
+    ):
+        raise forbidden("Only the uploader or an organiser edits this memory")
+    if media.version != expected_version:
+        raise version_conflict(media)
+    if details.place_id != media.place_id:
+        await _require_place(ctx, plan_id, details.place_id)
+    media.caption, media.day = details.caption, details.day
+    media.taken_time, media.place_id = details.taken_time, details.place_id
+    await _bump(ctx, media, "media.memory_updated")
+    return media
+
+
+async def set_highlight(
+    ctx: CommandContext, plan_id: UUID, media_id: UUID, in_recap: bool
+) -> Media:
+    """An organiser picks (or drops) a ready memory for the recap; at most 20 per trip."""
+
+    # The plan row serialises picks, so the limit holds under concurrent picks.
+    access = await load_plan(ctx, plan_id, for_update=True)
+    require_plan(access, PlanAction.PICK_HIGHLIGHTS)
+    media = await _find(ctx, plan_id, media_id, for_update=True)
+    if media.kind != MEMORY or media.state != READY:
+        raise invalid_state("only ready memories can be recap highlights")
+    if media.in_recap == in_recap:
+        return media
+    if in_recap:
+        picked = await ctx.session.scalar(
+            select(func.count())
+            .select_from(Media)
+            .where(Media.plan_id == plan_id, Media.in_recap, Media.deleted_at.is_(None))
+        )
+        if int(picked or 0) >= MAX_HIGHLIGHTS:
+            raise conflict(
+                "HIGHLIGHT_LIMIT_REACHED", f"A recap shows at most {MAX_HIGHLIGHTS} memories"
+            )
+    media.in_recap = in_recap
+    await _bump(ctx, media, "media.highlight_changed")
+    return media
+
+
+async def forget_memories(ctx: CommandContext) -> None:
+    """Account deletion: the person's memories leave every plan; receipts stay."""
+
+    await ctx.session.execute(FORGET_MEMORIES)
 
 
 async def media_of_plan(ctx: CommandContext, plan_id: UUID) -> list[Media]:
@@ -392,8 +481,13 @@ async def _plan(ctx: CommandContext, plan_id: UUID, kind: str) -> PlanAccess:
         require_plan(access, PlanAction.UPDATE)
         if access.plan.type != "trip":
             raise conflict("NOT_AVAILABLE_FOR_HANGOUT", "Covers are for trips")
+    elif kind == MEMORY:
+        # Everyone on the trip shares photos, viewers too, until the trip is archived.
+        require_plan(access, PlanAction.SHARE_MEMORIES)
+        if access.plan.type != "trip":
+            raise conflict("NOT_AVAILABLE_FOR_HANGOUT", "Memories are for trips")
     else:
-        raise validation_error("kind must be receipt or cover")
+        raise validation_error("kind must be receipt, cover, or memory")
     return access
 
 
@@ -402,11 +496,46 @@ async def _require_expense(
 ) -> None:
     if expense_id is None:
         raise validation_error("a receipt needs its expense_id")
+    state = await ctx.session.scalar(
+        select(Expense.state).where(Expense.plan_id == access.plan.id, Expense.id == expense_id)
+    )
+    if state is None:
+        raise validation_error("expense_id does not name an expense of this plan")
+    if state != "active":
+        raise invalid_state("receipts go on expenses that are not voided")
+
+
+async def _require_place(ctx: CommandContext, plan_id: UUID, place_id: UUID | None) -> None:
+    if place_id is None:
+        return
     found = await ctx.session.scalar(
-        select(Expense.id).where(Expense.plan_id == access.plan.id, Expense.id == expense_id)
+        select(Place.id).where(
+            Place.plan_id == plan_id, Place.id == place_id, Place.deleted_at.is_(None)
+        )
     )
     if found is None:
-        raise validation_error("expense_id does not name an expense of this plan")
+        raise validation_error("place_id does not name a saved place of this trip")
+
+
+async def _may_delete(ctx: CommandContext, access: PlanAccess, media: Media) -> bool:
+    """The uploader, an organiser, and for a receipt its expense's creator or anyone who
+    manages expenses (the guard checks the same)."""
+
+    if media.kind == MEMORY:
+        # Memories follow the trip's photo window (closed once archived).
+        require_plan(access, PlanAction.SHARE_MEMORIES)
+    if access.role in PLAN_MANAGERS or await users.is_actor_account(ctx, media.uploaded_by_user_id):
+        return True
+    if media.kind != RECEIPT:
+        return False
+    if decide_plan(PlanAction.MANAGE_EXPENSES, access.subject) is Decision.ALLOW:
+        return True
+    creator = await ctx.session.scalar(
+        select(Expense.created_by_user_id).where(
+            Expense.plan_id == media.plan_id, Expense.id == media.expense_id
+        )
+    )
+    return creator is not None and await users.is_actor_account(ctx, creator)
 
 
 async def _check_receipt_quota(ctx: CommandContext, plan_id: UUID) -> None:

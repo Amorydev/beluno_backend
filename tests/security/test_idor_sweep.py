@@ -157,6 +157,8 @@ BODIES: dict[tuple[str, str], Body] = {
         "packed": False
     },
     ("PATCH", "/v1/me/passkeys/{passkey_id}"): lambda _a, _b: {"label": "Taken"},
+    ("PUT", "/v1/plans/{plan_id}/media/{media_id}/highlight"): lambda _a, _b: {"in_recap": True},
+    ("PUT", "/v1/plans/{plan_id}/media/{media_id}/memory"): lambda _a, _b: {"caption": "Taken"},
     ("POST", "/v1/plans/{plan_id}/media"): lambda _a, _b: {
         "kind": "cover",
         "content_type": "image/jpeg",

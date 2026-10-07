@@ -47,6 +47,7 @@ class RecapShareCard(BaseModel):
     start_date: date | None
     days: int | None
     people: int
+    cover_media_id: UUID | None = Field(description="The trip's cover photo, if set")
     currency: str
     spent_minor: int = Field(description="Shown only when the person chooses to")
     spent_complete: bool = Field(
@@ -77,4 +78,9 @@ class RecapResponse(BaseModel):
     settled_on: date | None = Field(
         description="Once settled: the date of the last settlement still standing, as entered"
     )
+    cover_media_id: UUID | None
+    highlights: list[UUID] = Field(
+        description="Ready memories an organiser picked for the recap, by day and time"
+    )
+    memories: int = Field(description="Ready memories of the trip")
     share: RecapShareCard

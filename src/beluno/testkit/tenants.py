@@ -140,7 +140,9 @@ async def full_tenant(
             "kind": "receipt",
             "content_type": "image/jpeg",
             "size_bytes": 1024,
-            "expense_id": (await listed("/expenses"))[0]["id"],
+            "expense_id": next(
+                row["id"] for row in await listed("/expenses") if row["state"] == "active"
+            ),
         },
     )
     passkey_options = await api.post("/v1/me/passkeys/registration-options", headers=owner.headers)
