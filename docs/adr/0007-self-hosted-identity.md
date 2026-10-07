@@ -62,3 +62,21 @@ media phase.
   leaves room to add them.
 - Phase 7 (lifecycle/integrations) chooses the production SMTP relay and object
   store; Phase 8 adds key-rotation and abuse drills to release evidence.
+
+## Amendment (2026-10-07): passkeys
+
+Registered accounts can add WebAuthn passkeys (library `webauthn`, user decision)
+after a recent sign-in, and use them to sign in, step up, or (from a guest
+session) claim their account. A passkey never creates an account, so every
+account keeps another way to sign in (user decision). Credentials are
+discoverable, user verification is required, no attestation is requested or
+kept, and the signature counter must grow when an authenticator reports one.
+Challenges are single-use HMAC digests valid five minutes, bound to whoever asked
+(a registered account or a guest), and used up, with the counter advanced, even
+when the response fails or the sign-in is then refused (for example a guest who
+must first consent to merging): the refusal rolls back alone, so a response is
+never accepted twice and the person signs again. A passkey sign-in is a `VerifiedIdentity` of provider
+`passkey` whose subject is the account, so it goes through the same
+`authenticate` flow (sessions, step-up, guest claims) as the other methods. The
+relying party ID and origins are configuration and fail closed in staging and
+production.

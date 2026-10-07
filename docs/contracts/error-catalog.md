@@ -19,6 +19,7 @@ submitted values.
 | `ALREADY_PARTICIPANT` | 409 | Person already participates in the plan |
 | `GUEST_NOT_ALLOWED` | 409 | Guests cannot be added this way; they join through an invite |
 | `IDENTITY_ALREADY_LINKED` | 409 | The external identity belongs to another account |
+| `PASSKEY_ALREADY_REGISTERED` | 409 | This passkey is already added (to this or another account) |
 | `INVALID_STATE_TRANSITION` | 409 | Action is not valid in the resource's current state |
 | `OWNER_TRANSFER_REQUIRED` | 409 | Owner must transfer ownership before leaving a plan, or before deleting their account while another person (not a placeholder) is active in a plan they own; guests must create an account before they can take ownership |
 | `PARTICIPANT_MERGE_REQUIRED` | 409 | Claim would merge with an existing participation; resend with consent |

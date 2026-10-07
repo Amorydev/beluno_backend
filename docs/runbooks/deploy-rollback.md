@@ -85,6 +85,17 @@ afterwards is sealed with it, and old keys must stay until no row uses them
 loses those secrets; back the keyring up with the database credentials, never in
 the repository.
 
+## Passkey relying party
+
+Passkeys need the app's domain as `BELUNO_WEBAUTHN_RP_ID` and every origin a passkey
+response comes from in `BELUNO_WEBAUTHN_ORIGINS` (JSON list): `https://` web origins
+and `android:apk-key-hash:<base64url SHA-256 of the signing certificate>` for the
+Android app. iOS needs the domain in the app's associated domains
+(`webcredentials:`) and `/.well-known/apple-app-site-association` served there;
+Android needs `/.well-known/assetlinks.json`. Staging and production refuse
+`localhost` and plain `http`. Changing the RP ID orphans every existing passkey:
+people then sign in another way and add a new one.
+
 ## Kill switches
 
 Flip one in the environment and restart the affected process. Clients keep their

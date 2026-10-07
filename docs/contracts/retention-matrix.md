@@ -9,7 +9,8 @@
 | `sync_audit.audit_events` | indefinite until a legal policy is set | never deleted by application code |
 | Finance history (`finance.*` revisions, payers, splits, refunds, settlements, transactions, postings, FX snapshots, fund movements) | lives with its plan (purged with a deleted plan) | append-only: triggers reject UPDATE/DELETE for every role except the plan purge gate; runtime roles hold no DELETE grant |
 | `finance.account_balances` (projection) | lives with the ledger | rebuilt from postings by `scripts/finance.py rebuild`; never the source of truth |
-| Expired email challenges, refresh tokens, rate-limit windows | 1 day after expiry | hourly `iam.purge_expired_auth_records` |
+| Expired email and passkey challenges, refresh tokens, rate-limit windows | 1 day after expiry | hourly `iam.purge_expired_auth_records` |
+| Passkeys (public keys, counters, labels) | until removed by the person or the account is deleted | `DELETE /v1/me/passkeys/{id}`; `iam.forget_actor_credentials` on account deletion |
 | Sessions (device label, platform, app version) and their refresh tokens | 30 days after revocation or expiry | hourly `iam.purge_expired_auth_records` through `iam.purge_stale_sessions` |
 | Plans scheduled for deletion, with everything they hold (participants, invites, finance history, feed events, plan-scope change rows) | `BELUNO_PLAN_PURGE_AFTER_DAYS` (30) after deletion is scheduled; restorable until then | daily `plans.purge_deleted` through `plans.purge_deleted_plan` (refuses cutoffs under 7 days); former participants get a `plan_access` delete; audit events (IDs only) stay |
 | Private packing items | live with their plan; move with a guest who claims an account; deleted with their owner's account | purged with the plan (owners' user scopes get a `packing_item` delete); `coordination.forget_private_packing` on account deletion |
