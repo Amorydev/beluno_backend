@@ -12,6 +12,7 @@
 | Expired email challenges, refresh tokens, rate-limit windows | 1 day after expiry | hourly `iam.purge_expired_auth_records` |
 | Sessions (device label, platform, app version) and their refresh tokens | 30 days after revocation or expiry | hourly `iam.purge_expired_auth_records` through `iam.purge_stale_sessions` |
 | Plans scheduled for deletion, with everything they hold (participants, invites, finance history, feed events, plan-scope change rows) | `BELUNO_PLAN_PURGE_AFTER_DAYS` (30) after deletion is scheduled; restorable until then | daily `plans.purge_deleted` through `plans.purge_deleted_plan` (refuses cutoffs under 7 days); former participants get a `plan_access` delete; audit events (IDs only) stay |
+| Private packing items | live with their plan; move with a guest who claims an account; deleted with their owner's account | purged with the plan (owners' user scopes get a `packing_item` delete); `coordination.forget_private_packing` on account deletion |
 | Booking secrets (sealed confirmation codes and private notes) | live with the booking and its plan; cleared when set to null | purged with the plan; never logged, synced, or stored in replayable responses |
 | Deleted crews | name and members cleared at deletion; the tombstone stays for sync | `crew.delete` and account deletion |
 | Failed jobs (dead letters) | until replayed or removed by an operator | `scripts/jobs.py` |

@@ -97,8 +97,13 @@ and end, travelers, price counted once in budgets, payment note, free-cancellati
 deadline). A booking's confirmation code and private notes are sealed at rest
 (AES-GCM, `BELUNO_BOOKING_KEYS`), never listed or synced, and revealed only to its
 travelers, its creator, and organisers through an audited, rate-limited
-`POST .../bookings/{booking_id}/reveal`. Sync carries them as `place`,
-`itinerary_item`, `poll`, and `booking`.
+`POST .../bookings/{booking_id}/reveal`. Tasks (`/v1/plans/{id}/tasks`) have one
+assignee, a due date and optional local time, and a status the assignee moves.
+Packing (`/v1/plans/{id}/packing`) has a shared list anyone ticks and a private list
+per person, plus client-supplied templates applied once per list
+(`POST .../packing/templates`). Sync carries them as `place`, `itinerary_item`,
+`poll`, `booking`, `task`, and `packing_item` (private items in the owner's user
+scope).
 
 ## Finance
 
