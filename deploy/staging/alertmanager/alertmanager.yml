@@ -1,0 +1,19 @@
+# Alertmanager routing for the staging stack.
+# The only receiver is a placeholder with no delivery channel: alerts are visible
+# in the Alertmanager and Prometheus UIs but nobody is notified until a real
+# receiver (email, Slack, a pager webhook, ...) replaces it.
+
+route:
+  receiver: placeholder
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: placeholder
+      repeat_interval: 1h
+
+receivers:
+  - name: placeholder

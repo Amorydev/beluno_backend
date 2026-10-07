@@ -13,6 +13,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -54,14 +55,40 @@ def configure_observability(app: FastAPI | None, settings: Settings) -> None:
         reader = PeriodicExportingMetricReader(
             OTLPMetricExporter(endpoint=settings.otel_exporter_otlp_endpoint)
         )
-        meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
+        meter_provider = MeterProvider(
+            resource=resource, metric_readers=[reader], views=latency_views()
+        )
         metrics.set_meter_provider(meter_provider)
         reliability_metrics.use_meter_provider(meter_provider)
         if app is not None:
-            FastAPIInstrumentor.instrument_app(
-                app,
-                excluded_urls="health/live,health/ready",
-            )
+            instrument_api(app)
+
+
+# Millisecond bucket bounds that include every latency target (300 ms, 1 s), so
+# alerts on p95 compare against a real boundary instead of interpolating.
+LATENCY_BOUNDS_MS = (5, 10, 25, 50, 100, 200, 300, 500, 750, 1_000, 2_000, 5_000, 10_000)
+
+
+def latency_views() -> list[View]:
+    aggregation = ExplicitBucketHistogramAggregation(boundaries=LATENCY_BOUNDS_MS)
+    return [
+        View(instrument_name=name, aggregation=aggregation)
+        for name in (
+            "http.server.duration",
+            "beluno.command.duration",
+            "beluno.finance.ledger_lock.wait",
+        )
+    ]
+
+
+def instrument_api(app: FastAPI, tracer_provider: TracerProvider | None = None) -> None:
+    """Trace HTTP requests by route and status only: no headers or bodies are captured."""
+
+    FastAPIInstrumentor.instrument_app(
+        app,
+        tracer_provider=tracer_provider,
+        excluded_urls="health/live,health/ready",
+    )
 
 
 def redact_sentry_event(event: Event, _: Hint) -> Event | None:

@@ -10,6 +10,7 @@ from beluno.modules.finance.maintenance import reconcile_ledgers
 from beluno.modules.finance.market_rates import ingest_market_rates, rate_provider
 from beluno.modules.iam.email_challenges import DELIVER_TASK_NAME, EMAIL_QUEUE, deliver_challenge
 from beluno.modules.iam.maintenance import purge_expired_auth_records
+from beluno.modules.plans.purge import purge_deleted_plans
 from beluno.modules.sync_audit.maintenance import (
     compact_changes,
     purge_activity,
@@ -127,3 +128,17 @@ async def purge_activity_events(timestamp: int) -> int:
 
     del timestamp
     return await purge_activity(get_worker_runtime())
+
+
+@app.periodic(cron="23 4 * * *", periodic_id="plans.purge_deleted")
+@app.task(
+    name="plans.purge_deleted",
+    queue="maintenance",
+    retry=3,
+    queueing_lock="plans:purge_deleted",
+)
+async def purge_deleted_plan_records(timestamp: int) -> int:
+    """Daily: delete plans whose restore window after scheduled deletion has passed."""
+
+    del timestamp
+    return await purge_deleted_plans(get_worker_runtime())

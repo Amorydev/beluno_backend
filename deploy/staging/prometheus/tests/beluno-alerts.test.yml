@@ -1,0 +1,204 @@
+# Unit tests for ../rules/beluno-alerts.yml. Run with:
+#   promtool test rules deploy/staging/prometheus/tests/beluno-alerts.test.yml
+# Series use the names the collector's prometheus exporter produces.
+
+rule_files:
+  - ../rules/beluno-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # The drift counter series appears with its first finding: increase() alone
+  # would miss it, so the alert must still fire.
+  - interval: 5m
+    input_series:
+      - series: 'beluno_finance_ledger_drift_total{problem="balance_mismatch", job="beluno-worker"}'
+        values: "_ _ _ 1 1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: LedgerDrift
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: LedgerDrift
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              problem: balance_mismatch
+            exp_annotations:
+              summary: "Ledger drift detected (balance_mismatch)"
+              description: "Reconciliation found a ledger that does not match its postings. Stop financial writes if needed (BELUNO_FINANCE_WRITES_ENABLED=false) and follow docs/runbooks/finance-operations.md."
+
+  # Further findings on a series that has existed for hours raise the counter. The
+  # first-appearance branch has stopped firing by then, so this exercises increase().
+  - interval: 5m
+    input_series:
+      - series: 'beluno_finance_ledger_drift_total{problem="balance_mismatch", job="beluno-worker"}'
+        values: "1x80 2x10"
+    alert_rule_test:
+      - eval_time: 400m
+        alertname: LedgerDrift
+        exp_alerts: []
+      - eval_time: 410m
+        alertname: LedgerDrift
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              problem: balance_mismatch
+            exp_annotations:
+              summary: "Ledger drift detected (balance_mismatch)"
+              description: "Reconciliation found a ledger that does not match its postings. Stop financial writes if needed (BELUNO_FINANCE_WRITES_ENABLED=false) and follow docs/runbooks/finance-operations.md."
+
+  # A healthy ledger never creates the series, so nothing fires.
+  - interval: 5m
+    input_series:
+      - series: 'beluno_finance_ledger_lock_wait_milliseconds_count{job="beluno-api"}'
+        values: "0+1x20"
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: LedgerDrift
+        exp_alerts: []
+
+  # Lock wait p95 above 1 s for 10 minutes: every observation lands in the 1000-2500 ms bucket.
+  - interval: 1m
+    input_series:
+      - series: 'beluno_finance_ledger_lock_wait_milliseconds_bucket{le="1000", job="beluno-api"}'
+        values: "0+0x30"
+      - series: 'beluno_finance_ledger_lock_wait_milliseconds_bucket{le="2500", job="beluno-api"}'
+        values: "0+60x30"
+      - series: 'beluno_finance_ledger_lock_wait_milliseconds_bucket{le="+Inf", job="beluno-api"}'
+        values: "0+60x30"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: LedgerLockWaitHigh
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: LedgerLockWaitHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Ledger lock wait p95 above 1s"
+              description: "Finance commands wait more than a second for a plan's ledger head. A hot plan or a stuck transaction is likely; check pg_locks and the command retry counter."
+
+  # Queue age and dead letters come from the worker's gauge.
+  - interval: 1m
+    input_series:
+      - series: 'beluno_jobs_queue{measure="oldest_waiting_seconds", job="beluno-worker"}'
+        values: "10+0x5 400+0x30"
+      - series: 'beluno_jobs_queue{measure="failed", job="beluno-worker"}'
+        values: "0+0x5 2+0x30"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: JobQueueOldestWaitingHigh
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: JobQueueOldestWaitingHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Oldest queued job has waited over 5 minutes"
+              description: "Workers are down, saturated, or blocked. Check the worker container and scripts/jobs.py health."
+      - eval_time: 10m
+        alertname: JobsFailed
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: JobsFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Dead-letter jobs present"
+              description: "Inspect with scripts/jobs.py list --status failed, fix the cause, then replay."
+
+  # 5xx ratio: 1 error per 100 requests (1%) is above the 0.5% threshold; 1 per 1000 is not.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_duration_milliseconds_count{http_status_code="500", http_target="/v1/plans/{plan_id}", job="beluno-api"}'
+        values: "0+1x40"
+      - series: 'http_server_duration_milliseconds_count{http_status_code="200", http_target="/v1/plans/{plan_id}", job="beluno-api"}'
+        values: "0+99x40"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: HighServerErrorRatio
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "HTTP 5xx ratio above 0.5% for 10 minutes"
+              description: "Compare with the previous release and consider rolling back (docs/runbooks/deploy-rollback.md)."
+  - interval: 1m
+    input_series:
+      - series: 'http_server_duration_milliseconds_count{http_status_code="500", http_target="/v1/plans/{plan_id}", job="beluno-api"}'
+        values: "0+1x40"
+      - series: 'http_server_duration_milliseconds_count{http_status_code="200", http_target="/v1/plans/{plan_id}", job="beluno-api"}'
+        values: "0+999x40"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: HighServerErrorRatio
+        exp_alerts: []
+
+  # Command latency is selected by command name: a slow expense.create fires its own
+  # alert while a fast settlement.record does not.
+  - interval: 1m
+    input_series:
+      - series: 'beluno_command_duration_milliseconds_bucket{command="expense.create", le="250", job="beluno-api"}'
+        values: "0+0x40"
+      - series: 'beluno_command_duration_milliseconds_bucket{command="expense.create", le="500", job="beluno-api"}'
+        values: "0+60x40"
+      - series: 'beluno_command_duration_milliseconds_bucket{command="expense.create", le="+Inf", job="beluno-api"}'
+        values: "0+60x40"
+      - series: 'beluno_command_duration_milliseconds_bucket{command="settlement.record", le="250", job="beluno-api"}'
+        values: "0+60x40"
+      - series: 'beluno_command_duration_milliseconds_bucket{command="settlement.record", le="+Inf", job="beluno-api"}'
+        values: "0+60x40"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: QuickExpenseLatencyAboveTarget
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "expense.create p95 above 300 ms"
+              description: "Quick expense creation is slower than its latency target."
+      - eval_time: 25m
+        alertname: SettleUpLatencyAboveTarget
+        exp_alerts: []
+
+  # Sync pull is measured from the HTTP histogram on its route template.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_duration_milliseconds_bucket{http_method="POST", http_target="/v1/sync/pull", le="1000", job="beluno-api"}'
+        values: "0+0x40"
+      - series: 'http_server_duration_milliseconds_bucket{http_method="POST", http_target="/v1/sync/pull", le="2500", job="beluno-api"}'
+        values: "0+60x40"
+      - series: 'http_server_duration_milliseconds_bucket{http_method="POST", http_target="/v1/sync/pull", le="+Inf", job="beluno-api"}'
+        values: "0+60x40"
+      - series: 'http_server_duration_milliseconds_bucket{http_method="POST", http_target="/v1/sync/push", le="1000", job="beluno-api"}'
+        values: "0+60x40"
+      - series: 'http_server_duration_milliseconds_bucket{http_method="POST", http_target="/v1/sync/push", le="+Inf", job="beluno-api"}'
+        values: "0+60x40"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: SyncPullLatencyAboveTarget
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "POST /v1/sync/pull p95 above 1 s"
+              description: "Sync pull is slower than its latency target."
+
+  # No queue gauge at all: the worker is gone or silent.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="otel-collector"}'
+        values: "1+0x30"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WorkerQueueMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "No job queue metrics received"
+              description: "The worker is not running or not exporting telemetry; queue and drift alerts cannot fire."

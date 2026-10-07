@@ -1,0 +1,49 @@
+# OpenTelemetry Collector (contrib distribution: the prometheus exporter is not in core).
+# The API and worker export OTLP/gRPC here; Prometheus scrapes the exporter on :8889.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  # Protect the collector (and the host) from a runaway producer.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  batch: {}
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # Copy resource attributes (service.name, deployment.environment.name, ...) onto
+    # every series as labels instead of a separate target_info series.
+    resource_to_telemetry_conversion:
+      enabled: true
+    # Series from a process that stopped reporting disappear after this long.
+    metric_expiration: 5m
+  # No trace backend is chosen yet; the application always sends spans to the same
+  # endpoint, so accept and discard them instead of letting the exporter error.
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888

@@ -1,0 +1,31 @@
+# Prometheus for the staging stack. Beluno processes never expose a scrape endpoint;
+# they push OTLP to the collector, and Prometheus scrapes the collector.
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # Application metrics re-exported by the collector's prometheus exporter.
+  # honor_labels keeps the labels set by the application's own resource attributes.
+  - job_name: otel-collector
+    honor_labels: true
+    static_configs:
+      - targets: ["otel-collector:8889"]
+
+  # Collector self-metrics (accepted/refused/dropped data points).
+  - job_name: otel-collector-internal
+    static_configs:
+      - targets: ["otel-collector:8888"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

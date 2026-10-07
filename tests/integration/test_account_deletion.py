@@ -182,6 +182,9 @@ async def test_a_deleted_member_becomes_former_member_and_money_still_settles(
         trip.members["Dan"].user_id
     ]
     assert only_bea.json()["id"] not in crews
+    assert admin.fetch(
+        "SELECT name, member_user_ids FROM people.crews WHERE id = %s", only_bea.json()["id"]
+    ) == [("", [])]
     items, _, _ = await pull_all(api, trip.owner, f"user:{trip.owner.user_id}", owner_cursor)
     crew_changes = {
         item["entity_id"]: item["operation"] for item in items if item["entity_type"] == "crew"

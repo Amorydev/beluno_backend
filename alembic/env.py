@@ -12,7 +12,8 @@ from beluno.config import Settings
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Keep loggers that already exist: running migrations must not silence the app's logs.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Domain tables are introduced by reviewed migrations. Metadata is intentionally
 # not the production DDL source for RLS, triggers, functions, or grants.

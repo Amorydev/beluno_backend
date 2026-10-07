@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -17,6 +20,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --all-groups --locked
       - run: uv run ruff check .
+      - run: uv run ruff format --check .
       - run: uv run mypy src
       - run: uv run python scripts/export_openapi.py
       - run: git diff --exit-code -- openapi/openapi.json
@@ -31,3 +35,100 @@ jobs:
       # Integration, security, and e2e suites use Testcontainers PostgreSQL here.
       - run: uv run coverage run -m pytest
       - run: uv run coverage report --fail-under=80
+
+  # The security, supply-chain, and container jobs below run independently of the
+  # quality job so a failing scan is visible on its own.
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      # Only the dev tooling is installed; the audited set is the locked runtime
+      # dependencies exported below, not this environment.
+      - run: uv sync --locked --only-group dev
+      - name: Export locked runtime dependencies
+        run: uv export --locked --no-dev --no-hashes --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/runtime-requirements.txt"
+      # The export is fully pinned, so pip-audit needs neither dependency resolution nor
+      # pip. --strict fails the job when a package cannot be audited.
+      - name: Audit runtime dependencies
+        run: uv run --no-sync pip-audit -r "$RUNNER_TEMP/runtime-requirements.txt" --no-deps --disable-pip --strict
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Scan the whole history, not just the tip.
+          fetch-depth: 0
+      # The open-source release binary, pinned and checksum-verified (the GitHub
+      # Action needs a licence for organisations). Configuration: .gitleaks.toml.
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan git history
+        run: '"$RUNNER_TEMP/gitleaks" git --no-banner --redact --verbose --config .gitleaks.toml .'
+
+  sbom:
+    name: SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked --only-group dev
+      - name: Export locked runtime dependencies
+        run: uv export --locked --no-dev --no-hashes --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/runtime-requirements.txt"
+      - name: Generate CycloneDX SBOM
+        run: uv run --no-sync cyclonedx-py requirements "$RUNNER_TEMP/runtime-requirements.txt" --pyproject pyproject.toml --of JSON --validate -o beluno-backend.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: beluno-backend.cdx.json
+          if-no-files-found: error
+
+  container:
+    name: Container and staging config
+    runs-on: ubuntu-latest
+    env:
+      # The placeholder environment file lets compose resolve every required variable.
+      COMPOSE_ARGS: --env-file deploy/staging/env.example -f deploy/staging/compose.yaml
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image (not pushed)
+        run: docker build --tag beluno-backend:ci .
+      - name: Image runs as a non-root user and imports every entrypoint
+        run: |
+          test "$(docker run --rm beluno-backend:ci id -u)" = "10001"
+          docker run --rm beluno-backend:ci python -c "import beluno.api.main, beluno.worker.main, beluno.scheduler.main, beluno.db.bootstrap"
+          docker run --rm beluno-backend:ci test -f /app/alembic.ini -a -f /app/sql/platform-runtime-grants.sql
+      - name: Validate the compose file
+        run: docker compose $COMPOSE_ARGS --profile scheduler config --quiet
+      # Tool versions come from the compose file, so CI checks with the images that run.
+      - name: Validate Prometheus configuration, alert rules, and rule tests
+        run: |
+          image="$(docker compose $COMPOSE_ARGS config --images | grep '^prom/prometheus:')"
+          prometheus_dir="$PWD/deploy/staging/prometheus"
+          run_promtool() { docker run --rm --entrypoint promtool -v "$prometheus_dir:/etc/prometheus:ro" "$image" "$@"; }
+          run_promtool check config /etc/prometheus/prometheus.yml
+          run_promtool check rules /etc/prometheus/rules/beluno-alerts.yml
+          run_promtool test rules /etc/prometheus/tests/beluno-alerts.test.yml
+      - name: Validate Alertmanager configuration
+        run: |
+          image="$(docker compose $COMPOSE_ARGS config --images | grep '^prom/alertmanager:')"
+          docker run --rm --entrypoint amtool -v "$PWD/deploy/staging/alertmanager:/etc/alertmanager:ro" "$image" check-config /etc/alertmanager/alertmanager.yml
+      - name: Validate OpenTelemetry Collector configuration
+        run: |
+          image="$(docker compose $COMPOSE_ARGS config --images | grep '^otel/opentelemetry-collector-contrib:')"
+          docker run --rm -v "$PWD/deploy/staging/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro" "$image" validate --config=/etc/otelcol-contrib/config.yaml

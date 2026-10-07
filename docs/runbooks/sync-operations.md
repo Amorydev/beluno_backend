@@ -69,10 +69,8 @@ applied again, operations it kept are replayed from the operation records.
 
 ## Kill switches
 
-| Setting | Effect |
-|---|---|
-| `BELUNO_SYNC_PUSH_ENABLED=false` | `/v1/sync/push` returns `503 FEATURE_DISABLED`; clients keep their queues |
-| `BELUNO_SYNC_PULL_ENABLED=false` | `/v1/sync/pull` returns `503 FEATURE_DISABLED`; the handshake still reports it |
-| `BELUNO_SYNC_DISABLED_COMMANDS='["plan.duplicate"]'` | The command is refused on REST (`503`) and push (`retry`) alike |
+`BELUNO_SYNC_PUSH_ENABLED`, `BELUNO_SYNC_PULL_ENABLED`, and
+`BELUNO_SYNC_DISABLED_COMMANDS` turn push, pull, or single commands off; every
+switch is listed in `deploy-rollback.md`.
 
 Disable a command rather than deleting accepted operations or change rows.

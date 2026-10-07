@@ -31,6 +31,16 @@ class SmtpSecurity(StrEnum):
     NONE = "none"
 
 
+class ProcessRole(StrEnum):
+    """Which process this is; in staging/production each needs only its own database URL."""
+
+    ALL = "all"
+    API = "api"
+    WORKER = "worker"
+    SCHEDULER = "scheduler"
+    MIGRATE = "migrate"
+
+
 SECURE_ENVIRONMENTS = frozenset({Environment.STAGING, Environment.PRODUCTION})
 TLS_SSL_MODES = frozenset({"require", "verify-ca", "verify-full"})
 MIN_TOKEN_HASH_KEY_LENGTH = 32
@@ -46,6 +56,9 @@ class Settings(BaseSettings):
     )
 
     environment: Environment = Environment.DEVELOPMENT
+    # ``all`` (the default) requires every database URL; a deployment that gives each
+    # process only its own credentials names the process here.
+    process_role: ProcessRole = ProcessRole.ALL
     log_level: str = "INFO"
     release: str = "dev"
     api_database_url: SecretStr | None = Field(
@@ -111,6 +124,9 @@ class Settings(BaseSettings):
     sync_offline_window_days: int = Field(default=90, ge=1, le=365)
     sync_change_retention_days: int = Field(default=180, ge=1, le=3_650)
     sync_operation_retention_days: int = Field(default=180, ge=1, le=3_650)
+    # A plan whose deletion was scheduled is purged for good this many days later; it
+    # can be restored until then. The database refuses anything under seven days.
+    plan_purge_after_days: int = Field(default=30, ge=7, le=3_650)
     sync_push_max_operations: int = Field(default=100, ge=1, le=1_000)
     sync_push_max_bytes: int = Field(default=1_048_576, ge=4_096, le=10_485_760)
     # Bounded by the pull contract's maximum page size (500) plus the lookahead row.
@@ -187,18 +203,38 @@ class Settings(BaseSettings):
         if self.environment not in SECURE_ENVIRONMENTS:
             return
 
-        required_dsn_names = {
-            "BELUNO_API_DATABASE_URL": self.api_database_dsn,
-            "BELUNO_WORKER_DATABASE_URL": self._secret_value(self.worker_database_url),
-            "BELUNO_SCHEDULER_DATABASE_URL": self._secret_value(self.scheduler_database_url),
-            "BELUNO_MIGRATION_DATABASE_URL": self._secret_value(self.migration_database_url),
+        dsn_names = {
+            ProcessRole.API: ("BELUNO_API_DATABASE_URL", self.api_database_dsn),
+            ProcessRole.WORKER: (
+                "BELUNO_WORKER_DATABASE_URL",
+                self._secret_value(self.worker_database_url),
+            ),
+            ProcessRole.SCHEDULER: (
+                "BELUNO_SCHEDULER_DATABASE_URL",
+                self._secret_value(self.scheduler_database_url),
+            ),
+            ProcessRole.MIGRATE: (
+                "BELUNO_MIGRATION_DATABASE_URL",
+                self._secret_value(self.migration_database_url),
+            ),
         }
+        required_dsn_names = dict(
+            dsn_names.values()
+            if self.process_role is ProcessRole.ALL
+            else [dsn_names[self.process_role]]
+        )
         missing = [name for name, value in required_dsn_names.items() if value is None]
-        if self.auth_signing_keys is None:
+        # Migrations and the heartbeat scheduler issue no tokens and send no email.
+        serves_people = self.process_role in (
+            ProcessRole.ALL,
+            ProcessRole.API,
+            ProcessRole.WORKER,
+        )
+        if serves_people and self.auth_signing_keys is None:
             missing.append("BELUNO_AUTH_SIGNING_KEYS")
-        if self.token_hash_key is None:
+        if serves_people and self.token_hash_key is None:
             missing.append("BELUNO_TOKEN_HASH_KEY")
-        if self.email_backend is EmailBackend.SMTP:
+        if serves_people and self.email_backend is EmailBackend.SMTP:
             if not self.smtp_host:
                 missing.append("BELUNO_SMTP_HOST")
             if not self.email_from:
@@ -209,9 +245,13 @@ class Settings(BaseSettings):
         for name, dsn in required_dsn_names.items():
             assert dsn is not None
             self._assert_tls_database_url(name, dsn)
-        if self.email_backend is EmailBackend.CONSOLE:
+        if serves_people and self.email_backend is EmailBackend.CONSOLE:
             raise RuntimeError("BELUNO_EMAIL_BACKEND=console is only allowed outside staging")
-        if self.email_backend is EmailBackend.SMTP and self.smtp_security is SmtpSecurity.NONE:
+        if (
+            serves_people
+            and self.email_backend is EmailBackend.SMTP
+            and self.smtp_security is SmtpSecurity.NONE
+        ):
             raise RuntimeError("BELUNO_SMTP_SECURITY must use starttls or tls")
         if self.auth_magic_link_url is not None:
             self._assert_https_url("BELUNO_AUTH_MAGIC_LINK_URL", self.auth_magic_link_url)
