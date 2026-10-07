@@ -20,6 +20,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from anyio import CapacityLimiter
 from sqlalchemy import select
 
 from beluno.api.projection import FeedProjector
@@ -60,20 +61,15 @@ class ExportFile:
     filename: str
     media_type: str
     render: Callable[[], bytes]  # pure: safe to run in a worker thread
+    # Bounds how many of these render at once (heavy formats).
+    limiter: CapacityLimiter | None = None
 
 
 async def plan_json(ctx: CommandContext, plan_id: UUID) -> ExportFile:
     """Everything the caller syncs for the plan, plus their own private packing items."""
 
-    entities = await _plan_entities(ctx, plan_id)
-    await record_audit(
-        ctx,
-        action="plan.exported",
-        entity_type="plan",
-        entity_id=plan_id,
-        plan_id=plan_id,
-        metadata={"format": "json"},
-    )
+    entities = await plan_entities(ctx, plan_id)
+    await audit_export(ctx, plan_id, "json")
     body = {"plan_id": str(plan_id), "entities": entities}
     return ExportFile(f"beluno-plan-{plan_id}.json", "application/json", _document(ctx, body))
 
@@ -81,17 +77,10 @@ async def plan_json(ctx: CommandContext, plan_id: UUID) -> ExportFile:
 async def plan_csv(ctx: CommandContext, plan_id: UUID) -> ExportFile:
     """One row per expense: the original amount and its base-currency snapshot."""
 
-    entities = await _plan_entities(ctx, plan_id)
-    await record_audit(
-        ctx,
-        action="plan.exported",
-        entity_type="plan",
-        entity_id=plan_id,
-        plan_id=plan_id,
-        metadata={"format": "csv"},
-    )
-    names = {row["id"]: row["display_name"] for row in entities.get("plan_participant", [])}
-    exponents = dict((await ctx.session.execute(select(Currency.code, Currency.exponent))).all())
+    entities = await plan_entities(ctx, plan_id)
+    await audit_export(ctx, plan_id, "csv")
+    names = names_of(entities)
+    exponents = await currency_exponents(ctx)
     # UUIDv7 IDs order expenses recorded on the same day by when they were made.
     expenses = sorted(
         entities.get("expense", []),
@@ -126,7 +115,30 @@ async def account_json(ctx: CommandContext) -> ExportFile:
     return ExportFile(f"beluno-account-{user_id}.json", "application/json", _document(ctx, body))
 
 
-async def _plan_entities(ctx: CommandContext, plan_id: UUID) -> Entities:
+async def audit_export(ctx: CommandContext, plan_id: UUID, kind: str) -> None:
+    await record_audit(
+        ctx,
+        action="plan.exported",
+        entity_type="plan",
+        entity_id=plan_id,
+        plan_id=plan_id,
+        metadata={"format": kind},
+    )
+
+
+def names_of(entities: Entities) -> dict[str | None, str]:
+    names: dict[str | None, str] = {
+        row["id"]: row["display_name"] for row in entities.get("plan_participant", [])
+    }
+    names[None] = FUND
+    return names
+
+
+async def currency_exponents(ctx: CommandContext) -> dict[str, int]:
+    return dict((await ctx.session.execute(select(Currency.code, Currency.exponent))).all())
+
+
+async def plan_entities(ctx: CommandContext, plan_id: UUID) -> Entities:
     scope = ScopeKey(ChangeScope.PLAN, plan_id)
     level = await scope_access(ctx, scope)
     if level is None:
@@ -139,6 +151,21 @@ async def _plan_entities(ctx: CommandContext, plan_id: UUID) -> Entities:
         *(row for row in private if row["plan_id"] == str(plan_id)),
     ]
     return entities
+
+
+async def plan_rows(ctx: CommandContext, plan_id: UUID, *entity_types: str) -> Entities:
+    """Only these entity types of a plan, as the caller syncs them (404 without access)."""
+
+    scope = ScopeKey(ChangeScope.PLAN, plan_id)
+    level = await scope_access(ctx, scope)
+    if level is None:
+        raise not_found()
+    visible = FeedProjector().visible_types(scope.scope_type.value, level)
+    return {
+        entity_type: await _all_rows(ctx, scope, level, entity_type)
+        for entity_type in entity_types
+        if entity_type in visible
+    }
 
 
 async def _scope_entities(ctx: CommandContext, scope: ScopeKey, level: AccessLevel) -> Entities:
@@ -178,14 +205,14 @@ def _timestamp(moment: datetime) -> str:
     return moment.isoformat().replace("+00:00", "Z")
 
 
-def _text(value: str) -> str:
+def spreadsheet_text(value: str) -> str:
     """Free text that a spreadsheet would read as a formula is kept as text."""
 
     return f"'{value}" if value[:1] in FORMULA_STARTS else value
 
 
 def _expense_row(
-    expense: dict[str, Any], names: dict[str, str], exponents: dict[str, int]
+    expense: dict[str, Any], names: dict[str | None, str], exponents: dict[str, int]
 ) -> list[str]:
     revision = expense["revision"]
     currency, base = revision["currency"], revision["base"]
@@ -198,13 +225,13 @@ def _expense_row(
     def who(participant_id: str | None) -> str:
         return FUND if participant_id is None else names.get(participant_id, participant_id)
 
-    paid_by = _text(
+    paid_by = spreadsheet_text(
         "; ".join(
             f"{who(payer['participant_id'])}: {amount(payer['amount_minor'], currency)}"
             for payer in revision["payers"]
         )
     )
-    split = _text(
+    split = spreadsheet_text(
         "; ".join(
             f"{who(share['participant_id'])}: {amount(share['owed_minor'], currency)}"
             for share in revision["shares"]
@@ -212,7 +239,7 @@ def _expense_row(
     )
     return [
         revision["occurred_on"],
-        _text(revision["description"]),
+        spreadsheet_text(revision["description"]),
         revision["category"],
         amount(revision["amount_minor"], currency),
         currency,

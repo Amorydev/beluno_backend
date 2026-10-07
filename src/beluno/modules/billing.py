@@ -21,7 +21,7 @@ from sqlalchemy import func, select, text
 from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import PlanAction
 from beluno.config import Settings
-from beluno.contracts.errors import conflict, forbidden, validation_error
+from beluno.contracts.errors import conflict, forbidden, upgrade_required, validation_error
 from beluno.db.ids import new_id
 from beluno.db.models.billing import Purchase
 from beluno.db.models.media import Media
@@ -121,12 +121,25 @@ async def active_pro(ctx: CommandContext) -> Purchase | None:
 async def plan_entitlement(ctx: CommandContext, plan_id: UUID) -> PlanEntitlement:
     access = await load_plan(ctx, plan_id)
     require_plan(access, PlanAction.VIEW)
-    unlocked_by = await ctx.session.scalar(PLAN_UNLOCK, {"plan_id": plan_id, "now": ctx.now})
     return PlanEntitlement(
-        unlocked_by=unlocked_by,
+        unlocked_by=await unlocked_by(ctx, plan_id),
         receipts=await _receipts(ctx, plan_id),
         receipt_limit=await receipt_limit(ctx, plan_id, access.plan.type),
     )
+
+
+async def unlocked_by(ctx: CommandContext, plan_id: UUID) -> str | None:
+    """``trip_pass`` or ``pro`` when a trip the caller is in is unlocked."""
+
+    found: str | None = await ctx.session.scalar(PLAN_UNLOCK, {"plan_id": plan_id, "now": ctx.now})
+    return found
+
+
+async def require_unlocked(ctx: CommandContext, plan_id: UUID, plan_type: str, what: str) -> None:
+    """Paid features need a Trip Pass or the owner's Pro; hangouts are always free."""
+
+    if plan_type == TRIP and await unlocked_by(ctx, plan_id) is None:
+        raise upgrade_required(f"{what} needs a Trip Pass for this trip, or Pro for its owner")
 
 
 async def receipt_limit(ctx: CommandContext, plan_id: UUID, plan_type: str) -> int | None:
@@ -135,8 +148,7 @@ async def receipt_limit(ctx: CommandContext, plan_id: UUID, plan_type: str) -> i
     limit = ctx.settings.media_receipts_per_plan
     if limit is None or plan_type != TRIP:
         return None
-    unlocked = await ctx.session.scalar(PLAN_UNLOCK, {"plan_id": plan_id, "now": ctx.now})
-    return None if unlocked else limit
+    return None if await unlocked_by(ctx, plan_id) else limit
 
 
 async def require_room_for_trip(
@@ -152,10 +164,7 @@ async def require_room_for_trip(
     if limit is None:
         return
     await ctx.session.execute(LOCK_TRIPS, {"user_id": str(owner_id)})
-    if plan_id is not None and (
-        await ctx.session.scalar(PLAN_UNLOCK, {"plan_id": plan_id, "now": ctx.now})
-        == StoreProduct.TRIP_PASS.value
-    ):
+    if plan_id is not None and await unlocked_by(ctx, plan_id) == StoreProduct.TRIP_PASS.value:
         return
     counting = await _trips_counting(ctx, owner_id, plan_id)
     if counting is not None and counting >= limit:

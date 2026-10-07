@@ -30,6 +30,7 @@ dependencies = [
   "app-store-server-library>=3.1.2",
   "google-auth>=2.60.0",
   "requests>=2.34.2",
+  "fpdf2>=2.8.9",
 ]
 
 [dependency-groups]
@@ -49,6 +50,7 @@ dev = [
   "types-python-dateutil>=2.9",
   "moto[server]>=5.2.3",
   "boto3-stubs[s3]>=1.43.108",
+  "pypdf>=6.19.0",
 ]
 
 [build-system]
@@ -83,8 +85,8 @@ packages = ["beluno"]
 exclude = ["alembic"]
 
 [[tool.mypy.overrides]]
-# firebase-admin ships no type information.
-module = ["firebase_admin", "firebase_admin.*"]
+# firebase-admin and fontTools ship no type information.
+module = ["firebase_admin", "firebase_admin.*", "fontTools", "fontTools.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]
