@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import case, delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from beluno.authorization.access import load_plan, require_plan
@@ -23,10 +23,11 @@ from beluno.authorization.policy import (
     PlanAction,
     PlanState,
 )
+from beluno.contracts.common import clean_text
 from beluno.contracts.errors import invalid_state, not_found, version_conflict
 from beluno.db.models.coordination import Task
 from beluno.db.models.engagement import Notification, NotificationSettings, PushToken
-from beluno.modules.context import CommandContext, Runtime
+from beluno.modules.context import CommandContext, Runtime, open_context
 from beluno.modules.finance.views import ledger_snapshot
 from beluno.modules.planning.common import planning_access, require_author_or_manager
 from beluno.modules.sync_audit.recorder import record_audit
@@ -35,6 +36,10 @@ from beluno.push import PushMessage, PushResult, PushSender
 FAN_OUT = text("SELECT engagement.fan_out(:now)")
 QUEUE_REMINDERS = text("SELECT engagement.queue_reminders(:now)")
 QUEUE_SUMMARIES = text("SELECT engagement.queue_summaries(:now)")
+QUEUE_WEEKLY = text("SELECT engagement.queue_weekly(:now)")
+QUEUE_NEWS = text(
+    "SELECT engagement.queue_news(:key, :title_vi, :body_vi, :title_en, :body_en, :now)"
+)
 QUEUE_NUDGE = text("SELECT engagement.queue_nudge(:kind, :plan_id, :subject_id)")
 _CATEGORY_ARGUMENTS: dict[str, tuple[str, ...]] = {
     "money": ("actor", "plan"),
@@ -46,6 +51,8 @@ _CATEGORY_ARGUMENTS: dict[str, tuple[str, ...]] = {
 _ARGUMENTS: dict[str, tuple[str, ...]] = {
     "task_nudge": ("actor", "plan"),
     "payment_nudge": ("actor", "plan"),
+    # Days until the trip starts is empty when it has no date (or has started).
+    "weekly_summary": ("plan", "tasks", "polls", "days"),
 }
 REGISTER_TOKEN = text("SELECT engagement.register_push_token(:session_id, :token, :platform)")
 FORGET_SETTINGS = text("SELECT engagement.forget_settings()")
@@ -53,10 +60,17 @@ LIVE_TOKENS = text(
     "SELECT id, user_id, token, platform FROM engagement.live_tokens(CAST(:users AS uuid[]), :now)"
 )
 BATCH = 100
+# A burst (news, Sunday evening) never holds up a payment for long: urgent kinds go
+# first, and a run delivers several batches.
+MAX_BATCHES = 10
+URGENCY = case(
+    (Notification.category == "news", 2), (Notification.category == "summaries", 1), else_=0
+)
 MAX_ATTEMPTS = 5
 STUCK_SENDING = timedelta(minutes=10)
 KEEP_FOR = timedelta(days=30)
 CATEGORIES = ("money", "reminders", "summaries", "news")
+NEWS = "news"
 
 
 @dataclass(frozen=True)
@@ -206,6 +220,61 @@ async def _nudge(ctx: CommandContext, kind: str, plan_id: UUID, subject_id: UUID
     return bool(queued)
 
 
+@dataclass(frozen=True)
+class News:
+    """One piece of news in both languages (titles up to 80 characters, bodies 300)."""
+
+    key: str  # a short slug; sending the same key again reaches nobody twice
+    title_vi: str
+    body_vi: str
+    title_en: str
+    body_en: str
+
+
+async def send_news(runtime: Runtime, news: News, *, operator: str) -> int:
+    """Operators: queue news for everyone who turned news on; returns how many."""
+
+    sent = News(
+        key=news.key,
+        title_vi=clean_text(news.title_vi),
+        body_vi=clean_text(news.body_vi),
+        title_en=clean_text(news.title_en),
+        body_en=clean_text(news.body_en),
+    )
+    async with open_context(runtime) as ctx:
+        queued = int(
+            await ctx.session.scalar(
+                QUEUE_NEWS,
+                {
+                    "key": sent.key,
+                    "title_vi": sent.title_vi,
+                    "body_vi": sent.body_vi,
+                    "title_en": sent.title_en,
+                    "body_en": sent.body_en,
+                    "now": ctx.now,
+                },
+            )
+            or 0
+        )
+        # What was sent stays on record after the notifications are purged.
+        await record_audit(
+            ctx,
+            action="notifications.news_sent",
+            entity_type="news",
+            entity_id=uuid5(NAMESPACE_URL, f"beluno:news:{sent.key}"),
+            metadata={
+                "key": sent.key,
+                "operator": clean_text(operator),
+                "queued": queued,
+                "title_vi": sent.title_vi,
+                "body_vi": sent.body_vi,
+                "title_en": sent.title_en,
+                "body_en": sent.body_en,
+            },
+        )
+    return queued
+
+
 async def forget_settings(ctx: CommandContext) -> None:
     """Account deletion: settings and undelivered notifications go."""
 
@@ -242,6 +311,7 @@ async def dispatch(runtime: Runtime, sender: PushSender) -> int:
         await session.execute(FAN_OUT, {"now": now})
         await session.execute(QUEUE_REMINDERS, {"now": now})
         await session.execute(QUEUE_SUMMARIES, {"now": now})
+        await session.execute(QUEUE_WEEKLY, {"now": now})
         # Deliveries a crashed worker left half-done go back to the queue, or fail once
         # they have used up their attempts.
         stuck = (Notification.state == "sending") & (
@@ -275,6 +345,20 @@ class _Send:
 
 
 async def deliver(runtime: Runtime, sender: PushSender, now: datetime) -> int:
+    """Deliver what is due, a batch at a time, up to ``MAX_BATCHES`` per run."""
+
+    delivered = 0
+    for _ in range(MAX_BATCHES):
+        taken, sent = await _deliver_batch(runtime, sender, now)
+        delivered += sent
+        if taken < BATCH:
+            break
+    return delivered
+
+
+async def _deliver_batch(runtime: Runtime, sender: PushSender, now: datetime) -> tuple[int, int]:
+    """One batch: what money, reminders, and security need first, summaries, then news."""
+
     outgoing: list[_Send] = []
     async with runtime.database.transaction() as session:
         due = list(
@@ -282,7 +366,7 @@ async def deliver(runtime: Runtime, sender: PushSender, now: datetime) -> int:
                 await session.execute(
                     select(Notification)
                     .where(Notification.state == "pending", Notification.deliver_after <= now)
-                    .order_by(Notification.deliver_after, Notification.id)
+                    .order_by(URGENCY, Notification.deliver_after, Notification.id)
                     .limit(BATCH)
                     .with_for_update(skip_locked=True)
                 )
@@ -366,7 +450,7 @@ async def deliver(runtime: Runtime, sender: PushSender, now: datetime) -> int:
             )
         if invalid:
             await session.execute(delete(PushToken).where(PushToken.id.in_(invalid)))
-    return sum(1 for outcomes in results.values() if PushResult.DELIVERED in outcomes)
+    return len(due), sum(1 for outcomes in results.values() if PushResult.DELIVERED in outcomes)
 
 
 @dataclass(frozen=True)
@@ -380,7 +464,7 @@ def _message(notification: Notification, device: Device) -> PushMessage:
     args = notification.args
     # Always the same arguments per kind, so the app's strings line up.
     keys = _ARGUMENTS.get(notification.kind) or _CATEGORY_ARGUMENTS[notification.category]
-    loc_args = [str(args.get(key) or "") for key in keys]
+    loc_args = ["" if args.get(key) is None else str(args[key]) for key in keys]
     data = {"notification_id": str(notification.id)}
     for key, value in (
         ("plan_id", notification.plan_id),
@@ -397,6 +481,8 @@ def _message(notification: Notification, device: Device) -> PushMessage:
         loc_args=loc_args,
         data=data,
         thread_id=str(notification.plan_id) if notification.plan_id else None,
+        title=args.get("title") if notification.kind == NEWS else None,
+        body=args.get("body") if notification.kind == NEWS else None,
     )
 
 

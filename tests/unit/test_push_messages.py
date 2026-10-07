@@ -8,6 +8,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from firebase_admin import exceptions, messaging
+from firebase_admin._messaging_encoder import MessageEncoder
 
 from beluno.modules.notifications import DEFAULTS, Preferences, quiet_until
 from beluno.push import FirebasePushSender, PushMessage, PushResult, build_message
@@ -65,6 +66,36 @@ def test_messages_carry_keys_not_text() -> None:
         "private",
     )
     assert built.data == {"plan_id": "p", "kind": "expense_added", "category": "money"}
+
+
+def test_news_carries_the_teams_own_words() -> None:
+    built = build_message(
+        PushMessage(
+            token="t" * 30,
+            platform="android",
+            kind="news",
+            category="news",
+            loc_args=[],
+            title="Trip Pass is here",
+            body="Unlock one trip for everyone on it.",
+        )
+    )
+    alert = built.apns.payload.aps.alert
+    assert (alert.title, alert.body, alert.loc_key) == (
+        "Trip Pass is here",
+        "Unlock one trip for everyone on it.",
+        None,
+    )
+    android = built.android.notification
+    assert (android.title, android.title_loc_key, android.body_loc_key, android.channel_id) == (
+        "Trip Pass is here",
+        None,
+        None,
+        "news",
+    )
+    # The FCM encoder accepts it as built.
+    encoded = MessageEncoder().default(built)
+    assert encoded["android"]["notification"]["title"] == "Trip Pass is here"
 
 
 def service_account() -> str:

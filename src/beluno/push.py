@@ -41,6 +41,9 @@ class PushMessage:
     loc_args: list[str]
     data: dict[str, str] = field(default_factory=dict)
     thread_id: str | None = None  # groups a plan's notifications on iOS
+    # News from the team carries its own words; every other kind a localisation key.
+    title: str | None = None
+    body: str | None = None
 
 
 class PushSender(Protocol):
@@ -52,30 +55,45 @@ class PushSender(Protocol):
 def build_message(message: PushMessage) -> messaging.Message:
     title_key = f"notification_{message.kind}_title"
     body_key = f"notification_{message.kind}_body"
+    written = message.title is not None
+    keys: dict[str, object] = (
+        {}
+        if written
+        else {
+            "title_loc_key": title_key,
+            "title_loc_args": message.loc_args,
+            "body_loc_key": body_key,
+            "body_loc_args": message.loc_args,
+        }
+    )
+    alert = (
+        messaging.ApsAlert(title=message.title, body=message.body)
+        if written
+        else messaging.ApsAlert(
+            title_loc_key=title_key,
+            title_loc_args=message.loc_args,
+            loc_key=body_key,
+            loc_args=message.loc_args,
+        )
+    )
     return messaging.Message(
         token=message.token,
         data={**message.data, "kind": message.kind, "category": message.category},
         android=messaging.AndroidConfig(
             priority="high" if message.category in ("money", "security") else "normal",
             notification=messaging.AndroidNotification(
-                title_loc_key=title_key,
-                title_loc_args=message.loc_args,
-                body_loc_key=body_key,
-                body_loc_args=message.loc_args,
+                title=message.title,
+                body=message.body,
                 channel_id=message.category,
                 # The lock screen shows only that something happened.
                 visibility="private",
+                **keys,
             ),
         ),
         apns=messaging.APNSConfig(
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(
-                    alert=messaging.ApsAlert(
-                        title_loc_key=title_key,
-                        title_loc_args=message.loc_args,
-                        loc_key=body_key,
-                        loc_args=message.loc_args,
-                    ),
+                    alert=alert,
                     thread_id=message.thread_id,
                     category=message.kind,
                     sound="default",
