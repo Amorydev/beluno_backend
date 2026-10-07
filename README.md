@@ -78,7 +78,9 @@ People can delete their account (`DELETE /v1/me`) after a recent sign-in (guests
 Deletion is immediate and permanent and leaves money history intact: the person
 becomes "Former member" in every plan, and others can still settle with them. It
 is refused while they own a plan another person is still in (transfer ownership first;
-a guest must create an account to take it). Placeholders never block.
+a guest must create an account to take it). Placeholders never block. A deleted plan
+can be restored for 30 days (`BELUNO_PLAN_PURGE_AFTER_DAYS`); then it is purged
+with everything it holds.
 See `docs/adr/0009-activity-feed-and-account-deletion.md`.
 
 ## Finance
@@ -107,3 +109,10 @@ uv run python -m beluno.scheduler.main         # Periodic job scheduler
 Worker and scheduler require `BELUNO_WORKER_DATABASE_URL` and
 `BELUNO_SCHEDULER_DATABASE_URL`. Database credentials never belong in the
 repository.
+
+One container image (`Dockerfile`) runs every process, and `deploy/staging/`
+holds a compose stack with OTel, Prometheus alerts, and Grafana. See
+`docs/runbooks/deploy-rollback.md` (deploy, rollback, kill switches),
+`docs/runbooks/performance.md` (targets and load tests), and
+`docs/runbooks/database-drills.md` (backup, restore, migration rehearsal), plus
+`docs/adr/0010-release-one-operations.md`.
