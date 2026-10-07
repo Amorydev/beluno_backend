@@ -15,6 +15,7 @@
 | Private packing items | live with their plan; move with a guest who claims an account; deleted with their owner's account | purged with the plan (owners' user scopes get a `packing_item` delete); `coordination.forget_private_packing` on account deletion |
 | Booking secrets (sealed confirmation codes and private notes) | live with the booking and its plan; cleared when set to null | purged with the plan; never logged, synced, or stored in replayable responses |
 | Exports (plan CSV/JSON, account JSON) | never stored: built per request and sent with `Cache-Control: no-store` | each export leaves an audit event (`plan.exported`, `account.exported`) with no content |
+| Problem reports (the person's words, diagnostic snapshot) | until the person deletes their account, or a legal policy sets a limit | `analytics_ops.forget_problem_reports` on account deletion; snapshots hold no expense text, notes, names, or codes |
 | Deleted crews | name and members cleared at deletion; the tombstone stays for sync | `crew.delete` and account deletion |
 | Failed jobs (dead letters) | until replayed or removed by an operator | `scripts/jobs.py` |
 
