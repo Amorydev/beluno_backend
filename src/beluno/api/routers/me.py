@@ -62,11 +62,13 @@ async def update_profile(
 async def delete_account(
     runner: RunnerDep, actor: ActorDep, idempotency_key: IdempotencyKey = None
 ) -> Response:
-    """Delete your account (needs a recent sign-in).
+    """Delete your account (needs a recent sign-in, except for guests).
 
     You become "Former member" in every plan and money history stays intact.
-    Refused with 409 OWNER_TRANSFER_REQUIRED while you own a plan someone else is
-    still in; plans you own alone are scheduled for deletion.
+    Refused with 409 OWNER_TRANSFER_REQUIRED while you own a plan another person
+    (not a placeholder) is still in; plans you own alone are scheduled for
+    deletion. Success signs out every session, so a retry after a lost response
+    answers 401: treat it as done.
     """
 
     call = command_call(idempotency_key)

@@ -332,12 +332,15 @@ async def remove_participant(ctx: CommandContext, plan_id: UUID, participant_id:
     target = await _target(ctx, plan_id, participant_id, states=LIVE_STATES)
     if not can_manage_participant(_role(access), PlanRole(target.role)):
         raise forbidden()
+    previous_state = target.access_state
     target.access_state = AccessState.REMOVED.value
     target.removed_at = ctx.now
     target.capabilities = []
     bump(target, ctx)
     await ctx.session.flush()
-    await record_participant_change(ctx, target, "plan_participant.removed")
+    await record_participant_change(
+        ctx, target, "plan_participant.removed", previous_state=previous_state
+    )
 
 
 async def leave_plan(ctx: CommandContext, plan_id: UUID) -> None:
@@ -351,12 +354,15 @@ async def _leave(ctx: CommandContext, access: PlanAccess) -> None:
     assert participant is not None
     if participant.role == PlanRole.OWNER.value:
         raise conflict("OWNER_TRANSFER_REQUIRED", "Transfer ownership before leaving the plan")
+    previous_state = participant.access_state
     participant.access_state = AccessState.LEFT.value
     participant.left_at = ctx.now
     participant.capabilities = []
     bump(participant, ctx)
     await ctx.session.flush()
-    await record_participant_change(ctx, participant, "plan_participant.left")
+    await record_participant_change(
+        ctx, participant, "plan_participant.left", previous_state=previous_state
+    )
 
 
 async def review_join_request(

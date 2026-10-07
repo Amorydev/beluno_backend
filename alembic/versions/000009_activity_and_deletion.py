@@ -11,9 +11,9 @@ Forward action:
   a user's own scope. Each event carries IDs and a small typed summary, never
   free text. Rows are written only through the SECURITY DEFINER gate
   ``activity.append_events``, which records the session's actor as the event's
-  actor and requires that actor to have a participant row in the plan (people
-  who just left included) or to own the user scope. ``activity.purge_events`` (worker) removes rows past the
-  change-log retention.
+  actor and requires that actor to be an active participant of the plan (someone
+  who just left may record only their own leaving) or to own the user scope.
+  ``activity.purge_events`` (worker) removes rows past the change-log retention.
 * Account deletion: ``iam.users.status`` gains ``deleted`` and sessions gain the
   revoke reason ``account_deleted``. The SECURITY
   DEFINER gate ``people.forget_member`` removes the acting user from other
@@ -21,6 +21,8 @@ Forward action:
   hold no members) and returns the crews it changed so their owners get change
   rows. ``iam.forget_actor_credentials`` deletes the acting user's identities
   and pending email challenges (the API has no DELETE grant on them).
+  ``iam.forget_merged_guests`` renames the guests merged into the acting account,
+  and their merged participant rows, to "Former member".
 
 Lock/scan risk: new objects, plus brief ACCESS EXCLUSIVE locks on ``iam.users``,
 ``iam.sessions``, and ``people.crews`` to replace one check constraint each
@@ -83,9 +85,11 @@ CREATE POLICY events_select ON activity.events FOR SELECT TO api_runtime USING (
 );
 GRANT SELECT ON activity.events TO api_runtime;
 
--- The only write path. The session's actor is the event's actor; events land in a
--- plan they have a row in (someone who just left still records leaving) or in
--- their own scope.
+-- The only write path. The session's actor is the event's actor. Plan events come
+-- from the plan's active participants; someone who just left may record only that
+-- they left (their own row, and nothing else in the summary), so people removed
+-- or never approved cannot write into the feed. User events land only in the
+-- actor's own scope.
 CREATE FUNCTION activity.append_events(p_events jsonb) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
@@ -98,9 +102,20 @@ BEGIN
     FOR item IN SELECT value FROM jsonb_array_elements(p_events) LOOP
         IF actor IS NULL
            OR NOT (
-               (item->>'scope_type' = 'plan'
-                AND plans.actor_has_participant_row((item->>'scope_id')::uuid))
-               OR (item->>'scope_type' = 'user' AND (item->>'scope_id')::uuid = actor)
+               (item->>'scope_type' = 'user' AND (item->>'scope_id')::uuid = actor)
+               OR (item->>'scope_type' = 'plan'
+                   AND plans.actor_is_active_participant((item->>'scope_id')::uuid))
+               OR (item->>'scope_type' = 'plan'
+                   AND item->>'type' = 'member.left'
+                   AND item->>'entity_type' = 'plan_participant'
+                   AND EXISTS (
+                       SELECT 1 FROM plans.plan_participants AS p
+                       WHERE p.id = (item->>'entity_id')::uuid
+                         AND p.plan_id = (item->>'scope_id')::uuid
+                         AND p.user_id = actor
+                         AND p.access_state = 'left'
+                         AND item->'summary' = jsonb_build_object('participant_id', p.id::text)
+                   ))
            ) THEN
             RAISE EXCEPTION 'activity event outside the actor''s reach'
                 USING ERRCODE = 'insufficient_privilege';
@@ -219,6 +234,38 @@ END;
 $$;
 REVOKE EXECUTE ON FUNCTION iam.forget_actor_credentials() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION iam.forget_actor_credentials() TO api_runtime;
+
+-- A guest merged into the acting account keeps its retired user row and its merged
+-- participant rows under the guest's ID, and the write guards keep the API off
+-- them. Both lose the guest-era name ("Former member", as the account does).
+-- Returns the participant rows it changed with their new version, for change rows.
+CREATE FUNCTION iam.forget_merged_guests()
+    RETURNS TABLE (participant_id uuid, plan_id uuid, version integer)
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+#variable_conflict use_column
+DECLARE
+    actor uuid := iam.actor_id();
+BEGIN
+    IF actor IS NULL THEN
+        RAISE EXCEPTION 'an actor is required' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    UPDATE iam.users AS u
+    SET display_name = 'Former member',
+        status = 'deleted',
+        version = u.version + 1,
+        updated_at = transaction_timestamp()
+    WHERE u.merged_into_user_id = actor;
+    RETURN QUERY
+        UPDATE plans.plan_participants AS p
+        SET display_name = 'Former member',
+            version = p.version + 1,
+            updated_at = transaction_timestamp()
+        WHERE p.user_id IN (SELECT u.id FROM iam.users AS u WHERE u.merged_into_user_id = actor)
+        RETURNING p.id, p.plan_id, p.version;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION iam.forget_merged_guests() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION iam.forget_merged_guests() TO api_runtime;
 """
 
 

@@ -119,7 +119,7 @@ async def test_money_member_and_plan_changes_read_as_a_feed(
     assert SECRET not in stored and "4471" not in stored and "Ann" not in stored
 
 
-async def test_removed_people_lose_the_feed_and_cannot_write_into_it(
+async def test_only_active_participants_write_into_the_feed(
     api: httpx.AsyncClient,
     identity_provider: IdentityProviderStub,
     admin: AdminDatabase,
@@ -150,44 +150,113 @@ async def test_removed_people_lose_the_feed_and_cannot_write_into_it(
     assert owner_feed[-1]["type"] == "member.removed"
     assert owner_feed[-1]["summary"] == {"participant_id": row["id"]}
 
+    applicant = await sign_in(api, identity_provider, name="Applicant")
+    asking = await api.post(
+        f"/v1/plans/{plan['id']}/invites", json={"requires_approval": True}, headers=owner.headers
+    )
+    asked = await api.post(
+        "/v1/invites/redeem", json={"token": asking.json()["token"]}, headers=applicant.headers
+    )
+    assert asked.json()["participant"]["access_state"] == "pending_approval"
+    leaver = await sign_in(api, identity_provider, name="Leaver")
+    leaver_row = await join_with_invite(api, owner, plan["id"], leaver)
+    left = await api.post(f"/v1/plans/{plan['id']}/leave", headers=leaver.headers)
+    assert left.status_code == 204
+    outsider = await sign_in(api, identity_provider, name="Outsider")
+    events_before = admin.scalar("SELECT count(*) FROM activity.events")
+
+    def event(kind: str, entity_type: str, entity_id: str, summary: dict[str, Any]) -> str:
+        return json.dumps(
+            [
+                {
+                    "id": str(new_id()),
+                    "scope_type": "plan",
+                    "scope_id": plan["id"],
+                    "plan_id": plan["id"],
+                    "type": kind,
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "summary": summary,
+                    "occurred_at": "2026-10-07T00:00:00Z",
+                }
+            ]
+        )
+
+    text = {"description": "Pay me at evil.example"}
+    forged = event("expense.added", "expense", str(new_id()), text)
+    refused = [(person.user_id, forged) for person in (outsider, member, applicant, leaver)]
+    # Someone who left records only that they left: their own row, nothing more.
+    refused += [
+        (
+            leaver.user_id,
+            event("member.left", "plan_participant", leaver_row["id"], {**text}),
+        ),
+        (
+            member.user_id,
+            event("member.left", "plan_participant", row["id"], {"participant_id": row["id"]}),
+        ),
+    ]
     assert live_settings.api_database_dsn is not None
     dsn = live_settings.api_database_dsn.replace("postgresql+psycopg://", "postgresql://")
-    forged = [
-        {
-            "id": str(new_id()),
-            "scope_type": "plan",
-            "scope_id": plan["id"],
-            "plan_id": plan["id"],
-            "type": "expense.added",
-            "entity_type": "expense",
-            "entity_id": str(new_id()),
-            "summary": {},
-            "occurred_at": "2026-10-07T00:00:00Z",
-        }
-    ]
-    outsider = await sign_in(api, identity_provider, name="Outsider")
     with psycopg.connect(dsn) as connection:
         with connection.transaction():
             connection.execute("SELECT set_config('app.actor_id', %s, true)", (member.user_id,))
             seen = connection.execute("SELECT count(*) FROM activity.events").fetchone()
             assert seen == (0,)
-        for statement, params in (
-            ("SELECT activity.append_events(%s::jsonb)", (json.dumps(forged),)),
-            (
-                "INSERT INTO activity.events (id, scope_type, scope_id, plan_id, type, "
-                "entity_type, entity_id, summary, occurred_at) VALUES (%s, 'plan', %s, %s, "
-                "'expense.added', 'expense', %s, '{}', now())",
-                (str(new_id()), plan["id"], plan["id"], str(new_id())),
-            ),
-        ):
+        for actor_id, events in refused:
             with (
                 pytest.raises(psycopg.errors.InsufficientPrivilege),
                 connection.transaction(),
             ):
-                connection.execute(
-                    "SELECT set_config('app.actor_id', %s, true)", (outsider.user_id,)
-                )
-                connection.execute(statement, params)
+                connection.execute("SELECT set_config('app.actor_id', %s, true)", (actor_id,))
+                connection.execute("SELECT activity.append_events(%s::jsonb)", (events,))
+        with pytest.raises(psycopg.errors.InsufficientPrivilege), connection.transaction():
+            connection.execute("SELECT set_config('app.actor_id', %s, true)", (owner.user_id,))
+            connection.execute(
+                "INSERT INTO activity.events (id, scope_type, scope_id, plan_id, type, "
+                "entity_type, entity_id, summary, occurred_at) VALUES (%s, 'plan', %s, %s, "
+                "'expense.added', 'expense', %s, '{}', now())",
+                (str(new_id()), plan["id"], plan["id"], str(new_id())),
+            )
+    assert admin.scalar("SELECT count(*) FROM activity.events") == events_before
+
+
+async def test_people_members_never_saw_stay_out_of_the_feed(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
+) -> None:
+    owner = await sign_in(api, identity_provider, name="Linh")
+    plan = (
+        await api.post(
+            "/v1/plans",
+            json={"type": "hangout", "title": "Picnic", "base_currency": "VND"},
+            headers=owner.headers,
+        )
+    ).json()
+
+    async def ask_to_join(name: str) -> tuple[SignedIn, str]:
+        person = await sign_in(api, identity_provider, name=name)
+        invite = await api.post(
+            f"/v1/plans/{plan['id']}/invites",
+            json={"requires_approval": True},
+            headers=owner.headers,
+        )
+        asked = await api.post(
+            "/v1/invites/redeem", json={"token": invite.json()["token"]}, headers=person.headers
+        )
+        assert asked.json()["participant"]["access_state"] == "pending_approval"
+        return person, asked.json()["participant"]["id"]
+
+    _, turned_away = await ask_to_join("Removed")
+    removed = await api.delete(
+        f"/v1/plans/{plan['id']}/participants/{turned_away}", headers=owner.headers
+    )
+    assert removed.status_code == 204
+    deleting, _ = await ask_to_join("Deleted")
+    assert (await api.delete("/v1/me", headers=deleting.headers)).status_code == 204
+
+    assert [event["type"] for event in await feed(api, owner, f"plan:{plan['id']}")] == [
+        "plan.created"
+    ]
 
 
 async def test_account_events_land_in_the_persons_own_scope(

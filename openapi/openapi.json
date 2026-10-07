@@ -9024,7 +9024,7 @@
     },
     "/v1/me": {
       "delete": {
-        "description": "Delete your account (needs a recent sign-in).\n\nYou become \"Former member\" in every plan and money history stays intact.\nRefused with 409 OWNER_TRANSFER_REQUIRED while you own a plan someone else is\nstill in; plans you own alone are scheduled for deletion.",
+        "description": "Delete your account (needs a recent sign-in, except for guests).\n\nYou become \"Former member\" in every plan and money history stays intact.\nRefused with 409 OWNER_TRANSFER_REQUIRED while you own a plan another person\n(not a placeholder) is still in; plans you own alone are scheduled for\ndeletion. Success signs out every session, so a retry after a lost response\nanswers 401: treat it as done.",
         "operationId": "delete_account_v1_me_delete",
         "parameters": [
           {
