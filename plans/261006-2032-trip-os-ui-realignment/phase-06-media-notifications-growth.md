@@ -113,6 +113,12 @@ Release 3: everything that needs external providers or storage. The previous pla
   - Review (`reports/code-reviewer-261007-1930-push-notifications-review-report.md`): privacy and RLS hold. Fixed: tokens cascade with purged sessions, which had broken the auth purge (C1), and only live sessions are reached; every FCM failure maps to a result, batches go through one `send_each` with a 10-second timeout, stuck deliveries respect the attempt cap (H1); dispatch runs never overlap (H2); a commit-ordered queue filled by a trigger replaces the time cursor (M1); fixed loc-arg counts (M2); merged participants are reached (M3); reminders skip finished plans and expire (M4); concurrent token registration serialised (M5); tests for RLS, payments, merged people, devices and sessions, stuck and unconfigured deliveries, plan states, and the purge.
   - Open (user): should a forgiven debt notify the debtor; plan or recipient time zone for reminder days (UTC today).
 
+- Nudges and summaries are on `feat/nudges-summaries`:
+  - Migration `000020_nudges_summaries`: `queue_nudge` (API; finds the recipient itself, following merges, and builds the once-a-day key on the recipient's day), `known_zone` (zone names the database lacks fall back to UTC so one profile cannot stop dispatch), `queue_summaries` (21:00 local, trips in progress, others' activity that day), forgiven debts in the fan-out, reminder days in the assignee's time zone.
+  - `POST .../tasks/{id}/nudge` (creator or organiser), `POST .../ledger/nudges` (only toward a suggested transfer to the caller); 409 for placeholders, people gone, or oneself, once a day each; `POST /v1/me/sessions/sign-out-others`.
+  - Defaults taken without an answer (easy to change): a forgiven debt notifies the debtor; reminder days use the recipient's time zone.
+  - Later: weekly planning summary, news.
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.
