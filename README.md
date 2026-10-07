@@ -99,6 +99,11 @@ base-currency snapshot; voided ones keep their amounts with `state` = `voided`) 
 Exports hold exactly what the caller can already sync, so booking secrets, invite
 tokens, and other people's private packing items never appear; each is audited and
 rate-limited.
+With a Trip Pass (or the owner's Pro; hangouts are free) two more formats open:
+`format=accounting`, a CSV with one row per person and journal entry whose `amount`
+adds up to the balances, and `format=pdf`, the trip report (spending by category, each
+person's paid and share, who pays whom, every expense with a receipt mark), rendered
+with `fpdf2` and Noto Sans (OFL, `src/beluno/assets/fonts/`).
 
 `GET /v1/plans/{id}/recap` sums up a plan for anyone who sees its money: days and
 stops, people, spending in the base currency (the budget screen's numbers) per
