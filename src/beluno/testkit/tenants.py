@@ -23,8 +23,9 @@ async def full_tenant(
     api: httpx.AsyncClient, provider: IdentityProviderStub, admin: AdminDatabase
 ) -> FullTenant:
     """A used trip (see ``exercise_money_and_members``) plus a commitment, kitty
-    settings, a ledger confirmation, join and claim links, a crew, a wanted place, and an
-    itinerary item with a cost and an answer, a decided poll, and a booking with sealed secrets."""
+    settings, a ledger confirmation, join and claim links, a crew, a wanted place, an
+    itinerary item with a cost and an answer, a decided poll, a booking with sealed
+    secrets, a done task, and packing items (a shared template, a private item)."""
 
     trip = await exercise_money_and_members(api, provider, admin)
     owner = trip.owner
@@ -114,6 +115,23 @@ async def full_tenant(
         headers=owner.headers,
     )
     assert applied.status_code == 200, applied.text
+    task = await created(
+        trip.path("/tasks"),
+        {
+            "title": "Print the ryokan voucher",
+            "assignee_participant_id": trip.people["Dan"],
+            "booking_id": booking["id"],
+            "due_date": "2027-03-19",
+            "status": "done",
+        },
+    )
+    template = await api.post(
+        trip.path("/packing/templates"),
+        json={"template_id": "onsen", "items": [{"name": "Yukata", "category": "clothes"}]},
+        headers=owner.headers,
+    )
+    assert template.status_code == 200, template.text
+    await created(trip.path("/packing"), {"name": "Earplugs", "visibility": "private"})
     budgets = (await api.get(trip.path("/budgets"), headers=owner.headers)).json()["budgets"]
     assert budgets
     return FullTenant(
@@ -133,5 +151,7 @@ async def full_tenant(
             "item_id": stop["id"],
             "poll_id": poll["id"],
             "booking_id": booking["id"],
+            "task_id": task["id"],
+            "packing_item_id": template.json()["items"][0]["id"],
         },
     )

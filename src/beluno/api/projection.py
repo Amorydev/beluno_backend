@@ -50,7 +50,7 @@ Pager = Callable[
 ]
 
 SNAPSHOT_ORDER: dict[str, tuple[str, ...]] = {
-    "user": ("user", "session", "plan_access", "crew", "activity_event"),
+    "user": ("user", "session", "plan_access", "crew", "packing_item", "activity_event"),
     "plan": (
         "plan",
         "plan_participant",
@@ -221,6 +221,8 @@ LOADERS: dict[str, Loader] = {
     "itinerary_item": planning_projection.load_item,
     "poll": planning_projection.load_poll,
     "booking": planning_projection.load_booking,
+    "task": planning_projection.load_task,
+    "packing_item": planning_projection.load_packing,
 }
 
 
@@ -330,6 +332,8 @@ PAGERS: dict[str, Pager] = {
     "itinerary_item": planning_projection.page_items,
     "poll": planning_projection.page_polls,
     "booking": planning_projection.page_bookings,
+    "task": planning_projection.page_tasks,
+    "packing_item": planning_projection.page_packing,
 }
 
 

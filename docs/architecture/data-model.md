@@ -73,6 +73,14 @@ The `bookings` schema holds a trip's reservations:
 - **booking_secrets**: the confirmation code and private notes sealed with AES-256-GCM (fresh nonce, associated data binding the row and field) under a key from `BELUNO_BOOKING_KEYS`; rows remember their key so rotation keeps old ones readable. RLS (`bookings.actor_may_reveal`) lets only the travelers (a traveler merged into another participant counts as that participant), the creator, and the plan's owner/admins read or write them. A save that leaves a secret out keeps it (resealed under the active key); null clears it. Deleting a booking clears both.
 - The price is a finance cost commitment (`booking`, `price`): estimated while planned, committed once confirmed, cancelled with the booking unless an expense already paid it (that expense stays).
 
+### Tasks and packing
+
+The `coordination` schema holds a trip's to-dos and packing lists:
+
+- **tasks**: title, note, one optional assignee (an active participant), a due date with an optional local time in an IANA zone, a reminder time (recorded only; delivery comes with notifications), status `open`/`in_progress`/`done` (`completed_at` and `completed_by_user_id` set exactly while done), and an optional link to an itinerary item or a booking (not both). The creator or an organiser edits or deletes one (an edit that names no status keeps it); the assignee, counting a participant row merged into theirs, may change only its status, and whoever completes it is recorded as themselves (a guard enforces both). Tombstoned on delete; an unchanged link stays valid after its target is deleted.
+- **packing_items**: name, category, quantity 1–99, packed, optional template ID, and a visibility. Shared items belong to the trip: anyone in it marks them packed, the creator or an organiser edits them, and one may name who brings it. Private items have an owner: RLS hides them from everyone else, only the owner touches them (and still reads them after leaving the trip), and they sync in the owner's user scope. A private item may become shared, never the reverse. A guest who claims an account brings their private items along; deleting an account deletes them.
+- **template_applications**: one row per (plan, owner or the shared list, template ID). Templates come from the client already localised; applying one again returns the items already there instead of adding duplicates.
+
 ## Finance
 
 The `finance` schema holds each plan's ledger (ADR 0003). Amounts are `BIGINT`

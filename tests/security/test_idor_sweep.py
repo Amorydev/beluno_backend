@@ -144,6 +144,18 @@ BODIES: dict[tuple[str, str], Body] = {
         "kind": "other",
         "title": "Taken",
     },
+    ("POST", "/v1/plans/{plan_id}/tasks"): lambda _a, _b: {"title": "Taken"},
+    ("PUT", "/v1/plans/{plan_id}/tasks/{task_id}"): lambda _a, _b: {"title": "Taken"},
+    ("POST", "/v1/plans/{plan_id}/tasks/{task_id}/status"): lambda _a, _b: {"status": "open"},
+    ("POST", "/v1/plans/{plan_id}/packing"): lambda _a, _b: {"name": "Taken"},
+    ("POST", "/v1/plans/{plan_id}/packing/templates"): lambda _a, _b: {
+        "template_id": "taken",
+        "items": [{"name": "Taken"}],
+    },
+    ("PUT", "/v1/plans/{plan_id}/packing/{packing_item_id}"): lambda _a, _b: {"name": "Taken"},
+    ("POST", "/v1/plans/{plan_id}/packing/{packing_item_id}/packed"): lambda _a, _b: {
+        "packed": False
+    },
     ("POST", "/v1/plans/{plan_id}/waivers"): lambda a, b: {
         "debtor_participant_id": b,
         "creditor_participant_id": a,
@@ -163,7 +175,7 @@ def victim_state(admin: AdminDatabase, plan_id: str, crew_id: str, session_id: s
         "SELECT table_schema || '.' || table_name FROM information_schema.columns "
         "WHERE column_name = 'plan_id' "
         "AND table_schema IN ('plans', 'finance', 'activity', 'schedule_places', 'decisions', "
-        "'bookings') "
+        "'bookings', 'coordination') "
         "ORDER BY 1"
     )
     counts = {

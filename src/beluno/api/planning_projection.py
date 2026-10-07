@@ -1,7 +1,8 @@
 """Trip planning as REST responses and plan-scope sync entities.
 
-``place``, ``booking``, ``itinerary_item``, and ``poll``. Bookings never carry
-their secrets, only whether each is set.
+``place``, ``booking``, ``itinerary_item``, ``poll``, ``task``, and the shared
+``packing_item``s; a person's private packing items sync in their user scope.
+Bookings never carry their secrets, only whether each is set.
 """
 
 from __future__ import annotations
@@ -15,13 +16,16 @@ from beluno.contracts.planning import (
     AttendanceResponse,
     BookingResponse,
     ItineraryItemResponse,
+    PackingItemResponse,
     PlaceResponse,
     PollOptionResponse,
     PollOutcomeResponse,
     PollResponse,
     PollResultResponse,
+    TaskResponse,
 )
 from beluno.db.models.bookings import Booking
+from beluno.db.models.coordination import PackingItem, Task
 from beluno.db.models.decisions import Poll
 from beluno.db.models.schedule_places import ItineraryItem, Place
 from beluno.modules.context import CommandContext
@@ -29,10 +33,11 @@ from beluno.modules.planning.bookings import BookingView, booking_views
 from beluno.modules.planning.itinerary import ItemView, item_views
 from beluno.modules.planning.places import PlaceView, place_views
 from beluno.modules.planning.polls import PollView, poll_views
+from beluno.modules.sync_audit.recorder import ChangeScope
 from beluno.sync.pull import SnapshotRow
 from beluno.sync.scopes import AccessLevel, ScopeKey
 
-PLANNING_TYPES = ("place", "booking", "itinerary_item", "poll")
+PLANNING_TYPES = ("place", "booking", "itinerary_item", "poll", "task", "packing_item")
 
 
 def place_response(view: PlaceView) -> PlaceResponse:
@@ -114,6 +119,48 @@ def booking_response(view: BookingView) -> BookingResponse:
     )
 
 
+def task_response(task: Task) -> TaskResponse:
+    return TaskResponse(
+        id=task.id,
+        plan_id=task.plan_id,
+        title=task.title,
+        note=task.note,
+        assignee_participant_id=task.assignee_participant_id,
+        due_date=task.due_date,
+        due_time=task.due_time,
+        due_timezone=task.due_timezone,
+        remind_at=task.remind_at,
+        status=task.status,  # type: ignore[arg-type]
+        completed_at=task.completed_at,
+        completed_by_user_id=task.completed_by_user_id,
+        item_id=task.item_id,
+        booking_id=task.booking_id,
+        created_by_user_id=task.created_by_user_id,
+        version=task.version,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+    )
+
+
+def packing_response(entry: PackingItem) -> PackingItemResponse:
+    return PackingItemResponse(
+        id=entry.id,
+        plan_id=entry.plan_id,
+        visibility=entry.visibility,  # type: ignore[arg-type]
+        owner_user_id=entry.owner_user_id,
+        name=entry.name,
+        category=entry.category,  # type: ignore[arg-type]
+        quantity=entry.quantity,
+        bringer_participant_id=entry.bringer_participant_id,
+        packed=entry.packed,
+        template_id=entry.template_id,
+        created_by_user_id=entry.created_by_user_id,
+        version=entry.version,
+        created_at=entry.created_at,
+        updated_at=entry.updated_at,
+    )
+
+
 def poll_response(view: PollView) -> PollResponse:
     poll, result = view.poll, view.result
     voters: dict[UUID, list[UUID]] = {}
@@ -179,6 +226,10 @@ async def present_planning_current(ctx: CommandContext, entity: object) -> BaseM
         return poll_response((await poll_views(ctx, [entity]))[0])
     if isinstance(entity, Booking):
         return booking_response((await booking_views(ctx, [entity]))[0])
+    if isinstance(entity, Task):
+        return task_response(entity)
+    if isinstance(entity, PackingItem):
+        return packing_response(entity)
     return None
 
 
@@ -274,3 +325,57 @@ async def page_bookings(
         SnapshotRow(view.booking.id, view.booking.version, booking_response(view))
         for view in await booking_views(ctx, rows)
     ]
+
+
+async def load_task(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID
+) -> BaseModel | None:
+    task = await ctx.session.get(Task, id)
+    if task is None or task.plan_id != scope.scope_id or task.deleted_at is not None:
+        return None
+    return task_response(task)
+
+
+async def page_tasks(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(Task).where(Task.plan_id == scope.scope_id, Task.deleted_at.is_(None))
+    if after is not None:
+        statement = statement.where(Task.id > after)
+    rows = (await ctx.session.execute(statement.order_by(Task.id).limit(limit))).scalars()
+    return [SnapshotRow(row.id, row.version, task_response(row)) for row in rows]
+
+
+def _in_scope(entry: PackingItem, scope: ScopeKey) -> bool:
+    """Shared items belong to their plan's scope, private ones to their owner's."""
+
+    if scope.scope_type is ChangeScope.USER:
+        return entry.visibility == "private" and entry.owner_user_id == scope.scope_id
+    return entry.visibility == "shared" and entry.plan_id == scope.scope_id
+
+
+async def load_packing(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, id: UUID
+) -> BaseModel | None:
+    entry = await ctx.session.get(PackingItem, id)
+    if entry is None or entry.deleted_at is not None or not _in_scope(entry, scope):
+        return None
+    return packing_response(entry)
+
+
+async def page_packing(
+    ctx: CommandContext, scope: ScopeKey, level: AccessLevel, after: UUID | None, limit: int
+) -> list[SnapshotRow]:
+    statement = select(PackingItem).where(PackingItem.deleted_at.is_(None))
+    if scope.scope_type is ChangeScope.USER:
+        statement = statement.where(
+            PackingItem.visibility == "private", PackingItem.owner_user_id == scope.scope_id
+        )
+    else:
+        statement = statement.where(
+            PackingItem.visibility == "shared", PackingItem.plan_id == scope.scope_id
+        )
+    if after is not None:
+        statement = statement.where(PackingItem.id > after)
+    rows = (await ctx.session.execute(statement.order_by(PackingItem.id).limit(limit))).scalars()
+    return [SnapshotRow(row.id, row.version, packing_response(row)) for row in rows]

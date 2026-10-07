@@ -87,6 +87,15 @@ State narrowing (applies on top of the table):
   notes are revealed (audited, rate-limited) only to its travelers, whoever added
   it, and organisers; RLS keeps the sealed row from everyone else. The database
   refuses booking changes by anyone but its creator or an organiser.
+- Tasks: anyone with `plan.planning.contribute` adds one; whoever added it or an
+  organiser edits or deletes it; its assignee, whoever added it, or an organiser
+  moves its status (an intent without a version check). The database lets the
+  assignee change nothing but the status.
+- Packing: anyone with `plan.planning.contribute` adds to the shared list, and
+  anyone with `plan.planning.respond` marks shared items packed and keeps a private
+  list of their own (viewers included). Whoever added a shared item or an organiser
+  edits or deletes it. A private item is its owner's alone: RLS hides it from
+  everyone else, organisers included.
 - Finance writes (expenses, budgets, fund, adjustments) require `draft`,
   `planning`, `active`, or `settling`; settlements and waivers also accept
   `completed`, because people pay each other back after the plan is over.

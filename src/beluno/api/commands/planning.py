@@ -1,4 +1,4 @@
-"""Trip planning commands: places, the itinerary, polls, and bookings."""
+"""Trip planning commands: places, the itinerary, polls, bookings, tasks, and packing."""
 
 from __future__ import annotations
 
@@ -7,8 +7,10 @@ from typing import Any
 from beluno.api.planning_projection import (
     booking_response,
     item_response,
+    packing_response,
     place_response,
     poll_response,
+    task_response,
 )
 from beluno.contracts.planning import (
     AddPlaceToPlanRequest,
@@ -19,6 +21,12 @@ from beluno.contracts.planning import (
     ItineraryItemCreateRequest,
     ItineraryItemRequest,
     ItineraryItemResponse,
+    PackedRequest,
+    PackingItemCreateRequest,
+    PackingItemRequest,
+    PackingItemResponse,
+    PackingListResponse,
+    PackingTemplateRequest,
     PlaceCreateRequest,
     PlaceReactionRequest,
     PlaceRequest,
@@ -26,11 +34,15 @@ from beluno.contracts.planning import (
     PollCreateRequest,
     PollOutcomeRequest,
     PollResponse,
+    TaskCreateRequest,
+    TaskRequest,
+    TaskResponse,
+    TaskStatusRequest,
     VoteRequest,
 )
 from beluno.modules.context import CommandContext
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
-from beluno.modules.planning import bookings, itinerary, places, polls
+from beluno.modules.planning import bookings, itinerary, packing, places, polls, tasks
 from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
 
 
@@ -224,10 +236,116 @@ async def _booking_delete(ctx: CommandContext, call: CommandCall, body: EmptyPay
     await bookings.delete_booking(ctx, call.id("plan_id"), call.id("booking_id"))
 
 
+def _task_draft(body: TaskRequest) -> tasks.TaskDraft:
+    return tasks.TaskDraft(
+        title=body.title,
+        note=body.note,
+        assignee_participant_id=body.assignee_participant_id,
+        due_date=body.due_date,
+        due_time=body.due_time,
+        due_timezone=body.due_timezone,
+        remind_at=body.remind_at,
+        status=body.status,
+        item_id=body.item_id,
+        booking_id=body.booking_id,
+    )
+
+
+async def _task_create(
+    ctx: CommandContext, call: CommandCall, body: TaskCreateRequest
+) -> TaskResponse:
+    task = await tasks.create_task(ctx, call.id("plan_id"), body.id, _task_draft(body))
+    return task_response(task)
+
+
+async def _task_update(ctx: CommandContext, call: CommandCall, body: TaskRequest) -> TaskResponse:
+    task = await tasks.update_task(
+        ctx, call.id("plan_id"), call.id("task_id"), required_version(call), _task_draft(body)
+    )
+    return task_response(task)
+
+
+async def _task_set_status(
+    ctx: CommandContext, call: CommandCall, body: TaskStatusRequest
+) -> TaskResponse:
+    task = await tasks.set_status(ctx, call.id("plan_id"), call.id("task_id"), body.status)
+    return task_response(task)
+
+
+async def _task_delete(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> None:
+    await tasks.delete_task(ctx, call.id("plan_id"), call.id("task_id"))
+
+
+def _packing_draft(body: PackingItemRequest) -> packing.PackingDraft:
+    return packing.PackingDraft(
+        name=body.name,
+        category=body.category,
+        quantity=body.quantity,
+        bringer_participant_id=body.bringer_participant_id,
+    )
+
+
+async def _packing_create(
+    ctx: CommandContext, call: CommandCall, body: PackingItemCreateRequest
+) -> PackingItemResponse:
+    entry = await packing.create_item(
+        ctx, call.id("plan_id"), body.id, body.visibility, _packing_draft(body)
+    )
+    return packing_response(entry)
+
+
+async def _packing_update(
+    ctx: CommandContext, call: CommandCall, body: PackingItemRequest
+) -> PackingItemResponse:
+    entry = await packing.update_item(
+        ctx,
+        call.id("plan_id"),
+        call.id("packing_item_id"),
+        required_version(call),
+        _packing_draft(body),
+    )
+    return packing_response(entry)
+
+
+async def _packing_set_packed(
+    ctx: CommandContext, call: CommandCall, body: PackedRequest
+) -> PackingItemResponse:
+    entry = await packing.set_packed(
+        ctx, call.id("plan_id"), call.id("packing_item_id"), body.packed
+    )
+    return packing_response(entry)
+
+
+async def _packing_share(
+    ctx: CommandContext, call: CommandCall, body: EmptyPayload
+) -> PackingItemResponse:
+    entry = await packing.share_item(ctx, call.id("plan_id"), call.id("packing_item_id"))
+    return packing_response(entry)
+
+
+async def _packing_delete(ctx: CommandContext, call: CommandCall, body: EmptyPayload) -> None:
+    await packing.delete_item(ctx, call.id("plan_id"), call.id("packing_item_id"))
+
+
+async def _packing_apply_template(
+    ctx: CommandContext, call: CommandCall, body: PackingTemplateRequest
+) -> PackingListResponse:
+    entries = await packing.apply_template(
+        ctx,
+        call.id("plan_id"),
+        body.template_id,
+        body.visibility,
+        [_packing_draft(entry) for entry in body.items],
+    )
+    return PackingListResponse(items=[packing_response(entry) for entry in entries])
+
+
 PLACE = ("plan_id", "place_id")
 BOOKING = ("plan_id", "booking_id")
 POLL = ("plan_id", "poll_id")
 ITEM = ("plan_id", "item_id")
+TASK = ("plan_id", "task_id")
+PACKING = ("plan_id", "packing_item_id")
 
 PLACE_CREATE = Command(
     name="place.create",
@@ -392,6 +510,91 @@ BOOKING_DELETE = Command(
     status=204,
 )
 
+TASK_CREATE = Command(
+    name="task.create",
+    payload_model=TaskCreateRequest,
+    response_model=TaskResponse,
+    handler=_task_create,
+    target_fields=("plan_id",),
+    status=201,
+    etag=version_of,
+)
+TASK_UPDATE = Command(
+    name="task.update",
+    payload_model=TaskRequest,
+    response_model=TaskResponse,
+    handler=_task_update,
+    target_fields=TASK,
+    versioned=True,
+    etag=version_of,
+)
+TASK_SET_STATUS = Command(
+    name="task.set_status",
+    payload_model=TaskStatusRequest,
+    response_model=TaskResponse,
+    handler=_task_set_status,
+    target_fields=TASK,
+    etag=version_of,
+)
+TASK_DELETE = Command(
+    name="task.delete",
+    payload_model=EmptyPayload,
+    response_model=None,
+    handler=_task_delete,
+    target_fields=TASK,
+    status=204,
+)
+
+PACKING_CREATE = Command(
+    name="packing.create",
+    payload_model=PackingItemCreateRequest,
+    response_model=PackingItemResponse,
+    handler=_packing_create,
+    target_fields=("plan_id",),
+    status=201,
+    etag=version_of,
+)
+PACKING_UPDATE = Command(
+    name="packing.update",
+    payload_model=PackingItemRequest,
+    response_model=PackingItemResponse,
+    handler=_packing_update,
+    target_fields=PACKING,
+    versioned=True,
+    etag=version_of,
+)
+PACKING_SET_PACKED = Command(
+    name="packing.set_packed",
+    payload_model=PackedRequest,
+    response_model=PackingItemResponse,
+    handler=_packing_set_packed,
+    target_fields=PACKING,
+    etag=version_of,
+)
+PACKING_SHARE = Command(
+    name="packing.share",
+    payload_model=EmptyPayload,
+    response_model=PackingItemResponse,
+    handler=_packing_share,
+    target_fields=PACKING,
+    etag=version_of,
+)
+PACKING_DELETE = Command(
+    name="packing.delete",
+    payload_model=EmptyPayload,
+    response_model=None,
+    handler=_packing_delete,
+    target_fields=PACKING,
+    status=204,
+)
+PACKING_APPLY_TEMPLATE = Command(
+    name="packing.apply_template",
+    payload_model=PackingTemplateRequest,
+    response_model=PackingListResponse,
+    handler=_packing_apply_template,
+    target_fields=("plan_id",),
+)
+
 COMMANDS: list[Command[Any, Any]] = [
     PLACE_CREATE,
     PLACE_UPDATE,
@@ -410,4 +613,14 @@ COMMANDS: list[Command[Any, Any]] = [
     BOOKING_CREATE,
     BOOKING_UPDATE,
     BOOKING_DELETE,
+    TASK_CREATE,
+    TASK_UPDATE,
+    TASK_SET_STATUS,
+    TASK_DELETE,
+    PACKING_CREATE,
+    PACKING_UPDATE,
+    PACKING_SET_PACKED,
+    PACKING_SHARE,
+    PACKING_DELETE,
+    PACKING_APPLY_TEMPLATE,
 ]

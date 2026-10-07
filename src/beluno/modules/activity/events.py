@@ -52,6 +52,7 @@ class ActivityType(StrEnum):
     BOOKING_ADDED = "booking.added"
     BOOKING_CONFIRMED = "booking.confirmed"
     BOOKING_CANCELLED = "booking.cancelled"
+    TASK_COMPLETED = "task.completed"
     ACCOUNT_GUEST_UPGRADED = "account.guest_upgraded"
     ACCOUNT_GUEST_MERGED = "account.guest_merged"
 

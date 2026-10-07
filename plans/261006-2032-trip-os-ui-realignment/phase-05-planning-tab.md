@@ -193,6 +193,27 @@ Design:
   - feed events `booking.added`, `booking.confirmed`, `booking.cancelled`;
   - the purge gate removes booking rows after items and before places.
 
+## Slice 4 design: Tasks and Packing
+
+Decisions (user, 2026-10-07):
+- **Task status** (in progress, done) is changed by the assignee, the creator, or an organiser.
+- **Shared packing items** can be marked packed or unpacked by everyone in the trip.
+- **Packing templates come from the client:** it sends a `template_id` and the (localised) items, and the server applies each template once.
+
+Design: migration `000014_coordination` fills the `coordination` schema.
+
+- **Tasks:**
+  - Fields: title, note, one assignee participant, due date with an optional time and zone, `remind_at` (an intent only; delivery comes in Phase 6), status `open` / `in_progress` / `done` with who completed it and when, and a link to an itinerary item or a booking (not both).
+  - Content is edited by the creator or an organiser; status by the assignee, the creator, or an organiser.
+- **Packing items:**
+  - Fields: visibility `shared` or `private`, name, category, quantity, `bringer_participant_id` ("who's bringing this?", shared only), packed flag.
+  - Private items belong to `owner_user_id`. RLS hides them from everyone else, and they sync in the owner's user scope; shared ones sync in the plan scope.
+  - Shared items are added by contributors and edited or deleted by their creator or an organiser. Private items are their owner's alone.
+  - "Move to shared" goes one way only.
+- **Templates:** `apply_template(template_id, visibility, items)` inserts the items once per plan, owner, and template (`template_applications`); applying it again returns the existing items.
+- **Feed:** `task.completed`.
+- **Purge:** coordination rows are removed before items and bookings, and private items get a delete in their owner's user scope.
+
 ## Progress Notes (2026-10-07)
 
 - Slice 1 (Itinerary and Places) is done on `feat/planning-itinerary-places`.
@@ -205,5 +226,17 @@ Design:
     - H3: Maps links are http/https only;
     - M1–M6: 500s on odd input, commitments rewritten on every save, the kill switch on no-op edits, guest authorship, the write limit, tests.
   - Open: the plan has no timezone by default, so timed items need one.
-- Slices 2–4 are pending: Polls, Bookings and encryption, Tasks and Packing.
+- Slice 2 (Polls) merged in PR #10; slice 3 (Bookings, sealed secrets) merged in PR #11.
+- Slice 4 (Tasks and Packing) is on `feat/planning-tasks-packing`.
+  - Migration `000014_coordination`; REST under `/tasks` and `/packing`, sync entities `task` and `packing_item` (private items in the owner's user scope).
+  - Tests: `tests/integration/test_planning_tasks_packing.py`; the RLS, IDOR, and purge sweeps cover the `coordination` schema.
+  - Gates: 597 passed, 0 skipped, coverage 95 %, OpenAPI additive.
+  - Review fixes (`reports/code-reviewer-261007-1430-planning-tasks-packing-review-report.md`):
+    - H1: a guest's private list moves to the account they claim;
+    - H2: owners keep reading their private items after leaving, so snapshots match the feed;
+    - M1: an assignee row merged into the actor's counts in the service and the guard;
+    - M2: account deletion deletes private lists;
+    - M3: templates insert in one flush;
+    - L1: an edit without a status keeps it; L2: `completed_by_user_id` checked; L4: a task created done reaches the feed.
+  - Open: re-applying a template whose items were all deleted adds nothing (by design: once per list).
 
