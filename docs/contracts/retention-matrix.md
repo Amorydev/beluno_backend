@@ -18,6 +18,8 @@
 | Exports (plan CSV/JSON, account JSON) | never stored: built per request and sent with `Cache-Control: no-store` | each export leaves an audit event (`plan.exported`, `account.exported`) with no content |
 | Problem reports (the person's words, diagnostic snapshot) | until the person deletes their account, or a legal policy sets a limit | `analytics_ops.forget_problem_reports` on account deletion; snapshots hold no expense text, notes, names, or codes |
 | Media files (receipts, covers, memories) | live with their plan until deleted; a deleted account's memories go with it (receipts stay); the unscanned upload is deleted once scanned (and again 15 minutes later, after its upload URL expires); uploads never reported done are dropped after 7 days | a trigger (delete) or the plan purge queues `incoming/` and `media/` objects in `media_memories.object_deletions`; the worker's `media.delete_objects` removes due objects every 10 minutes and `media.sweep` handles stuck or abandoned uploads hourly |
+| Push tokens and notification settings | tokens live with their session (removed when it is revoked); settings until the account is deleted | session revoke trigger; `engagement.forget_settings` on account deletion |
+| Notifications (outbox) | 30 days after delivery, skipping, or failure | `notifications.dispatch` purges them every minute |
 | Deleted crews | name and members cleared at deletion; the tombstone stays for sync | `crew.delete` and account deletion |
 | Failed jobs (dead letters) | until replayed or removed by an operator | `scripts/jobs.py` |
 

@@ -106,6 +106,13 @@ Release 3: everything that needs external providers or storage. The previous pla
   - Review (`reports/code-reviewer-261007-1830-memories-review-report.md`): guard and service agree, the highlight limit holds under concurrent picks. Decisions (user): memories and highlights stay open on completed trips and close once archived (new actions `plan.memories.share`, `plan.memories.highlight`); covers stay when their uploader deletes their account. Fixed: guest accounts merged into the actor keep editing and deleting what they posted (service and guard); migration header states it ships with the API build and its locks; uploader index for account deletion; deletes freeze a memory's details; only duplicate IDs report `ALREADY_EXISTS`; tests for plan states, merged guests, covers, and more guard paths.
   - Left: a memory keeps pointing at a place deleted later (like other planning links); the voided-expense check reads the expense without a lock.
 
+- Push notifications (money and reminders) are on `feat/push-notifications`:
+  - Decisions (user, 2026-10-07): FCM through `firebase-admin`; messages carry localisation keys the app renders; money and reminders first, summaries and news later.
+  - Migration `000019_notifications`: push tokens per session, settings, the outbox, `fan_out` and `queue_reminders` definer functions, a session-revoke trigger.
+  - `/v1/me/push-token`, `/v1/me/notification-settings`; `notifications.dispatch` every minute; `docs/contracts/push-notifications.md` lists kinds and keys for the app.
+  - Review (`reports/code-reviewer-261007-1930-push-notifications-review-report.md`): privacy and RLS hold. Fixed: tokens cascade with purged sessions, which had broken the auth purge (C1), and only live sessions are reached; every FCM failure maps to a result, batches go through one `send_each` with a 10-second timeout, stuck deliveries respect the attempt cap (H1); dispatch runs never overlap (H2); a commit-ordered queue filled by a trigger replaces the time cursor (M1); fixed loc-arg counts (M2); merged participants are reached (M3); reminders skip finished plans and expire (M4); concurrent token registration serialised (M5); tests for RLS, payments, merged people, devices and sessions, stuck and unconfigured deliveries, plan states, and the purge.
+  - Open (user): should a forgiven debt notify the debtor; plan or recipient time zone for reminder days (UTC today).
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.
