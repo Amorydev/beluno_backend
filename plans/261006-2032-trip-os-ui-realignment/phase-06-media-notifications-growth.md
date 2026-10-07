@@ -81,6 +81,15 @@ Release 3: everything that needs external providers or storage. The previous pla
   - Review (`reports/code-reviewer-261007-1630-problem-reports-review-report.md`): definer functions, RLS, record links, and code retry sound. Fixed: merged guests' reports go with the account (H1); control characters refused as 422 (M1); audited operator reads (M2); migration header; voided/reversed records show as deleted; script limit; tests for an exact snapshot key list, insider inserts, strangers, and merged guests.
   - Open: whether the account export should include the person's reports; a retention limit for reports of active accounts (legal policy).
 
+- Passkeys are on `feat/passkeys`:
+  - Decisions (user, 2026-10-07): a passkey only signs in (added from Me to an existing account; never creates one); library `webauthn` (py_webauthn).
+  - Migration `000016_passkeys`; `/v1/me/passkeys` (options, add, list, rename, remove with recent sign-in) and `/v1/auth/passkey` (options, sign in / step up / guest claim through `authenticate`).
+  - Tests drive a software authenticator (`beluno.testkit.passkeys`) with real ES256 keys and WebAuthn bytes.
+  - Deploy: `BELUNO_WEBAUTHN_RP_ID`, `BELUNO_WEBAUTHN_ORIGINS`, and the domain's association files (runbook).
+  - Security review (`reports/code-reviewer-261007-1700-passkeys-security-review-report.md`): verification and account boundaries sound. Fixed: a sign-in refused after verification (guest merge consent, another account) rolled the used challenge and counter back, letting the response be replayed signed out (H1; the refusal now rolls back alone, guest challenges are bound to the guest); library errors and malformed transports returned 500 (M1, M2); an unusable public key is refused at registration; separate option and sign-in limits, IPv6 counted per /64 (M3); duplicate vs invalid credentials; migration header; owner-only insert/delete and column-limited updates on passkeys; stricter relying-party configuration; `crossOrigin` responses refused; label length capped before cleaning.
+  - After a refused guest sign-in the app asks for a new assertion (with `merge_guest_participations: true`); asking for merge consent before the ceremony avoids the second prompt.
+  - Left: counter regressions are refused but not audited.
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.

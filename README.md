@@ -74,6 +74,14 @@ letters and `docs/runbooks/sync-operations.md` for metrics and retention.
 
 ## Account management
 
+Accounts sign in with Google, Apple, or an emailed code or link, and can add passkeys
+from the Me screen after a recent sign-in (`POST /v1/me/passkeys/registration-options`,
+then `POST /v1/me/passkeys`). A passkey then signs in or steps up
+(`POST /v1/auth/passkey/options`, then `POST /v1/auth/passkey`); as a guest it claims
+the passkey's account. A passkey never creates an account. Passkeys require user
+verification, keep no attestation, and need `BELUNO_WEBAUTHN_RP_ID` (the app's
+domain) and `BELUNO_WEBAUTHN_ORIGINS` in staging and production.
+
 People can delete their account (`DELETE /v1/me`) after a recent sign-in (guests any time).
 Deletion is immediate and permanent and leaves money history intact: the person
 becomes "Former member" in every plan, and others can still settle with them. It

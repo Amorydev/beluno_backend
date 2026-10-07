@@ -27,6 +27,8 @@ class IdentityProvider(StrEnum):
     GOOGLE = "google"
     APPLE = "apple"
     EMAIL = "email"
+    # A passkey already belongs to an account: its subject is that account's user ID.
+    PASSKEY = "passkey"
 
 
 @dataclass(frozen=True)

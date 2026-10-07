@@ -18,6 +18,8 @@ The `iam` schema holds users, sessions, and refresh-token digests:
 - **refresh_tokens**: stored only as HMAC-SHA256 digests; single-use and rotation-guarded (theft detection).
 - **email_challenges**: OTP codes and magic links for passwordless sign-in; delivery by Procrastinate worker.
 - **user_identities**: links Google and Apple provider accounts; requires explicit account linking (no email-only matching).
+- **passkeys**: WebAuthn credentials of registered accounts (credential ID, COSE public key, signature counter, transports, backup state, a label); added after a recent sign-in, used to sign in and step up; deleted with the account. No attestation is kept.
+- **webauthn_challenges**: single-use registration and sign-in challenges stored as HMAC digests, valid five minutes, bound to the caller (registered or guest) when signed in; used up even when the response fails or the sign-in is refused. Passkeys are inserted and deleted only by their owner (RLS), and only their counter, backup state, last use, and label can be updated.
 
 Access tokens are 15-minute ES256 JWTs (/.well-known/jwks.json), signed with keys from `BELUNO_AUTH_SIGNING_KEYS`; every request re-checks session and account state in PostgreSQL.
 

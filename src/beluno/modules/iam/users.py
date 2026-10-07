@@ -27,6 +27,8 @@ async def find_user_id(ctx: CommandContext, identity: VerifiedIdentity) -> UUID 
 
     if identity.provider is IdentityProvider.EMAIL:
         return await find_user_id_by_email(ctx, identity.subject)
+    if identity.provider is IdentityProvider.PASSKEY:
+        return UUID(identity.subject)
     return (
         await ctx.session.execute(
             select(UserIdentity.user_id).where(
@@ -162,7 +164,8 @@ async def record_identity_linked(ctx: CommandContext, user: User, provider: str)
 
 
 async def touch_identity(ctx: CommandContext, identity: VerifiedIdentity) -> None:
-    if identity.provider is IdentityProvider.EMAIL:
+    # Email has no identity row; a passkey records its own last use when verified.
+    if identity.provider in (IdentityProvider.EMAIL, IdentityProvider.PASSKEY):
         return
     await ctx.session.execute(
         update(UserIdentity)
