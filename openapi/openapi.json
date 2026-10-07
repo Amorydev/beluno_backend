@@ -5398,6 +5398,117 @@
         "title": "MemoryDetails",
         "type": "object"
       },
+      "NotificationSettingsBody": {
+        "additionalProperties": false,
+        "description": "Categories and quiet hours (in the person's own time zone). Security alerts are\nalways sent, quiet hours or not.",
+        "properties": {
+          "money": {
+            "description": "Expenses and payments that involve you",
+            "title": "Money",
+            "type": "boolean"
+          },
+          "news": {
+            "description": "News and offers",
+            "title": "News",
+            "type": "boolean"
+          },
+          "quiet_end": {
+            "description": "Local time, e.g. 07:00",
+            "format": "time",
+            "title": "Quiet End",
+            "type": "string"
+          },
+          "quiet_hours": {
+            "title": "Quiet Hours",
+            "type": "boolean"
+          },
+          "quiet_start": {
+            "description": "Local time, e.g. 22:00",
+            "format": "time",
+            "title": "Quiet Start",
+            "type": "string"
+          },
+          "reminders": {
+            "description": "Tasks due and polls closing",
+            "title": "Reminders",
+            "type": "boolean"
+          },
+          "summaries": {
+            "description": "Daily and weekly summaries",
+            "title": "Summaries",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "money",
+          "reminders",
+          "summaries",
+          "news",
+          "quiet_hours",
+          "quiet_start",
+          "quiet_end"
+        ],
+        "title": "NotificationSettingsBody",
+        "type": "object"
+      },
+      "NotificationSettingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "money": {
+            "description": "Expenses and payments that involve you",
+            "title": "Money",
+            "type": "boolean"
+          },
+          "news": {
+            "description": "News and offers",
+            "title": "News",
+            "type": "boolean"
+          },
+          "quiet_end": {
+            "description": "Local time, e.g. 07:00",
+            "format": "time",
+            "title": "Quiet End",
+            "type": "string"
+          },
+          "quiet_hours": {
+            "title": "Quiet Hours",
+            "type": "boolean"
+          },
+          "quiet_start": {
+            "description": "Local time, e.g. 22:00",
+            "format": "time",
+            "title": "Quiet Start",
+            "type": "string"
+          },
+          "reminders": {
+            "description": "Tasks due and polls closing",
+            "title": "Reminders",
+            "type": "boolean"
+          },
+          "summaries": {
+            "description": "Daily and weekly summaries",
+            "title": "Summaries",
+            "type": "boolean"
+          },
+          "version": {
+            "description": "0 until first saved (the defaults apply)",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "money",
+          "reminders",
+          "summaries",
+          "news",
+          "quiet_hours",
+          "quiet_start",
+          "quiet_end",
+          "version"
+        ],
+        "title": "NotificationSettingsResponse",
+        "type": "object"
+      },
       "PackedRequest": {
         "additionalProperties": false,
         "properties": {
@@ -8775,6 +8886,34 @@
           "problem"
         ],
         "title": "PushResult",
+        "type": "object"
+      },
+      "PushTokenRequest": {
+        "additionalProperties": false,
+        "description": "The FCM registration token of this device, for the current session.",
+        "properties": {
+          "platform": {
+            "enum": [
+              "ios",
+              "android",
+              "web"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 4096,
+            "minLength": 20,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "platform"
+        ],
+        "title": "PushTokenRequest",
         "type": "object"
       },
       "RateRequest": {
@@ -13667,6 +13806,205 @@
         ]
       }
     },
+    "/v1/me/notification-settings": {
+      "get": {
+        "operationId": "get_notification_settings_v1_me_notification_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Notification Settings",
+        "tags": [
+          "notifications"
+        ]
+      },
+      "put": {
+        "description": "Replace the settings; send the version read (``\"0\"`` before the first save).",
+        "operationId": "save_notification_settings_v1_me_notification_settings_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationSettingsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save Notification Settings",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
     "/v1/me/passkeys": {
       "get": {
         "operationId": "list_passkeys_v1_me_passkeys_get",
@@ -14134,6 +14472,173 @@
         "summary": "Rename Passkey",
         "tags": [
           "passkeys"
+        ]
+      }
+    },
+    "/v1/me/push-token": {
+      "delete": {
+        "operationId": "forget_push_token_v1_me_push_token_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Forget Push Token",
+        "tags": [
+          "notifications"
+        ]
+      },
+      "put": {
+        "description": "Send notifications for this account to this device (until sign-out).",
+        "operationId": "register_push_token_v1_me_push_token_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Push Token",
+        "tags": [
+          "notifications"
         ]
       }
     },

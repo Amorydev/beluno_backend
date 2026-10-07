@@ -36,7 +36,7 @@ from beluno.authorization.policy import AccessState, PlanRole
 from beluno.contracts.errors import conflict, step_up_required
 from beluno.db.models.people import Crew
 from beluno.db.models.plans import Plan, PlanParticipant
-from beluno.modules import media, support
+from beluno.modules import media, notifications, support
 from beluno.modules.context import CommandContext
 from beluno.modules.iam import users
 from beluno.modules.iam.sessions import revoke_all_sessions
@@ -104,6 +104,7 @@ async def delete_account(ctx: CommandContext) -> None:
     await packing.forget_private_items(ctx)
     await support.forget_reports(ctx)
     await media.forget_memories(ctx)
+    await notifications.forget_settings(ctx)
     await ctx.session.execute(FORGET_CREDENTIALS)
     await revoke_all_sessions(ctx, user.id, reason="account_deleted")
     await users.scrub_profile(ctx, user, display_name=FORMER_MEMBER, status=DELETED)

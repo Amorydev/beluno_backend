@@ -164,6 +164,8 @@ services:
       <<: *beluno-app-environment
       BELUNO_PROCESS_ROLE: worker
       BELUNO_WORKER_DATABASE_URL: postgresql+psycopg://worker_runtime:${BELUNO_WORKER_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-beluno}
+      # Push (optional): a Firebase service account JSON; unset, notifications are not sent.
+      BELUNO_FCM_SERVICE_ACCOUNT_JSON: ${BELUNO_FCM_SERVICE_ACCOUNT_JSON:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

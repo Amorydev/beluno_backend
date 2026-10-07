@@ -219,6 +219,9 @@ CREDENTIAL_TABLES = {
 
 # RLS tables a plan, its money, its people, and a crew never write to.
 NOT_TENANT_DATA = {
+    "engagement.notification_settings",
+    "engagement.notifications",
+    "engagement.push_tokens",
     "finance.currencies",
     "media_memories.object_deletions",
     "finance.market_rates",

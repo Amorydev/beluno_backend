@@ -17,6 +17,7 @@ from beluno.modules.media import (
     process_media,
     sweep_media,
 )
+from beluno.modules.notifications import dispatch as dispatch_notifications
 from beluno.modules.planning.polls import close_due_polls
 from beluno.modules.plans.purge import purge_deleted_plans
 from beluno.modules.sync_audit.maintenance import (
@@ -25,7 +26,7 @@ from beluno.modules.sync_audit.maintenance import (
     purge_operations,
 )
 from beluno.worker.deadletter import queue_health
-from beluno.worker.runtime import get_email_sender, get_worker_runtime
+from beluno.worker.runtime import get_email_sender, get_push_sender, get_worker_runtime
 
 app = procrastinate.App(connector=procrastinate.PsycopgConnector())
 
@@ -200,3 +201,19 @@ async def sweep_media_uploads(timestamp: int) -> int:
 
     del timestamp
     return await sweep_media(get_worker_runtime())
+
+
+@app.periodic(cron="* * * * *", periodic_id="notifications.dispatch")
+@app.task(
+    name="notifications.dispatch",
+    queue=MEDIA_QUEUE,
+    retry=1,
+    # Never two at once (lock) and never two waiting (queueing lock).
+    lock="notifications:dispatch",
+    queueing_lock="notifications:dispatch",
+)
+async def dispatch_push_notifications(timestamp: int) -> int:
+    """Every minute: activity and reminders into notifications, then deliver the due ones."""
+
+    del timestamp
+    return await dispatch_notifications(get_worker_runtime(), get_push_sender())

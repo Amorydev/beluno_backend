@@ -107,12 +107,28 @@ async def test_purge_job_forgets_sessions_that_ended_a_month_ago(
         "SELECT count(*) FROM iam.refresh_tokens WHERE session_id = %s", old.session_id
     )
 
+    # A phone that stopped using the app: its session expired, never revoked, and its
+    # push token goes with it when the session is purged.
+    stale = await sign_in(api, identity_provider, name="Stale")
+    registered = await api.put(
+        "/v1/me/push-token",
+        json={"token": "fcm-token-of-a-forgotten-phone-123", "platform": "android"},
+        headers=stale.headers,
+    )
+    assert registered.status_code == 204, registered.text
+    admin.execute(
+        "UPDATE iam.sessions SET idle_expires_at = now() - interval '40 days', "
+        "absolute_expires_at = now() - interval '40 days' WHERE id = %s",
+        stale.session_id,
+    )
+
     await tasks.purge_expired_auth.func(0)
 
     assert {row[0] for row in admin.fetch("SELECT id::text FROM iam.sessions")} == {
         new.session_id,
         live.session_id,
     }
+    assert admin.scalar("SELECT count(*) FROM engagement.push_tokens") == 0
     assert (
         admin.scalar(
             "SELECT count(*) FROM iam.refresh_tokens WHERE session_id = %s", old.session_id

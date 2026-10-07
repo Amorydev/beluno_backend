@@ -26,6 +26,7 @@ dependencies = [
   "boto3>=1.43.108",
   "pillow>=12.3.0",
   "pillow-heif>=1.8.0",
+  "firebase-admin>=7.7.0",
 ]
 
 [dependency-groups]
@@ -77,6 +78,11 @@ python_version = "3.11"
 strict = true
 packages = ["beluno"]
 exclude = ["alembic"]
+
+[[tool.mypy.overrides]]
+# firebase-admin ships no type information.
+module = ["firebase_admin", "firebase_admin.*"]
+ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true
