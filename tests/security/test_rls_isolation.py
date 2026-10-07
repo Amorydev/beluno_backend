@@ -171,7 +171,7 @@ def test_role_and_table_ownership_invariants(admin: AdminDatabase) -> None:
         "'people'::regnamespace, 'activity'::regnamespace, 'sync_audit'::regnamespace) "
         "AND c.relkind = 'r'"
     )
-    assert len(tables) == 15
+    assert len(tables) == 17
     assert all(rls and owner == "migrator" for _, rls, owner in tables), tables
 
 
@@ -209,10 +209,12 @@ def seen_by(dsn: str, user_id: str, tables: list[str]) -> dict[str, int | None]:
 # RLS table must hide a tenant from an outsider.
 CREDENTIAL_TABLES = {
     "iam.email_challenges",
+    "iam.passkeys",
     "iam.rate_limit_counters",
     "iam.refresh_tokens",
     "iam.sessions",
     "iam.user_identities",
+    "iam.webauthn_challenges",
 }
 
 # RLS tables a plan, its money, its people, and a crew never write to.

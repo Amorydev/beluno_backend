@@ -156,6 +156,7 @@ BODIES: dict[tuple[str, str], Body] = {
     ("POST", "/v1/plans/{plan_id}/packing/{packing_item_id}/packed"): lambda _a, _b: {
         "packed": False
     },
+    ("PATCH", "/v1/me/passkeys/{passkey_id}"): lambda _a, _b: {"label": "Taken"},
     ("POST", "/v1/plans/{plan_id}/waivers"): lambda a, b: {
         "debtor_participant_id": b,
         "creditor_participant_id": a,

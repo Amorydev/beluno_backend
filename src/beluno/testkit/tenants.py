@@ -10,6 +10,7 @@ import httpx
 from beluno.testkit.database import AdminDatabase
 from beluno.testkit.finance import FinancePlan, exercise_money_and_members
 from beluno.testkit.identity import IdentityProviderStub
+from beluno.testkit.passkeys import SoftAuthenticator
 
 
 @dataclass
@@ -26,7 +27,7 @@ async def full_tenant(
     settings, a ledger confirmation, join and claim links, a crew, a wanted place, an
     itinerary item with a cost and an answer, a decided poll, a booking with sealed
     secrets, a done task, packing items (a shared template, a private item), and a
-    problem report with diagnostics."""
+    problem report with diagnostics, and a passkey."""
 
     trip = await exercise_money_and_members(api, provider, admin)
     owner = trip.owner
@@ -133,6 +134,18 @@ async def full_tenant(
     )
     assert template.status_code == 200, template.text
     await created(trip.path("/packing"), {"name": "Earplugs", "visibility": "private"})
+    passkey_options = await api.post("/v1/me/passkeys/registration-options", headers=owner.headers)
+    assert passkey_options.status_code == 200, passkey_options.text
+    passkey = await api.post(
+        "/v1/me/passkeys",
+        json={
+            "challenge_id": passkey_options.json()["challenge_id"],
+            "credential": SoftAuthenticator().create(passkey_options.json()["public_key"]),
+            "label": "Phone",
+        },
+        headers=owner.headers,
+    )
+    assert passkey.status_code == 201, passkey.text
     reported = await api.post(
         "/v1/support/reports",
         json={
@@ -165,5 +178,6 @@ async def full_tenant(
             "booking_id": booking["id"],
             "task_id": task["id"],
             "packing_item_id": template.json()["items"][0]["id"],
+            "passkey_id": passkey.json()["id"],
         },
     )

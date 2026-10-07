@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, urlsplit
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -100,6 +100,12 @@ class Settings(BaseSettings):
     auth_google_client_ids: list[str] = Field(default_factory=list)
     auth_apple_client_ids: list[str] = Field(default_factory=list)
     auth_magic_link_url: str | None = None
+    # WebAuthn relying party: the app's domain (iOS associated domains, Android asset
+    # links) and every origin a passkey response may come from (https://... or
+    # android:apk-key-hash:...).
+    webauthn_rp_id: str = "localhost"
+    webauthn_rp_name: str = "Beluno"
+    webauthn_origins: list[str] = Field(default_factory=lambda: ["http://localhost"])
     token_hash_key: SecretStr | None = None
     # Keyring for secrets kept at rest (booking codes and notes); see beluno.secret_box.
     booking_keys: SecretStr | None = None
@@ -269,6 +275,8 @@ class Settings(BaseSettings):
             and self.smtp_security is SmtpSecurity.NONE
         ):
             raise RuntimeError("BELUNO_SMTP_SECURITY must use starttls or tls")
+        if self.process_role in (ProcessRole.ALL, ProcessRole.API):
+            self._assert_webauthn_party()
         if self.auth_magic_link_url is not None:
             self._assert_https_url("BELUNO_AUTH_MAGIC_LINK_URL", self.auth_magic_link_url)
         if self.otel_exporter_otlp_endpoint is not None:
@@ -292,6 +300,32 @@ class Settings(BaseSettings):
         """Compatibility alias for callers that previously used this method."""
 
         self.assert_runtime_requirements()
+
+    def _assert_webauthn_party(self) -> None:
+        """A real domain, and origins that are that domain (or a subdomain) over https,
+        or the signed Android app."""
+
+        rp_id = self.webauthn_rp_id
+        if (
+            not rp_id
+            or rp_id != rp_id.lower()
+            or rp_id in ("localhost",)
+            or "." not in rp_id
+            or any(character in rp_id for character in ":/@ ")
+            or rp_id.replace(".", "").isdigit()
+        ):
+            raise RuntimeError("BELUNO_WEBAUTHN_RP_ID must be the app's domain")
+        if not self.webauthn_origins:
+            raise RuntimeError("BELUNO_WEBAUTHN_ORIGINS must list the app's origins")
+        for origin in self.webauthn_origins:
+            if origin.startswith("android:apk-key-hash:"):
+                continue
+            host = urlsplit(origin).hostname if origin.startswith("https://") else None
+            if host is None or not (host == rp_id or host.endswith(f".{rp_id}")):
+                raise RuntimeError(
+                    "BELUNO_WEBAUTHN_ORIGINS must be https:// origins on the relying party's "
+                    "domain or android:apk-key-hash: origins"
+                )
 
     @staticmethod
     def _secret_value(value: SecretStr | None) -> str | None:

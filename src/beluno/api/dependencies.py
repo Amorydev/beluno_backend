@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Annotated, cast
 
 from fastapi import Depends, HTTPException, Request, status
@@ -54,9 +55,22 @@ def get_optional_actor(
 
 
 def client_subject(request: Request) -> str:
-    """Rate-limit subject for unauthenticated traffic (hashed before storage)."""
+    """Rate-limit subject for unauthenticated traffic (hashed before storage).
 
-    return request.client.host if request.client else "unknown"
+    IPv6 clients count per /64, the block one subscriber usually holds, so rotating
+    addresses inside it does not reset the limit.
+    """
+
+    host = request.client.host if request.client else "unknown"
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    return str(address)
 
 
 RuntimeDep = Annotated[Runtime, Depends(get_runtime)]

@@ -23,6 +23,8 @@ def secure_settings(**overrides: object) -> Settings:
         "email_backend": EmailBackend.SMTP,
         "smtp_host": "smtp.example.com",
         "email_from": "Beluno <no-reply@example.com>",
+        "webauthn_rp_id": "beluno.example.com",
+        "webauthn_origins": ["https://beluno.example.com", "android:apk-key-hash:abc"],
         **overrides,
     }
     return Settings(_env_file=None, **values)  # type: ignore[call-arg, arg-type]
@@ -52,6 +54,29 @@ def test_secure_environments_reject_console_email_and_plaintext_smtp() -> None:
         secure_settings(smtp_security=SmtpSecurity.NONE).assert_runtime_requirements()
     with pytest.raises(RuntimeError, match="https"):
         secure_settings(auth_magic_link_url="http://app.example.com").assert_runtime_requirements()
+
+
+def test_secure_environments_need_the_passkey_relying_party() -> None:
+    with pytest.raises(RuntimeError, match="WEBAUTHN_RP_ID"):
+        secure_settings(webauthn_rp_id="localhost").assert_runtime_requirements()
+    for rp_id in ("LOCALHOST", "127.0.0.1", "https://beluno.example.com", "beluno"):
+        with pytest.raises(RuntimeError, match="WEBAUTHN_RP_ID"):
+            secure_settings(webauthn_rp_id=rp_id).assert_runtime_requirements()
+    for origins in (
+        ["http://beluno.example.com"],
+        ["https://evil.example.org"],
+        ["https://notbeluno.example.com.evil.io"],
+        [],
+    ):
+        with pytest.raises(RuntimeError, match="WEBAUTHN_ORIGINS"):
+            secure_settings(webauthn_origins=origins).assert_runtime_requirements()
+    secure_settings(
+        webauthn_origins=["https://app.beluno.example.com", "android:apk-key-hash:abc"]
+    ).assert_runtime_requirements()
+    # Workers issue no passkey challenges.
+    secure_settings(
+        process_role=ProcessRole.WORKER, webauthn_rp_id="localhost"
+    ).assert_runtime_requirements()
 
 
 def test_auth_requires_signing_keys_and_hash_key() -> None:

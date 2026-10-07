@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import LargeBinary, Text
+from sqlalchemy import ARRAY, BigInteger, LargeBinary, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from beluno.db.models.base import Base
@@ -86,6 +86,35 @@ class EmailChallenge(Base):
     delivered_at: Mapped[datetime | None]
     failed_attempts: Mapped[int]
     max_attempts: Mapped[int]
+    expires_at: Mapped[datetime]
+    consumed_at: Mapped[datetime | None]
+    created_at: Mapped[datetime]
+
+
+class Passkey(Base):
+    __tablename__ = "passkeys"
+    __table_args__ = {"schema": "iam"}  # noqa: RUF012
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID]
+    credential_id: Mapped[bytes] = mapped_column(LargeBinary)
+    public_key: Mapped[bytes] = mapped_column(LargeBinary)
+    sign_count: Mapped[int] = mapped_column(BigInteger)
+    transports: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    label: Mapped[str] = mapped_column(Text)
+    backed_up: Mapped[bool]
+    created_at: Mapped[datetime]
+    last_used_at: Mapped[datetime | None]
+
+
+class WebAuthnChallenge(Base):
+    __tablename__ = "webauthn_challenges"
+    __table_args__ = {"schema": "iam"}  # noqa: RUF012
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    purpose: Mapped[str] = mapped_column(Text)
+    user_id: Mapped[UUID | None]
+    challenge_hash: Mapped[bytes] = mapped_column(LargeBinary)
     expires_at: Mapped[datetime]
     consumed_at: Mapped[datetime | None]
     created_at: Mapped[datetime]

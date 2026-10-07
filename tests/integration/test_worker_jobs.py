@@ -71,12 +71,19 @@ async def test_purge_job_removes_only_expired_auth_records(
         "UPDATE iam.email_challenges SET expires_at = now() - interval '2 days' "
         "WHERE email = 'old@example.com'"
     )
+    for _ in range(2):
+        await api.post("/v1/auth/passkey/options")
+    admin.execute(
+        "UPDATE iam.webauthn_challenges SET expires_at = now() - interval '2 days' "
+        "WHERE id = (SELECT id FROM iam.webauthn_challenges ORDER BY id LIMIT 1)"
+    )
     admin.execute("UPDATE iam.rate_limit_counters SET window_start = now() - interval '3 days'")
 
     removed = await tasks.purge_expired_auth.func(0)
 
-    assert removed >= 2
+    assert removed >= 3
     assert admin.fetch("SELECT email FROM iam.email_challenges") == [("new@example.com",)]
+    assert admin.scalar("SELECT count(*) FROM iam.webauthn_challenges") == 1
     assert admin.scalar("SELECT count(*) FROM iam.rate_limit_counters") == 0
 
 

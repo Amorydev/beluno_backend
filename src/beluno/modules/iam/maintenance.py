@@ -12,7 +12,7 @@ from datetime import timedelta
 
 from sqlalchemy import delete, text
 
-from beluno.db.models.iam import EmailChallenge, RefreshToken
+from beluno.db.models.iam import EmailChallenge, RefreshToken, WebAuthnChallenge
 from beluno.modules.context import Runtime
 
 RETENTION_AFTER_EXPIRY = timedelta(days=1)
@@ -29,6 +29,9 @@ async def purge_expired_auth_records(runtime: Runtime) -> int:
         for result in (
             await session.execute(delete(EmailChallenge).where(EmailChallenge.expires_at < cutoff)),
             await session.execute(delete(RefreshToken).where(RefreshToken.expires_at < cutoff)),
+            await session.execute(
+                delete(WebAuthnChallenge).where(WebAuthnChallenge.expires_at < cutoff)
+            ),
             await session.execute(PURGE_RATE_LIMIT_WINDOWS, {"cutoff": cutoff}),
         ):
             removed += result.rowcount  # type: ignore[attr-defined]
