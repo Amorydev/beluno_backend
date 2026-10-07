@@ -27,6 +27,7 @@ from beluno.api.routers import (
     internal,
     invites,
     me,
+    planning,
     plans,
     sync,
 )
@@ -161,6 +162,7 @@ def create_app(
         finance.currency_router,
         finance.fx_router,
         finance.router,
+        planning.router,
         invites.router,
         sync.router,
     ):

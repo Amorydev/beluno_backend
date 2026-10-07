@@ -178,14 +178,49 @@ class CostCommitmentPort:
         source_id: UUID,
         commitment_kind: str,
     ) -> None:
+        """The source no longer plans this cost.
+
+        A cost that already became an expense stays an expense: the money was spent,
+        and a refund from the provider is recorded on the expense, not here. It does
+        remember the withdrawal, so voiding that expense later cancels the cost
+        instead of bringing the plan back.
+        """
+
         ledger = await ledger_for(ctx, access)
         existing = await _by_source(ctx, access.plan.id, source_type, source_id, commitment_kind)
         if existing is None or existing.state == CommitmentState.CANCELLED.value:
             return
-        if existing.state not in {s.value for s in LINKABLE_COMMITMENT_STATES}:
-            raise invalid_state("A cost that became an expense is changed through the expense")
-        existing.state = CommitmentState.CANCELLED.value
+        if existing.state in {s.value for s in LINKABLE_COMMITMENT_STATES}:
+            existing.state = CommitmentState.CANCELLED.value
+        elif existing.converted_from_state != CommitmentState.CANCELLED.value:
+            existing.converted_from_state = CommitmentState.CANCELLED.value
+        else:
+            return
         await _bump(ledger, existing, "finance.commitment_cancelled")
+
+    async def live_for_sources(
+        self,
+        ctx: CommandContext,
+        plan_id: UUID,
+        *,
+        source_type: str,
+        source_ids: list[UUID],
+        commitment_kind: str,
+    ) -> dict[UUID, UUID]:
+        """Source ID -> commitment ID for the sources' costs that were not cancelled."""
+
+        if not source_ids:
+            return {}
+        rows = await ctx.session.execute(
+            select(CostCommitment.source_id, CostCommitment.id).where(
+                CostCommitment.plan_id == plan_id,
+                CostCommitment.source_type == source_type,
+                CostCommitment.source_id.in_(source_ids),
+                CostCommitment.commitment_kind == commitment_kind,
+                CostCommitment.state != CommitmentState.CANCELLED.value,
+            )
+        )
+        return {source_id: commitment_id for source_id, commitment_id in rows.all()}
 
 
 COST_COMMITMENTS = CostCommitmentPort()

@@ -85,6 +85,9 @@ class PlanAction(StrEnum):
     CONFIRM_LEDGER = "plan.ledger.confirm"
     CONSOLIDATE_LEDGER = "plan.ledger.consolidate"
     CHANGE_BASE_CURRENCY = "plan.base_currency.change"
+    CONTRIBUTE_PLANNING = "plan.planning.contribute"
+    MANAGE_PLANNING = "plan.planning.manage"
+    RESPOND_PLANNING = "plan.planning.respond"
 
 
 ALL_PLAN_ROLES = frozenset(PlanRole)
@@ -166,6 +169,12 @@ PLAN_RULES: dict[PlanAction, Rule] = {
     PlanAction.CONSOLIDATE_LEDGER: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
     # It re-denominates budgets and every base-currency value everyone sees.
     PlanAction.CHANGE_BASE_CURRENCY: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
+    # Places, itinerary items, and the rest of the trip plan: anyone taking part adds
+    # them (guests too); managers change anyone's; viewers only read and respond.
+    PlanAction.CONTRIBUTE_PLANNING: Rule(FINANCE_CONTRIBUTORS, EDITABLE_PLAN_STATES),
+    PlanAction.MANAGE_PLANNING: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
+    # "Want to go", "going / not going": every participant answers for themselves.
+    PlanAction.RESPOND_PLANNING: Rule(ALL_PLAN_ROLES, EDITABLE_PLAN_STATES),
 }
 
 

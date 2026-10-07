@@ -43,6 +43,18 @@ The `activity` schema holds an append-only feed of what changed in plans and use
 - Visibility: plan-scope events are readable by the plan's active participants (RLS `plans.actor_is_active_participant`); user-scope events only by that user. The write gate accepts plan events only from the plan's active participants (someone who just left may record only their own `member.left`) and user events only in the actor's own scope.
 - Retention: 180 days (`sync_change_retention_days`), purged by a daily `activity.purge_events()` worker job in batches.
 
+## Trip planning
+
+The `schedule_places` schema holds a trip's places and itinerary (trips only):
+
+- **places**: name, optional Maps link (read offline for coordinates: `manual` without a link, `parsed` when the link carried coordinates, `pending` otherwise), category, note, status (`shortlist`, `in_plan`, `poll_winner`), who saved it. Tombstoned on delete.
+- **place_reactions**: one row per participant ("want to go"), updated in place.
+- **itinerary_items**: a day (or anytime), an optional local start time with its IANA zone (stored as local time and zone), duration, title, note, place, lead, status (`planned`, `done`, `cancelled`), and a fractional `order_key` within the day. Tombstoned on delete.
+- **item_attendance**: one row per participant (going / not going), updated in place.
+- A place is `in_plan` while a live itinerary item uses it and back on the `shortlist` otherwise (a poll winner keeps its status). "Want to go" and attendance count active participants only.
+- An item's estimated cost is a finance cost commitment (`itinerary_item`, `estimate`); the expense that pays it names that commitment. Cancelling or deleting the item cancels a cost that is still only planned; a paid one stays an expense and remembers the withdrawal (`converted_from_state = cancelled`), so voiding that expense cancels the cost rather than reviving it. An item save writes the commitment only when the cost or title changed. Order keys use the `C` collation.
+- RLS: the plan's active participants read and write; there is no DELETE grant. Write guards keep identities fixed and let each participant write only their own reactions and attendance.
+
 ## Finance
 
 The `finance` schema holds each plan's ledger (ADR 0003). Amounts are `BIGINT`
