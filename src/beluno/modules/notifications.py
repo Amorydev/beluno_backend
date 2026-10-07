@@ -16,14 +16,37 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 
-from beluno.contracts.errors import version_conflict
+from beluno.authorization.access import load_plan, require_plan
+from beluno.authorization.policy import (
+    EDITABLE_PLAN_STATES,
+    SETTLEMENT_PLAN_STATES,
+    PlanAction,
+    PlanState,
+)
+from beluno.contracts.errors import invalid_state, not_found, version_conflict
+from beluno.db.models.coordination import Task
 from beluno.db.models.engagement import Notification, NotificationSettings, PushToken
 from beluno.modules.context import CommandContext, Runtime
+from beluno.modules.finance.views import ledger_snapshot
+from beluno.modules.planning.common import planning_access, require_author_or_manager
 from beluno.modules.sync_audit.recorder import record_audit
 from beluno.push import PushMessage, PushResult, PushSender
 
 FAN_OUT = text("SELECT engagement.fan_out(:now)")
 QUEUE_REMINDERS = text("SELECT engagement.queue_reminders(:now)")
+QUEUE_SUMMARIES = text("SELECT engagement.queue_summaries(:now)")
+QUEUE_NUDGE = text("SELECT engagement.queue_nudge(:kind, :plan_id, :subject_id)")
+_CATEGORY_ARGUMENTS: dict[str, tuple[str, ...]] = {
+    "money": ("actor", "plan"),
+    "reminders": ("plan",),
+    "summaries": ("plan", "count"),
+    "news": (),
+    "security": (),
+}
+_ARGUMENTS: dict[str, tuple[str, ...]] = {
+    "task_nudge": ("actor", "plan"),
+    "payment_nudge": ("actor", "plan"),
+}
 REGISTER_TOKEN = text("SELECT engagement.register_push_token(:session_id, :token, :platform)")
 FORGET_SETTINGS = text("SELECT engagement.forget_settings()")
 LIVE_TOKENS = text(
@@ -127,6 +150,62 @@ async def save_preferences(
     return _preferences(row)
 
 
+async def nudge_task(ctx: CommandContext, plan_id: UUID, task_id: UUID) -> bool:
+    """Whoever added a task, or an organiser, reminds its assignee (once a day)."""
+
+    access = await planning_access(ctx, plan_id, PlanAction.VIEW)
+    task = await ctx.session.get(Task, task_id)
+    if task is None or task.plan_id != plan_id or task.deleted_at is not None:
+        raise not_found()
+    await require_author_or_manager(ctx, access, task.created_by_user_id)
+    if PlanState(access.plan.state) not in EDITABLE_PLAN_STATES:
+        raise invalid_state("tasks are only nudged while the plan is going on")
+    if task.assignee_participant_id is None or task.status == "done":
+        raise invalid_state("only an open task with an assignee can be nudged")
+    return await _nudge(ctx, "task_nudge", plan_id, task.id)
+
+
+async def nudge_payment(ctx: CommandContext, plan_id: UUID, debtor_id: UUID) -> bool:
+    """Someone who is owed reminds someone the ledger says should pay them (once a day)."""
+
+    access = await load_plan(ctx, plan_id)
+    require_plan(access, PlanAction.VIEW_FINANCE)
+    own = access.participant
+    if own is None:
+        raise not_found()
+    if PlanState(access.plan.state) not in SETTLEMENT_PLAN_STATES:
+        raise invalid_state("payments are only nudged while people settle up")
+    # The ledger's own suggestions decide, with its settle tolerance applied.
+    snapshot = await ledger_snapshot(ctx, plan_id)
+    owes_you = any(
+        transfer.from_participant_id == debtor_id and transfer.to_participant_id == own.id
+        for currency in snapshot.suggestions
+        for transfer in currency.preview.transfers
+    )
+    if not owes_you:
+        raise invalid_state("they do not owe you anything here")
+    return await _nudge(ctx, "payment_nudge", plan_id, debtor_id)
+
+
+async def _nudge(ctx: CommandContext, kind: str, plan_id: UUID, subject_id: UUID) -> bool:
+    # The database finds the recipient and allows one nudge per reason and day; a
+    # second press the same day does nothing.
+    queued = await ctx.session.scalar(
+        QUEUE_NUDGE, {"kind": kind, "plan_id": plan_id, "subject_id": subject_id}
+    )
+    if queued is None:
+        raise invalid_state("they cannot get nudges in this plan")
+    if queued:
+        await record_audit(
+            ctx,
+            action=f"notifications.{kind}",
+            entity_type="task" if kind == "task_nudge" else "plan_participant",
+            entity_id=subject_id,
+            plan_id=plan_id,
+        )
+    return bool(queued)
+
+
 async def forget_settings(ctx: CommandContext) -> None:
     """Account deletion: settings and undelivered notifications go."""
 
@@ -162,6 +241,7 @@ async def dispatch(runtime: Runtime, sender: PushSender) -> int:
     async with runtime.database.transaction() as session:
         await session.execute(FAN_OUT, {"now": now})
         await session.execute(QUEUE_REMINDERS, {"now": now})
+        await session.execute(QUEUE_SUMMARIES, {"now": now})
         # Deliveries a crashed worker left half-done go back to the queue, or fail once
         # they have used up their attempts.
         stuck = (Notification.state == "sending") & (
@@ -298,8 +378,8 @@ class Device:
 
 def _message(notification: Notification, device: Device) -> PushMessage:
     args = notification.args
-    # Always the same arguments per category, so the app's strings line up.
-    keys = ("actor", "plan") if notification.category == "money" else ("plan",)
+    # Always the same arguments per kind, so the app's strings line up.
+    keys = _ARGUMENTS.get(notification.kind) or _CATEGORY_ARGUMENTS[notification.category]
     loc_args = [str(args.get(key) or "") for key in keys]
     data = {"notification_id": str(notification.id)}
     for key, value in (

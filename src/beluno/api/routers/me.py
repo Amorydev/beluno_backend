@@ -21,7 +21,7 @@ from beluno.api.problems import problem_responses
 from beluno.contracts.iam import ProfileUpdateRequest, SessionResponse, UserProfileResponse
 from beluno.modules.context import open_context
 from beluno.modules.iam import users
-from beluno.modules.iam.sessions import list_live_sessions
+from beluno.modules.iam.sessions import list_live_sessions, revoke_other_sessions
 from beluno.sync.commands import EmptyPayload
 
 router = APIRouter(prefix="/v1/me", tags=["me"])
@@ -96,6 +96,19 @@ async def list_sessions(runtime: RuntimeDep, actor: ActorDep) -> list[SessionRes
         )
         for item in sessions
     ]
+
+
+@router.post(
+    "/sessions/sign-out-others",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=problem_responses(401, 503),
+)
+async def sign_out_other_devices(runtime: RuntimeDep, actor: ActorDep) -> Response:
+    """Sign out every other device at once; this one stays signed in."""
+
+    async with open_context(runtime, actor) as ctx:
+        await revoke_other_sessions(ctx)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete(

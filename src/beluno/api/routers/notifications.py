@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Response, status
 
 from beluno.api.dependencies import ActorDep, RuntimeDep
@@ -10,17 +12,20 @@ from beluno.api.problems import problem_responses
 from beluno.contracts.notifications import (
     NotificationSettingsBody,
     NotificationSettingsResponse,
+    NudgeResponse,
+    PaymentNudgeRequest,
     PushTokenRequest,
 )
 from beluno.modules import notifications
 from beluno.modules.context import open_context
+from beluno.modules.iam import rate_limits
 
-router = APIRouter(prefix="/v1/me", tags=["notifications"])
+router = APIRouter(tags=["notifications"])
 
 ERRORS = problem_responses(401, 409, 412, 422, 428, 503)
 
 
-@router.put("/push-token", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS)
+@router.put("/v1/me/push-token", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS)
 async def register_push_token(
     body: PushTokenRequest, runtime: RuntimeDep, actor: ActorDep
 ) -> Response:
@@ -31,14 +36,16 @@ async def register_push_token(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/push-token", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS)
+@router.delete("/v1/me/push-token", status_code=status.HTTP_204_NO_CONTENT, responses=ERRORS)
 async def forget_push_token(runtime: RuntimeDep, actor: ActorDep) -> Response:
     async with open_context(runtime, actor) as ctx:
         await notifications.forget_token(ctx)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/notification-settings", response_model=NotificationSettingsResponse, responses=ERRORS)
+@router.get(
+    "/v1/me/notification-settings", response_model=NotificationSettingsResponse, responses=ERRORS
+)
 async def get_notification_settings(
     runtime: RuntimeDep, actor: ActorDep, response: Response
 ) -> NotificationSettingsResponse:
@@ -48,7 +55,9 @@ async def get_notification_settings(
     return _response(found)
 
 
-@router.put("/notification-settings", response_model=NotificationSettingsResponse, responses=ERRORS)
+@router.put(
+    "/v1/me/notification-settings", response_model=NotificationSettingsResponse, responses=ERRORS
+)
 async def save_notification_settings(
     body: NotificationSettingsBody,
     runtime: RuntimeDep,
@@ -78,3 +87,36 @@ def _response(found: notifications.Preferences) -> NotificationSettingsResponse:
         quiet_end=found.quiet_end,
         version=found.version,
     )
+
+
+NUDGE_ERRORS = problem_responses(401, 403, 404, 409, 422, 429, 503)
+
+
+@router.post(
+    "/v1/plans/{plan_id}/tasks/{task_id}/nudge",
+    response_model=NudgeResponse,
+    responses=NUDGE_ERRORS,
+)
+async def nudge_task(
+    plan_id: UUID, task_id: UUID, runtime: RuntimeDep, actor: ActorDep
+) -> NudgeResponse:
+    """Remind a task's assignee (whoever added the task, or an organiser; once a day)."""
+
+    await rate_limits.enforce_rate_limit(runtime, rate_limits.NUDGES_PER_USER, str(actor.user_id))
+    async with open_context(runtime, actor) as ctx:
+        queued = await notifications.nudge_task(ctx, plan_id, task_id)
+    return NudgeResponse(queued=queued)
+
+
+@router.post(
+    "/v1/plans/{plan_id}/ledger/nudges", response_model=NudgeResponse, responses=NUDGE_ERRORS
+)
+async def nudge_payment(
+    plan_id: UUID, body: PaymentNudgeRequest, runtime: RuntimeDep, actor: ActorDep
+) -> NudgeResponse:
+    """Remind someone who owes you in this plan (once a day per person)."""
+
+    await rate_limits.enforce_rate_limit(runtime, rate_limits.NUDGES_PER_USER, str(actor.user_id))
+    async with open_context(runtime, actor) as ctx:
+        queued = await notifications.nudge_payment(ctx, plan_id, body.participant_id)
+    return NudgeResponse(queued=queued)
