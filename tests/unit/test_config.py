@@ -163,3 +163,17 @@ def test_the_api_needs_a_booking_keyring_and_a_broken_one_is_refused() -> None:
     ).assert_runtime_requirements()
     with pytest.raises(ValueError, match="keyring"):
         secure_settings(booking_keys='{"active": "k1", "keys": {"k1": "short"}}')
+
+
+def test_a_configured_app_store_verifies_fully_in_secure_environments() -> None:
+    store = {"apple_bundle_id": "app.beluno", "apple_root_certificates": ["/etc/apple.cer"]}
+    secure_settings(**store).assert_runtime_requirements()
+    with pytest.raises(RuntimeError, match="ONLINE_CHECKS"):
+        secure_settings(**store, apple_online_checks=False).assert_runtime_requirements()
+    with pytest.raises(RuntimeError, match="ROOT_CERTIFICATES"):
+        secure_settings(apple_bundle_id="app.beluno").assert_runtime_requirements()
+    with pytest.raises(RuntimeError, match="APP_APPLE_ID"):
+        secure_settings(**store, apple_environment="Production").assert_runtime_requirements()
+    secure_settings(
+        **store, apple_environment="Production", apple_app_apple_id=1
+    ).assert_runtime_requirements()

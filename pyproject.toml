@@ -27,6 +27,9 @@ dependencies = [
   "pillow>=12.3.0",
   "pillow-heif>=1.8.0",
   "firebase-admin>=7.7.0",
+  "app-store-server-library>=3.1.2",
+  "google-auth>=2.60.0",
+  "requests>=2.34.2",
 ]
 
 [dependency-groups]

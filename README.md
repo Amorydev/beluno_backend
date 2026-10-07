@@ -172,6 +172,16 @@ into an outbox the worker delivers every minute. Messages carry localisation key
 for the app to render, never amounts, codes, or addresses: see
 `docs/contracts/push-notifications.md`.
 
+## Paid plans
+
+A Trip Pass (per trip, for everyone on it) and Pro (yearly, for every trip its holder
+owns) are bought in the App Store or Google Play and verified by the server: Apple's
+signed transactions and notifications with `app-store-server-library`, Google's
+purchase tokens with the Play Developer API and Pub/Sub push notifications. Free
+accounts are limited to a number of their own trips in progress and receipts per trip
+(`BELUNO_FREE_ACTIVE_TRIPS`, `BELUNO_MEDIA_RECEIPTS_PER_PLAN`; off until set); hangouts
+are always free. See `docs/contracts/billing.md`.
+
 ## Finance
 
 Each plan has an append-only ledger in minor units (`docs/adr/0003-financial-ledger.md`):

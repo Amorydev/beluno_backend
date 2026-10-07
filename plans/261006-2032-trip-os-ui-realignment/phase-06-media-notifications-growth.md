@@ -119,6 +119,13 @@ Release 3: everything that needs external providers or storage. The previous pla
   - Defaults taken without an answer (easy to change): a forgiven debt notifies the debtor; reminder days use the recipient's time zone.
   - Later: weekly planning summary, news.
 
+- Paid plans are on `feat/entitlements`:
+  - Decisions (user, 2026-10-07): verify directly with Apple (`app-store-server-library`, Server Notifications v2) and Google (Play Developer API, RTDN over Pub/Sub push), no third party; the free trip limit counts only one's own trips in progress (hangouts free); a Trip Pass unlocks one trip for everyone on it, Pro every trip its holder owns; PDF reports with `fpdf2` (next slice).
+  - Migration `000021_entitlements`: `billing.purchases` (own-read RLS; writes through `record_purchase`, `update_purchase`, `acknowledged`), `plan_unlock`, `trips_counting`.
+  - `POST /v1/me/purchases/apple|google` (also restore), `GET /v1/me/entitlements`, `GET /v1/plans/{id}/entitlement`, `POST /v1/store-notifications/apple|google`; worker `billing.acknowledge_purchase`; limits in `create`, `duplicate`, reopening, and receipt uploads (`docs/contracts/billing.md`).
+  - Decisions after review (user): handing a trip in progress to a new owner needs a place within their limit; a purchase without the buyer's id belongs to the first account that records it, and Family Sharing purchases are refused. Default taken: guests cannot buy.
+  - Review (`reports/code-reviewer-261007-2230-entitlements-review-report.md`): store I/O stays outside transactions, RLS holds. Fixed: the limit now also covers restoring, reopening by an admin, and handing over (H1); a refund ends only the period it covers, a later paid period or a reversed refund restores Pro, an app replay never lifts a refund, and answers describe the stored purchase (H2); Family Sharing refused (H3); replaced Google subscriptions stop counting (M1); Google push tokens verified against keys fetched at most every five minutes (M2); misconfiguration, certificate-check outages, token refresh and unreadable answers map to 503, and secure environments require full App Store settings (M3); receipt uploads to one trip count one at a time (M4); notifications for other products ignored (L1); product id checked (L2); expiries bounded (L3); purchases the app consumed itself still confirmed (L5); app guidance on finishing and restoring (L6, L7).
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.

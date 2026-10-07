@@ -20,7 +20,11 @@ submitted values.
 | `GUEST_NOT_ALLOWED` | 409 | Guests cannot be added this way; they join through an invite |
 | `IDENTITY_ALREADY_LINKED` | 409 | The external identity belongs to another account |
 | `HIGHLIGHT_LIMIT_REACHED` | 409 | The trip already has the most recap highlights (20) |
-| `MEDIA_LIMIT_REACHED` | 409 | The plan already holds the receipts its plan allows (when a limit is configured) |
+| `MEDIA_LIMIT_REACHED` | 409 | The trip already holds the receipts the free limit allows (no Trip Pass or Pro; when a limit is configured) |
+| `TRIP_LIMIT_REACHED` | 409 | Starting or reopening a trip would pass the free limit on your own trips in progress (when configured) |
+| `PURCHASE_OWNED_ELSEWHERE` | 409 | The store purchase was made or recorded by another account |
+| `PURCHASE_USED` | 409 | This Trip Pass already unlocks another trip |
+| `PURCHASE_PENDING` | 409 | Google Play reports the payment pending; send the purchase again once it completes |
 | `PASSKEY_ALREADY_REGISTERED` | 409 | This passkey is already added (to this or another account) |
 | `INVALID_STATE_TRANSITION` | 409 | Action is not valid in the resource's current state |
 | `OWNER_TRANSFER_REQUIRED` | 409 | Owner must transfer ownership before leaving a plan, or before deleting their account while another person (not a placeholder) is active in a plan they own; guests must create an account before they can take ownership |
@@ -51,11 +55,13 @@ submitted values.
 | `FX_RATE_INVALID` | 422 | Exchange rate is not positive, above `10^9`, or has more than 12 decimals |
 | `PARTICIPANT_NOT_ELIGIBLE` | 422 | A named participant is unknown, from another plan, merged, or not active for this entry (never distinguished) |
 | `LEDGER_ENTRY_UNBALANCED` | 422 | Adjustment entries do not sum to zero |
+| `PURCHASE_INVALID` | 422 | The store does not vouch for the purchase or notification (forged, another app or environment, unknown product or token) |
 | `CLIENT_UPGRADE_REQUIRED` | 426 | Sync protocol or command schema version is outside the supported window |
 | `PRECONDITION_REQUIRED` | 428 | Update requires an `If-Match` header |
 | `RATE_LIMITED` | 429 | Abuse limit reached; honour `Retry-After` |
 | `INTERNAL_ERROR` | 500 | Unexpected server failure; the response echoes nothing about the request beyond its request id |
 | `FEATURE_DISABLED` | 503 | Entry point or command disabled by an operational kill switch |
+| `STORE_UNAVAILABLE` | 503 | The App Store or Google Play is not configured here or did not answer; retry later |
 | `RETRY_LATER` | 503 | Transient database conflict after bounded retries; nothing changed, resend unchanged after `Retry-After` |
 
 Sync pull never reports a stale cursor as an HTTP error: the per-scope status

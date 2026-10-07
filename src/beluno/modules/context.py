@@ -30,6 +30,7 @@ from beluno.malware import ClamdScanner, ScannerUnavailable
 from beluno.modules.sync_audit.recorder import flush_pending_records
 from beluno.observability.context import get_request_id
 from beluno.storage import ObjectStorage
+from beluno.stores import AppleStore, GooglePlay, GooglePlayClient
 from beluno.token_hashing import TokenHasher
 
 if TYPE_CHECKING:
@@ -50,6 +51,8 @@ class Runtime:
     hasher: TokenHasher | None
     identity_verifier: ExternalIdentityVerifier
     clock: Callable[[], datetime] = field(default=utc_now)
+    # Tests pass a stand-in; otherwise the Play Developer API client is built on first use.
+    google_play_client: GooglePlay | None = None
 
     def require_hasher(self) -> TokenHasher:
         if self.hasher is None:
@@ -67,6 +70,16 @@ class Runtime:
         if not self.settings.clamd_host:
             raise ScannerUnavailable("BELUNO_CLAMD_HOST is not configured")
         return ClamdScanner(self.settings.clamd_host, self.settings.clamd_port)
+
+    @cached_property
+    def apple_store(self) -> AppleStore:
+        """App Store verification, built on first use (raises when it is not configured)."""
+
+        return AppleStore.from_settings(self.settings)
+
+    @cached_property
+    def google_play(self) -> GooglePlay:
+        return self.google_play_client or GooglePlayClient.from_settings(self.settings)
 
 
 @dataclass

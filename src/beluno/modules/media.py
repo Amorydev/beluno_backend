@@ -44,6 +44,7 @@ from beluno.db.models.finance import Expense
 from beluno.db.models.media import Media, ObjectDeletion
 from beluno.db.models.schedule_places import Place
 from beluno.media_files import IMAGE_TYPES, PDF, CleanFile, RejectedFile, clean
+from beluno.modules import billing
 from beluno.modules.context import CommandContext, Runtime, open_context
 from beluno.modules.iam import users
 from beluno.modules.plans.changes import record_plan_change
@@ -115,7 +116,7 @@ async def create_media(
         raise validation_error(f"the file must be at most {_max_bytes(ctx, kind)} bytes")
     if kind == RECEIPT:
         await _require_expense(ctx, access, expense_id)
-        await _check_receipt_quota(ctx, plan_id)
+        await _check_receipt_quota(ctx, plan_id, access.plan.type)
     elif expense_id is not None:
         raise validation_error("only receipts belong to an expense")
     if memory is not None and kind != MEMORY:
@@ -538,17 +539,28 @@ async def _may_delete(ctx: CommandContext, access: PlanAccess, media: Media) -> 
     return creator is not None and await users.is_actor_account(ctx, creator)
 
 
-async def _check_receipt_quota(ctx: CommandContext, plan_id: UUID) -> None:
-    limit = ctx.settings.media_receipts_per_plan
+async def _check_receipt_quota(ctx: CommandContext, plan_id: UUID, plan_type: str) -> None:
+    limit = await billing.receipt_limit(ctx, plan_id, plan_type)
     if limit is None:
         return
+    # Uploads to one plan at the same moment count one after the other.
+    await ctx.session.execute(LOCK_RECEIPTS, {"plan_id": str(plan_id)})
     count = await ctx.session.scalar(
         select(func.count())
         .select_from(Media)
         .where(Media.plan_id == plan_id, Media.kind == RECEIPT, Media.deleted_at.is_(None))
     )
     if int(count or 0) >= limit:
-        raise conflict("MEDIA_LIMIT_REACHED", f"This plan already has {limit} receipts")
+        raise conflict(
+            "MEDIA_LIMIT_REACHED",
+            f"This plan already has {limit} receipts",
+            "A Trip Pass or Pro removes the limit",
+        )
+
+
+LOCK_RECEIPTS = text(
+    "SELECT pg_advisory_xact_lock(hashtextextended('media:receipts:' || :plan_id, 0))"
+)
 
 
 def _max_bytes(ctx: CommandContext, kind: str) -> int:

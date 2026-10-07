@@ -15,7 +15,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from beluno.authorization.access import PlanAccess, load_plan, require_plan
-from beluno.authorization.policy import AccessState, PlanAction, PlanRole, PlanState
+from beluno.authorization.policy import (
+    EDITABLE_PLAN_STATES,
+    AccessState,
+    PlanAction,
+    PlanRole,
+    PlanState,
+)
 from beluno.contracts.errors import (
     conflict,
     forbidden,
@@ -26,7 +32,7 @@ from beluno.contracts.errors import (
 from beluno.db.ids import new_id
 from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan, PlanParticipant
-from beluno.modules import media
+from beluno.modules import billing, media
 from beluno.modules.activity.events import ActivityType, item
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.currencies import require_supported_currency
@@ -53,6 +59,8 @@ class Timing:
 
 
 TRIP = "trip"
+# A person's own trips in these states count toward the free limit.
+TRIPS_IN_PROGRESS = EDITABLE_PLAN_STATES
 HANGOUT = "hangout"
 PASS_COLORS = ("indigo", "plum", "sea", "forest", "rust", "slate", "wine", "moss")
 
@@ -179,6 +187,8 @@ async def insert_plan_with_owner(ctx: CommandContext, plan: Plan) -> PlanPartici
     """Insert a plan and its owner participant (the creator) in one savepoint."""
 
     actor = ctx.require_actor()
+    if plan.type == TRIP and PlanState(plan.state) in TRIPS_IN_PROGRESS:
+        await billing.require_room_for_trip(ctx, actor.user_id)
     creator = await ctx.session.get(User, actor.user_id)
     assert creator is not None
     owner = build_participant(
@@ -345,6 +355,9 @@ async def change_state(
     access = await _load_for_change(ctx, plan_id, PlanAction.CHANGE_STATE, expected_version)
     plan = access.plan
     check_transition(PlanState(plan.state), target)
+    if PlanState(plan.state) not in TRIPS_IN_PROGRESS:
+        # Reopening takes a place among the owner's trips again, whoever reopens it.
+        await _require_owner_room(ctx, plan, target)
     previous = plan.state
     plan.state = target.value
     bump(plan, ctx)
@@ -376,11 +389,28 @@ async def restore_plan(ctx: CommandContext, plan_id: UUID, expected_version: int
     plan = access.plan
     if plan.deletion_scheduled_at is None:
         raise invalid_state("Plan is not scheduled for deletion")
+    await _require_owner_room(ctx, plan, PlanState(plan.state))
     plan.deletion_scheduled_at = None
     bump(plan, ctx)
     await ctx.session.flush()
     await record_plan_change(ctx, plan, "plan.restored")
     return PlanView(plan=plan, participant=access.participant)
+
+
+async def _require_owner_room(ctx: CommandContext, plan: Plan, state: PlanState) -> None:
+    """A trip in ``state`` needs a place among its owner's trips (the free limit)."""
+
+    if plan.type != TRIP or state not in TRIPS_IN_PROGRESS:
+        return
+    owner_id = await ctx.session.scalar(
+        select(PlanParticipant.user_id).where(
+            PlanParticipant.plan_id == plan.id,
+            PlanParticipant.role == PlanRole.OWNER.value,
+            PlanParticipant.access_state == AccessState.ACTIVE.value,
+        )
+    )
+    if owner_id is not None:
+        await billing.require_room_for_trip(ctx, owner_id, plan.id)
 
 
 async def _load_for_change(

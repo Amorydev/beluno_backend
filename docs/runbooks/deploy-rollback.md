@@ -128,6 +128,27 @@ delivers a batch with one `send_each` call (10-second HTTP timeout); FCM outages
 credential problems back off up to five attempts, then fail; tokens FCM no longer
 accepts are deleted.
 
+## Paid plans
+
+The API verifies purchases; the worker confirms Google ones (`billing.acknowledge_purchase`,
+retried for about a day; Google refunds purchases left unconfirmed for three days).
+
+- **App Store:** set `BELUNO_APPLE_BUNDLE_ID`, `BELUNO_APPLE_APP_APPLE_ID` (required in
+  Production), `BELUNO_APPLE_ENVIRONMENT`, and `BELUNO_APPLE_ROOT_CERTIFICATES` (paths to
+  Apple's root certificates, DER, from apple.com/certificateauthority; staging mounts
+  `BELUNO_APPLE_CERTIFICATES_DIR` at `/etc/beluno/apple`). Point App Store Server
+  Notifications (version 2) at `/v1/store-notifications/apple`. Verification checks
+  certificate revocation online (OCSP); keep outbound HTTPS open from the API.
+- **Google Play:** set `BELUNO_GOOGLE_PLAY_PACKAGE_NAME` and
+  `BELUNO_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` (a service account invited in Play Console
+  with financial data access). For real-time developer notifications, create a Pub/Sub
+  push subscription to `/v1/store-notifications/google` with authentication on, and set
+  `BELUNO_GOOGLE_PLAY_PUSH_AUDIENCE` and `BELUNO_GOOGLE_PLAY_PUSH_SERVICE_ACCOUNT` to
+  its audience and service account.
+- **Limits and products:** `BELUNO_FREE_ACTIVE_TRIPS`, `BELUNO_MEDIA_RECEIPTS_PER_PLAN`,
+  `BELUNO_STORE_TRIP_PASS_PRODUCT_IDS`, `BELUNO_STORE_PRO_PRODUCT_IDS` (JSON lists).
+  Unset limits mean no limit; unset stores answer `503 STORE_UNAVAILABLE`.
+
 ## Kill switches
 
 Flip one in the environment and restart the affected process. Clients keep their

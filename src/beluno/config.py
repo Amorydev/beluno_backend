@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import parse_qs, urlparse, urlsplit
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator
@@ -121,8 +122,28 @@ class Settings(BaseSettings):
     media_receipt_max_bytes: int = Field(default=15 * 1024 * 1024, ge=1024)
     # Below clamd's default StreamMaxLength (25M): every file is scanned whole.
     media_image_max_bytes: int = Field(default=20 * 1024 * 1024, ge=1024)
-    # Free-plan receipt limit per plan; unset until paid plans exist.
+    # Free limits; unset, nothing is limited. Receipts count per trip without a Trip
+    # Pass (hangouts are always free); trips are the person's own trips in progress.
     media_receipts_per_plan: int | None = Field(default=None, ge=1)
+    free_active_trips: int | None = Field(default=None, ge=1)
+    # Store product ids sold as each product (prices live in the stores).
+    store_trip_pass_product_ids: list[str] = Field(default_factory=list)
+    store_pro_product_ids: list[str] = Field(default_factory=list)
+    # App Store: the app's bundle id, its Apple id (required in Production), and paths
+    # to Apple's root certificates (DER, from apple.com/certificateauthority).
+    apple_bundle_id: str | None = None
+    apple_app_apple_id: int | None = None
+    apple_environment: Literal["Sandbox", "Production"] = "Sandbox"
+    apple_root_certificates: list[str] = Field(default_factory=list)
+    # Certificate revocation checks (OCSP) while verifying; off only in tests.
+    apple_online_checks: bool = True
+    # Google Play: the package, a service account with access to the Play Developer
+    # API, and the Pub/Sub push subscription's audience and service account (real-time
+    # developer notifications).
+    google_play_package_name: str | None = None
+    google_play_service_account_json: SecretStr | None = None
+    google_play_push_audience: str | None = None
+    google_play_push_service_account: str | None = None
     # Push: a Firebase service account JSON (FCM HTTP v1 for Android and iOS). Unset,
     # notifications are recorded but not sent.
     fcm_service_account_json: SecretStr | None = None
@@ -182,6 +203,14 @@ class Settings(BaseSettings):
         "token_hash_key",
         "booking_keys",
         "smtp_password",
+        "google_play_service_account_json",
+        "apple_bundle_id",
+        "google_play_package_name",
+        "google_play_push_audience",
+        "google_play_push_service_account",
+        "apple_app_apple_id",
+        "free_active_trips",
+        "media_receipts_per_plan",
         "sentry_dsn",
         "auth_magic_link_url",
         "email_from",
@@ -299,6 +328,7 @@ class Settings(BaseSettings):
             self._assert_webauthn_party()
         if self.process_role in (ProcessRole.ALL, ProcessRole.API, ProcessRole.WORKER):
             self._assert_storage()
+            self._assert_stores()
         if self.auth_magic_link_url is not None:
             self._assert_https_url("BELUNO_AUTH_MAGIC_LINK_URL", self.auth_magic_link_url)
         if self.otel_exporter_otlp_endpoint is not None:
@@ -322,6 +352,18 @@ class Settings(BaseSettings):
         """Compatibility alias for callers that previously used this method."""
 
         self.assert_runtime_requirements()
+
+    def _assert_stores(self) -> None:
+        """A configured App Store verifies fully; nothing is checked while it is unset."""
+
+        if self.apple_bundle_id is None:
+            return
+        if not self.apple_online_checks:
+            raise RuntimeError("BELUNO_APPLE_ONLINE_CHECKS must stay on outside development")
+        if not self.apple_root_certificates:
+            raise RuntimeError("BELUNO_APPLE_ROOT_CERTIFICATES is required with the App Store")
+        if self.apple_environment == "Production" and self.apple_app_apple_id is None:
+            raise RuntimeError("BELUNO_APPLE_APP_APPLE_ID is required in Production")
 
     def _assert_storage(self) -> None:
         missing = [
