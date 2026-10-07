@@ -10,15 +10,22 @@
 
 from __future__ import annotations
 
+import io
 import socketserver
 import struct
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Any
 
 import boto3
+import httpx
 from moto.server import ThreadedMotoServer
+from PIL import Image
+
+from beluno.testkit.api_client import SignedIn
+from beluno.testkit.finance import FinancePlan
 
 BUCKET = "beluno-media-test"
 ACCESS_KEY_ID = "testing"
@@ -97,3 +104,46 @@ def media_services() -> Iterator[MediaServices]:
         clamd.shutdown()
         clamd.server_close()
         s3.stop()
+
+
+def photo_with_location(color: tuple[int, int, int] = (200, 80, 40)) -> bytes:
+    """A JPEG carrying a camera model and GPS coordinates in its EXIF."""
+
+    image = Image.new("RGB", (64, 48), color)
+    exif = Image.Exif()
+    exif[0x0110] = "Pixel 9"  # camera model
+    exif[0x8825] = {1: "N", 2: (35.0, 0.0, 0.0), 3: "E", 4: (135.0, 0.0, 0.0)}  # GPS
+    output = io.BytesIO()
+    image.save(output, format="JPEG", exif=exif.tobytes())
+    return output.getvalue()
+
+
+async def upload(
+    api: httpx.AsyncClient,
+    user: SignedIn,
+    trip: FinancePlan,
+    data: bytes,
+    *,
+    kind: str = "receipt",
+    content_type: str = "image/jpeg",
+    **fields: Any,
+) -> dict[str, Any]:
+    """Record the file, PUT it to storage with the signed URL, and report it uploaded."""
+
+    body = {"kind": kind, "content_type": content_type, "size_bytes": len(data), **fields}
+    recorded = await api.post(trip.path("/media"), json=body, headers=user.headers)
+    assert recorded.status_code == 201, recorded.text
+    media_id = recorded.json()["id"]
+    signed = await api.post(trip.path(f"/media/{media_id}/upload-url"), headers=user.headers)
+    assert signed.status_code == 200, signed.text
+    async with httpx.AsyncClient() as storage:
+        put = await storage.put(
+            signed.json()["url"],
+            content=data,
+            headers={"Content-Type": content_type, "Content-Length": str(len(data))},
+        )
+    assert put.status_code == 200, put.text
+    uploaded = await api.post(trip.path(f"/media/{media_id}/uploaded"), headers=user.headers)
+    assert uploaded.status_code == 200, uploaded.text
+    result: dict[str, Any] = uploaded.json()
+    return result

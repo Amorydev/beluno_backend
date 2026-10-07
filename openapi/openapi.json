@@ -3998,6 +3998,20 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "HighlightRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "in_recap": {
+            "title": "In Recap",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "in_recap"
+        ],
+        "title": "HighlightRequest",
+        "type": "object"
+      },
       "InvitePreviewResponse": {
         "description": "Deliberately minimal: no members, balances, bookings, or locations.",
         "properties": {
@@ -5068,10 +5082,22 @@
           "kind": {
             "enum": [
               "receipt",
-              "cover"
+              "cover",
+              "memory"
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "memory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemoryDetails"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Memories: the details"
           },
           "size_bytes": {
             "exclusiveMinimum": 0.0,
@@ -5090,6 +5116,17 @@
       },
       "MediaResponse": {
         "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
           "content_type": {
             "anyOf": [
               {
@@ -5106,6 +5143,18 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
           },
           "expense_id": {
             "anyOf": [
@@ -5135,13 +5184,31 @@
             "title": "Id",
             "type": "string"
           },
+          "in_recap": {
+            "description": "An organiser's pick for the trip recap",
+            "title": "In Recap",
+            "type": "boolean"
+          },
           "kind": {
             "enum": [
               "receipt",
-              "cover"
+              "cover",
+              "memory"
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "place_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place Id"
           },
           "plan_id": {
             "format": "uuid",
@@ -5187,6 +5254,18 @@
             "title": "State",
             "type": "string"
           },
+          "taken_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken Time"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -5224,6 +5303,11 @@
           "width",
           "height",
           "expense_id",
+          "caption",
+          "day",
+          "taken_time",
+          "place_id",
+          "in_recap",
           "uploaded_by_user_id",
           "version",
           "created_at",
@@ -5254,6 +5338,64 @@
           "contributed_minor"
         ],
         "title": "MemberContribution",
+        "type": "object"
+      },
+      "MemoryDetails": {
+        "additionalProperties": false,
+        "description": "A memory's caption, local day and time (the server strips EXIF), and place.",
+        "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "maxLength": 280,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          },
+          "place_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A saved place of the trip",
+            "title": "Place Id"
+          },
+          "taken_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Local time; needs day",
+            "title": "Taken Time"
+          }
+        },
+        "title": "MemoryDetails",
         "type": "object"
       },
       "PackedRequest": {
@@ -8746,6 +8888,18 @@
             "title": "Categories",
             "type": "array"
           },
+          "cover_media_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Media Id"
+          },
           "crew": {
             "items": {
               "$ref": "#/components/schemas/RecapPerson"
@@ -8787,6 +8941,15 @@
             "title": "Estimated Rates",
             "type": "boolean"
           },
+          "highlights": {
+            "description": "Ready memories an organiser picked for the recap, by day and time",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Highlights",
+            "type": "array"
+          },
           "itinerary_done": {
             "title": "Itinerary Done",
             "type": "integer"
@@ -8794,6 +8957,11 @@
           "itinerary_total": {
             "description": "Items not cancelled",
             "title": "Itinerary Total",
+            "type": "integer"
+          },
+          "memories": {
+            "description": "Ready memories of the trip",
+            "title": "Memories",
             "type": "integer"
           },
           "people": {
@@ -8903,6 +9071,9 @@
           "crew",
           "all_settled",
           "settled_on",
+          "cover_media_id",
+          "highlights",
+          "memories",
           "share"
         ],
         "title": "RecapResponse",
@@ -8911,6 +9082,19 @@
       "RecapShareCard": {
         "description": "Only these fields may go on a public card. Names, balances, booking codes,\naddresses, and notes never do; the app draws the card on the device.",
         "properties": {
+          "cover_media_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The trip's cover photo, if set",
+            "title": "Cover Media Id"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -8965,6 +9149,7 @@
           "start_date",
           "days",
           "people",
+          "cover_media_id",
           "currency",
           "spent_minor",
           "spent_complete"
@@ -21745,7 +21930,7 @@
         ]
       },
       "post": {
-        "description": "Record a receipt (anyone who adds expenses) or a trip cover (organisers).",
+        "description": "Record a receipt (anyone who adds expenses, on an expense that is not voided), a\ntrip cover (organisers), or a memory (anyone on the trip).",
         "operationId": "create_media_v1_plans__plan_id__media_post",
         "parameters": [
           {
@@ -22130,6 +22315,322 @@
           }
         ],
         "summary": "Media Download Url",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/media/{media_id}/highlight": {
+      "put": {
+        "description": "Pick a ready memory for the trip recap, or drop it (organisers; at most 20).",
+        "operationId": "set_highlight_v1_plans__plan_id__media__media_id__highlight_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Media Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HighlightRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Highlight",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/media/{media_id}/memory": {
+      "put": {
+        "description": "Replace a memory's caption, day, time, and place (its uploader or an organiser).",
+        "operationId": "update_memory_v1_plans__plan_id__media__media_id__memory_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "media_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Media Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryDetails"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Memory",
         "tags": [
           "media"
         ]

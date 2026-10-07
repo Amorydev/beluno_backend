@@ -1,4 +1,4 @@
-"""A plan's files (receipts, trip covers): record, upload, download, delete.
+"""A plan's files (receipts, trip covers, memories): record, upload, download, delete.
 
 Bytes go straight between the app and storage through presigned URLs; the API
 records files, signs URLs, and queues the scan.
@@ -12,10 +12,16 @@ from fastapi import APIRouter, Response, status
 
 from beluno.api.commands import media as commands
 from beluno.api.dependencies import ActorDep, RunnerDep, RuntimeDep
-from beluno.api.http import IdempotencyKey, command_call, finish, finish_empty
+from beluno.api.http import IdempotencyKey, IfMatch, command_call, finish, finish_empty
 from beluno.api.media_projection import media_response
 from beluno.api.problems import problem_responses
-from beluno.contracts.media import MediaCreateRequest, MediaResponse, SignedUrlResponse
+from beluno.contracts.media import (
+    HighlightRequest,
+    MediaCreateRequest,
+    MediaResponse,
+    MemoryDetails,
+    SignedUrlResponse,
+)
 from beluno.modules import media
 from beluno.modules.context import open_context
 from beluno.modules.iam import rate_limits
@@ -45,7 +51,8 @@ async def create_media(
     response: Response,
     idempotency_key: IdempotencyKey = None,
 ) -> MediaResponse:
-    """Record a receipt (anyone who adds expenses) or a trip cover (organisers)."""
+    """Record a receipt (anyone who adds expenses, on an expense that is not voided), a
+    trip cover (organisers), or a memory (anyone on the trip)."""
 
     call = command_call(idempotency_key, plan_id=plan_id)
     return finish(response, await runner.run(actor, commands.MEDIA_CREATE, call, body))
@@ -102,3 +109,36 @@ async def delete_media(
 
     call = command_call(idempotency_key, plan_id=plan_id, media_id=media_id)
     return finish_empty(await runner.run(actor, commands.MEDIA_DELETE, call, EmptyPayload()))
+
+
+@router.put("/{media_id}/memory", response_model=MediaResponse, responses=WRITE_ERRORS)
+async def update_memory(
+    plan_id: UUID,
+    media_id: UUID,
+    body: MemoryDetails,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> MediaResponse:
+    """Replace a memory's caption, day, time, and place (its uploader or an organiser)."""
+
+    call = command_call(idempotency_key, if_match=if_match, plan_id=plan_id, media_id=media_id)
+    return finish(response, await runner.run(actor, commands.MEDIA_UPDATE_MEMORY, call, body))
+
+
+@router.put("/{media_id}/highlight", response_model=MediaResponse, responses=WRITE_ERRORS)
+async def set_highlight(
+    plan_id: UUID,
+    media_id: UUID,
+    body: HighlightRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> MediaResponse:
+    """Pick a ready memory for the trip recap, or drop it (organisers; at most 20)."""
+
+    call = command_call(idempotency_key, plan_id=plan_id, media_id=media_id)
+    return finish(response, await runner.run(actor, commands.MEDIA_HIGHLIGHT, call, body))

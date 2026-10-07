@@ -88,6 +88,8 @@ class PlanAction(StrEnum):
     CONTRIBUTE_PLANNING = "plan.planning.contribute"
     MANAGE_PLANNING = "plan.planning.manage"
     RESPOND_PLANNING = "plan.planning.respond"
+    SHARE_MEMORIES = "plan.memories.share"
+    PICK_HIGHLIGHTS = "plan.memories.highlight"
 
 
 ALL_PLAN_ROLES = frozenset(PlanRole)
@@ -175,6 +177,9 @@ PLAN_RULES: dict[PlanAction, Rule] = {
     PlanAction.MANAGE_PLANNING: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
     # "Want to go", "going / not going": every participant answers for themselves.
     PlanAction.RESPOND_PLANNING: Rule(ALL_PLAN_ROLES, EDITABLE_PLAN_STATES),
+    # Photos and the recap's highlights still change after the trip, until archived.
+    PlanAction.SHARE_MEMORIES: Rule(ALL_PLAN_ROLES, SETTLEMENT_PLAN_STATES),
+    PlanAction.PICK_HIGHLIGHTS: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
 }
 
 

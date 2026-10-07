@@ -182,9 +182,13 @@ async def test_a_plan_past_its_restore_window_goes_with_everything_it_holds(
             "kind": "receipt",
             "content_type": "image/png",
             "size_bytes": 10,
-            "expense_id": (await api.get(trip.path("/expenses"), headers=owner.headers)).json()[
-                "items"
-            ][0]["id"],
+            "expense_id": next(
+                row["id"]
+                for row in (await api.get(trip.path("/expenses"), headers=owner.headers)).json()[
+                    "items"
+                ]
+                if row["state"] == "active"
+            ),
         },
         headers=owner.headers,
     )

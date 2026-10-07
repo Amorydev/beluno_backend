@@ -19,7 +19,7 @@ from beluno.db.session import Database
 from beluno.malware import ClamdScanner, ScannerUnavailable
 from beluno.modules.context import Runtime
 from beluno.modules.iam.external_identity import ExternalIdentityVerifier
-from beluno.testkit.api_client import SignedIn, sign_in
+from beluno.testkit.api_client import sign_in
 from beluno.testkit.database import AdminDatabase
 from beluno.testkit.finance import (
     FinancePlan,
@@ -30,13 +30,11 @@ from beluno.testkit.finance import (
     pull_all,
 )
 from beluno.testkit.identity import IdentityProviderStub
-from beluno.testkit.media import EICAR
+from beluno.testkit.media import EICAR, photo_with_location, upload
 from beluno.token_hashing import TokenHasher
 from beluno.worker import tasks
 
 pytestmark = pytest.mark.integration
-
-GPS_TAG = 0x8825
 
 
 @pytest.fixture
@@ -66,50 +64,6 @@ async def trip(
 async def ok(response: httpx.Response, status: int = 200) -> Any:
     assert response.status_code == status, response.text
     return response.json()
-
-
-def photo_with_location() -> bytes:
-    """A JPEG carrying a camera model and GPS coordinates in its EXIF."""
-
-    image = Image.new("RGB", (64, 48), (200, 80, 40))
-    exif = Image.Exif()
-    exif[0x0110] = "Pixel 9"  # camera model
-    exif[GPS_TAG] = {1: "N", 2: (35.0, 0.0, 0.0), 3: "E", 4: (135.0, 0.0, 0.0)}
-    output = io.BytesIO()
-    image.save(output, format="JPEG", exif=exif.tobytes())
-    return output.getvalue()
-
-
-async def upload(
-    api: httpx.AsyncClient,
-    user: SignedIn,
-    trip: FinancePlan,
-    data: bytes,
-    *,
-    kind: str = "receipt",
-    content_type: str = "image/jpeg",
-    expense_id: str | None = None,
-) -> dict[str, Any]:
-    """Record the file, PUT it to storage with the signed URL, and report it uploaded."""
-
-    body = {"kind": kind, "content_type": content_type, "size_bytes": len(data)}
-    if expense_id:
-        body["expense_id"] = expense_id
-    media = await ok(await api.post(trip.path("/media"), json=body, headers=user.headers), 201)
-    signed = await ok(
-        await api.post(trip.path(f"/media/{media['id']}/upload-url"), headers=user.headers)
-    )
-    async with httpx.AsyncClient() as storage:
-        put = await storage.put(
-            signed["url"],
-            content=data,
-            headers={"Content-Type": content_type, "Content-Length": str(len(data))},
-        )
-    assert put.status_code == 200, put.text
-    uploaded: dict[str, Any] = await ok(
-        await api.post(trip.path(f"/media/{media['id']}/uploaded"), headers=user.headers)
-    )
-    return uploaded
 
 
 def stored(settings: Settings, key: str) -> bool:

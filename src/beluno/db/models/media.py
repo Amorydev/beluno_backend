@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, time
 from uuid import UUID
 
 from sqlalchemy import BigInteger, Text
@@ -30,6 +30,11 @@ class Media(Base):
     height: Mapped[int | None]
     expense_id: Mapped[UUID | None]
     uploaded_by_user_id: Mapped[UUID]
+    caption: Mapped[str | None] = mapped_column(Text)
+    day: Mapped[date | None]
+    taken_time: Mapped[time | None]
+    place_id: Mapped[UUID | None]
+    in_recap: Mapped[bool]
     version: Mapped[int]
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]

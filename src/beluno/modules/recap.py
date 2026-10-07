@@ -19,6 +19,7 @@ from sqlalchemy import ColumnElement, func, select
 from beluno.authorization.policy import AccessState
 from beluno.db.models.decisions import Poll, PollResult
 from beluno.db.models.finance import AccountBalance, LedgerAccount, LedgerHead, Settlement
+from beluno.db.models.media import Media
 from beluno.db.models.plans import Plan, PlanParticipant
 from beluno.db.models.schedule_places import ItineraryItem, Place, PlaceReaction
 from beluno.modules.context import CommandContext
@@ -74,6 +75,8 @@ class Recap:
     crew: list[CrewMember]
     all_settled: bool
     settled_on: date | None
+    highlights: list[UUID]  # ready memories an organiser picked, by day and time
+    memories: int
 
 
 async def get_recap(ctx: CommandContext, plan_id: UUID) -> Recap:
@@ -130,6 +133,15 @@ async def get_recap(ctx: CommandContext, plan_id: UUID) -> Recap:
         crew=await _crew(ctx, plan, rows, head),
         all_settled=all_settled,
         settled_on=await _settled_on(ctx, plan_id) if all_settled else None,
+        highlights=await _highlights(ctx, plan_id),
+        memories=await _count(
+            ctx,
+            Media,
+            Media.plan_id == plan_id,
+            Media.kind == "memory",
+            Media.state == "ready",
+            Media.deleted_at.is_(None),
+        ),
     )
 
 
@@ -247,6 +259,20 @@ async def _crew(
         for row in rows
         if row.access_state == AccessState.ACTIVE.value or row.id in owing
     ]
+
+
+async def _highlights(ctx: CommandContext, plan_id: UUID) -> list[UUID]:
+    rows = await ctx.session.execute(
+        select(Media.id)
+        .where(
+            Media.plan_id == plan_id,
+            Media.in_recap,
+            Media.state == "ready",
+            Media.deleted_at.is_(None),
+        )
+        .order_by(Media.day.asc().nulls_last(), Media.taken_time.asc().nulls_last(), Media.id)
+    )
+    return list(rows.scalars())
 
 
 async def _settled_on(ctx: CommandContext, plan_id: UUID) -> date | None:
