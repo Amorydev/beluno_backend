@@ -34,7 +34,7 @@ Decision (user, 2026-10-06): **realign, do not rebuild.** Platform, identity, of
 | 2 | 1 | 1 | ~2 weeks | [Money alignment](./phase-02-money-alignment.md) | completed |
 | 3 | 1 | 1, 2 | 1–1.5 weeks | [People, activity, and account lifecycle](./phase-03-people-activity-account.md) | completed |
 | 4 | 1 | 1–3 | 1–2 weeks + soak | [Release 1 hardening](./phase-04-release-one-hardening.md) | in-progress |
-| 5 | 2 | 4 | 3–4 weeks | [Planning tab (slim)](./phase-05-planning-tab.md) | pending |
+| 5 | 2 | 4 | 3–4 weeks | [Planning tab (slim)](./phase-05-planning-tab.md) | in-progress |
 | 6 | 3 | 5 | 4–6 weeks | [Media, notifications, and growth](./phase-06-media-notifications-growth.md) | pending |
 
 Phases 1–2 are detailed. Phases 3–6 carry scope and acceptance; each gets "Execution Decisions" agreed with the user before its implementation starts, as Phases 4–5 of the previous plan did.

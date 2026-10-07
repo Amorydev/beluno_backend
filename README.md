@@ -83,6 +83,14 @@ can be restored for 30 days (`BELUNO_PLAN_PURGE_AFTER_DAYS`); then it is purged
 with everything it holds.
 See `docs/adr/0009-activity-feed-and-account-deletion.md`.
 
+## Trip planning
+
+Trips have a plan: saved places (`/v1/plans/{id}/places`, with "want to go"
+reactions and Maps links read offline for coordinates) and an itinerary
+(`/v1/plans/{id}/itinerary`: items on a day or anytime, ordered within the day,
+with local times, a lead, attendance, and an estimated cost that budgets count
+until an expense pays it). Sync carries them as `place` and `itinerary_item`.
+
 ## Finance
 
 Each plan has an append-only ledger in minor units (`docs/adr/0003-financial-ledger.md`):
