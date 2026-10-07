@@ -12,6 +12,7 @@ import pytest
 from beluno.config import Settings
 from beluno.db.ids import new_id
 from beluno.testkit.api_client import SignedIn, sign_in, signed_in_from
+from beluno.testkit.database import AdminDatabase
 from beluno.testkit.finance import if_match, join_with_invite, pull_all
 from beluno.testkit.identity import IdentityProviderStub
 
@@ -165,7 +166,7 @@ async def test_crews_stay_private_to_their_owner(
 
 
 async def test_owners_rename_change_people_and_delete_through_rest_and_sync(
-    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
 ) -> None:
     linh = await sign_in(api, identity_provider, name="Linh")
     minh = await sign_in(api, identity_provider, name="Minh")
@@ -231,6 +232,10 @@ async def test_owners_rename_change_people_and_delete_through_rest_and_sync(
     assert pushed.json()["results"][0]["outcome"] == "applied"
     assert (await api.get(path, headers=linh.headers)).status_code == 404
     assert (await api.get("/v1/crews", headers=linh.headers)).json() == []
+    # The tombstone keeps neither the name nor the people.
+    assert admin.fetch(
+        "SELECT name, member_user_ids FROM people.crews WHERE id = %s", crew["id"]
+    ) == [("", [])]
     deleted, _, _ = await pull_all(api, linh, scope, cursor)
     assert [(i["entity_type"], i["operation"], i["version"]) for i in deleted] == [
         ("crew", "delete", 4)

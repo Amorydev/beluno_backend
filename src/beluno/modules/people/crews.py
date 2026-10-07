@@ -189,7 +189,10 @@ async def update_crew(
 
 async def delete_crew(ctx: CommandContext, crew_id: UUID) -> None:
     crew = await _own_crew(ctx, crew_id, for_update=True)
+    # The tombstone only tells devices the crew is gone; its name and people go now.
     crew.deleted_at = ctx.now
+    crew.name = ""
+    crew.member_user_ids = []
     crew.version += 1
     crew.updated_at = ctx.now
     await ctx.session.flush()

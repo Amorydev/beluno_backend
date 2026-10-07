@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     sync_offline_window_days: int = Field(default=90, ge=1, le=365)
     sync_change_retention_days: int = Field(default=180, ge=1, le=3_650)
     sync_operation_retention_days: int = Field(default=180, ge=1, le=3_650)
+    # A plan whose deletion was scheduled is purged for good this many days later; it
+    # can be restored until then. The database refuses anything under seven days.
+    plan_purge_after_days: int = Field(default=30, ge=7, le=3_650)
     sync_push_max_operations: int = Field(default=100, ge=1, le=1_000)
     sync_push_max_bytes: int = Field(default=1_048_576, ge=4_096, le=10_485_760)
     # Bounded by the pull contract's maximum page size (500) plus the lookahead row.

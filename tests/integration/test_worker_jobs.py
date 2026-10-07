@@ -12,8 +12,10 @@ from beluno.config import Settings
 from beluno.db.session import Database
 from beluno.modules.context import Runtime
 from beluno.modules.iam.external_identity import ExternalIdentityVerifier
+from beluno.testkit.api_client import sign_in
 from beluno.testkit.database import AdminDatabase
 from beluno.testkit.environment import RecordingEmailSender
+from beluno.testkit.identity import IdentityProviderStub
 from beluno.token_hashing import TokenHasher
 from beluno.worker import tasks
 
@@ -76,3 +78,37 @@ async def test_purge_job_removes_only_expired_auth_records(
     assert removed >= 2
     assert admin.fetch("SELECT email FROM iam.email_challenges") == [("new@example.com",)]
     assert admin.scalar("SELECT count(*) FROM iam.rate_limit_counters") == 0
+
+
+async def test_purge_job_forgets_sessions_that_ended_a_month_ago(
+    api: httpx.AsyncClient,
+    worker_runtime: tuple[Runtime, RecordingEmailSender],
+    identity_provider: IdentityProviderStub,
+    admin: AdminDatabase,
+) -> None:
+    old, new, live = [
+        await sign_in(api, identity_provider, name=name) for name in ("Old", "New", "Live")
+    ]
+    for person, days in ((old, 31), (new, 10)):
+        admin.execute(
+            "UPDATE iam.sessions SET revoked_at = now() - make_interval(days => %s), "
+            "revoked_reason = 'logout' WHERE id = %s",
+            days,
+            person.session_id,
+        )
+    assert admin.scalar(
+        "SELECT count(*) FROM iam.refresh_tokens WHERE session_id = %s", old.session_id
+    )
+
+    await tasks.purge_expired_auth.func(0)
+
+    assert {row[0] for row in admin.fetch("SELECT id::text FROM iam.sessions")} == {
+        new.session_id,
+        live.session_id,
+    }
+    assert (
+        admin.scalar(
+            "SELECT count(*) FROM iam.refresh_tokens WHERE session_id = %s", old.session_id
+        )
+        == 0
+    )
