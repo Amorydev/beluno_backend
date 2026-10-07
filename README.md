@@ -99,6 +99,16 @@ with money still open are listed too). Its `share` object holds the only fields 
 may show (route, start date and length, people, and the total if the person
 chooses); the app draws the card, so the server serves no public link.
 
+"Report a problem" posts to `POST /v1/support/reports`: a category, optionally a plan
+and a record in it, the person's own words, and (by default) a diagnostic snapshot
+with a code such as `BLN-7F3K-29QD` to quote to support. The snapshot holds IDs,
+states, versions, sync sequences, and whether the plan's ledger reconciles; never
+expense text, notes, names, or booking codes. `GET /v1/support/checks` shows the
+same ledger check and whether the record belongs to the plan before sending.
+Operators read reports with `uv run python scripts/support.py list --operator NAME` or
+`scripts/support.py show BLN-XXXX-XXXX --operator NAME` (worker role); every report read
+is audited with the operator's name, and the API itself reads none.
+
 ## Trip planning
 
 Trips have a plan: saved places (`/v1/plans/{id}/places`, with "want to go"

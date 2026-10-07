@@ -102,6 +102,19 @@ constraint triggers verify sums and posting shapes at commit; RLS limits every
 row to active participants of its plan; the worker reaches finance data only
 through SECURITY DEFINER reconciliation gates.
 
+## Support
+
+`analytics_ops.problem_reports` keeps what people send from "Report a problem":
+category (`balance_wrong`, `sync_issue`, `other`), an optional plan and linked record
+(IDs only, no foreign keys so a report outlives a purged plan), the person's words,
+and an optional diagnostic code with its snapshot (identifiers, states, versions,
+sync sequences, the count of ledger disagreements from `finance.reconcile_plan`
+through `finance.actor_ledger_problems`). The API inserts in the actor's own name
+and reads nothing; the worker role reads for operators (`scripts/support.py`, each read
+audited as `support.problem_report_read` with the operator). Account deletion removes the
+person's reports and those of guests merged into the account
+(`analytics_ops.forget_problem_reports`).
+
 ## Security and Audit
 
 All table rows have RLS policies (SECURITY DEFINER helper functions):

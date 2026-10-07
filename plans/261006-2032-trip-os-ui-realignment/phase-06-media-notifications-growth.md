@@ -74,6 +74,13 @@ Release 3: everything that needs external providers or storage. The previous pla
   - Review (`reports/code-reviewer-261007-1600-trip-recap-review-report.md`): money totals matched the budget screen. Fixed: "settled" is the ledger's status and rule (tolerance on the base currency only), and the crew lists people who left with money still open (H1, H2, M1); the top place counts active participants only (M2); `spent_complete` and `estimated_rates` flag partial totals (M3); timed plans return local dates (M4); ending at local midnight ends the day before; category shares add up to 10,000; closed polls without a result are not decisions.
   - Kept, documented: per person per day divides by today's active headcount, placeholders included; `settled_on` is the last standing settlement's date as entered.
 
+- Slice 1c (report a problem) is on `feat/problem-reports`:
+  - Migration `000015_problem_reports`; `POST /v1/support/reports` (10 a day per person) and `GET /v1/support/checks`.
+  - Diagnostic code `BLN-XXXX-XXXX` (Crockford base32); the screen's sample `TOS-` prefix was the design project's name.
+  - Operators: `scripts/support.py list|show --operator NAME` with the worker role, every read audited (user decision, 2026-10-07: worker role plus audit, not `support_readonly`); account deletion removes reports.
+  - Review (`reports/code-reviewer-261007-1630-problem-reports-review-report.md`): definer functions, RLS, record links, and code retry sound. Fixed: merged guests' reports go with the account (H1); control characters refused as 422 (M1); audited operator reads (M2); migration header; voided/reversed records show as deleted; script limit; tests for an exact snapshot key list, insider inserts, strangers, and merged guests.
+  - Open: whether the account export should include the person's reports; a retention limit for reports of active accounts (legal policy).
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.
