@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "People, activity, and account lifecycle"
-status: pending
+status: in-progress
 priority: P1
 effort: "1–1.5 weeks"
 dependencies: [1, 2]
@@ -63,6 +63,41 @@ Home's "Needs you" is computed on the client from synced entities.
 ### Default currency and profile
 
 Already in Phase 1. Me → Export my data moves to Phase 6.
+
+## Execution Decisions (user, 2026-10-07)
+
+- **Account deletion is immediate**: one transaction, no grace period.
+- **Plans the person owns alone** (no other active participant) are scheduled for deletion through the existing plan deletion state; hard purge comes with Phase 4 retention.
+- **Branch:** `feat/people-activity-account`, stacked on PR #6 (money alignment).
+
+## Design
+
+### Settlement suggestions
+
+- `LedgerSnapshot` carries the plan's base currency and the suggestions per currency, computed with the same function as `GET /ledger/settlement-preview` (tolerance included). The `ledger` entity gains `suggestions`; every balance, tolerance, or base change already bumps the ledger version.
+
+### Activity
+
+- New schema `activity`, table `activity.events` (append-only): `id`, `scope_type` (`plan`|`user`), `scope_id`, `plan_id`, `actor_user_id`, `type`, `entity_type`, `entity_id`, `summary jsonb`, `occurred_at`.
+- `record_mutation` takes an optional `ActivityItem(type, summary)`; the seam buffers the event with the audit and change rows and writes it in `flush_pending_records`, plus one `activity_event` change row in the same scope. A replayed command returns its stored outcome and runs nothing, so it writes no duplicate.
+- Summaries are typed per event type: IDs, roles, states, amounts and currencies, field names, before/after numbers and dates. **No free text** (descriptions, notes, names, codes, addresses); clients join IDs with synced entities. A redaction test checks every summary key against the allowed set.
+- Visibility: plan-scope events for the plan's active participants (RLS `plans.actor_is_active_participant`); user-scope events only for that user.
+- Retention: a worker purge (180 days, `sync_change_retention_days`) next to change-row compaction.
+- Event types (release 1): `expense.added|edited|refunded|voided`, `payment.recorded|reversed`, `waiver.given`, `budget.changed`, `base_currency.changed`, `ledger.consolidated|consolidation_reversed`, `kitty.contributed|withdrawn|counted`, `member.joined|left|removed|role_changed|capabilities_changed`, `guest.linked`, `plan.created|dates_changed|state_changed`, and user-scope `account.guest_upgraded|guest_merged`.
+
+### Account deletion
+
+- `DELETE /v1/me` (command `profile.delete`), step-up required (`403 STEP_UP_REQUIRED` otherwise).
+- `409 OWNER_TRANSFER_REQUIRED` (the code `leave` already uses) while the person owns a plan with another active participant.
+- Otherwise, in one transaction:
+  1. Schedule deletion of the plans they own alone.
+  2. Rename every participant row to "Former member" and mark active rows `left`.
+  3. Tombstone their crews; a SECURITY DEFINER gate removes them from other people's crews and returns the crews it changed, so their owners get change rows.
+  4. Remove identities and email challenges.
+  5. Scrub the profile: no email, locale, timezone, or default currency; display name "Former member"; status `deleted` (a new value).
+  6. Revoke every session.
+- Postings, revisions, and settlements stay untouched. Others settle with a `left` participant as today.
+- Audited with identifiers only.
 
 ## Success Criteria
 

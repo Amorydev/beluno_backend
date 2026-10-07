@@ -374,6 +374,7 @@ def ledger_response(snapshot: LedgerSnapshot) -> LedgerResponse:
                 )
                 for change, rate in snapshot.base_changes
             ],
+            "suggestions": [preview_response(preview) for preview in snapshot.suggestions],
             "version": head.version if head else 0,
         }
     )

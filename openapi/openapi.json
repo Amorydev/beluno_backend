@@ -3481,6 +3481,14 @@
             "title": "Status",
             "type": "string"
           },
+          "suggestions": {
+            "description": "Transfers that would square each currency, as the settlement preview suggests them; never netted across plans or currencies",
+            "items": {
+              "$ref": "#/components/schemas/SettlementPreviewResponse"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
           "version": {
             "title": "Version",
             "type": "integer"
@@ -3497,6 +3505,7 @@
           "settle_tolerance_minor",
           "confirmations",
           "base_changes",
+          "suggestions",
           "version"
         ],
         "title": "LedgerResponse",

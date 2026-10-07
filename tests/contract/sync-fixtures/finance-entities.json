@@ -38,6 +38,7 @@
         "plan_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
         "settle_tolerance_minor": 0,
         "status": "open",
+        "suggestions": [],
         "version": 5
       },
       "entity_id": "01a110e9-fc92-7b7d-a2a8-04fc188b8c3e",
