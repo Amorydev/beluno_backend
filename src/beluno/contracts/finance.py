@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import (
     AfterValidator,
@@ -22,7 +23,7 @@ from pydantic import (
     model_validator,
 )
 
-from beluno.contracts.common import CurrencyCode, Label, LongText, clean_text
+from beluno.contracts.common import CurrencyCode, Label, LongText, TimezoneName, clean_text
 
 ExpenseCategory = Literal[
     "food", "lodging", "transport", "activities", "shopping", "groceries", "fees", "other"
@@ -44,6 +45,23 @@ class CurrencyResponse(BaseModel):
     state: Literal["supported", "retired"]
 
 
+class MarketRateResponse(BaseModel):
+    quote: str
+    rate: str = Field(description="Quote-currency units for one base-currency unit")
+    as_of: datetime
+    source: str
+
+
+class MarketRatesResponse(BaseModel):
+    """Published market rates for offline estimates; never applied to the ledger."""
+
+    base: str
+    rates: list[MarketRateResponse]
+    estimate_only: Literal[True] = Field(
+        default=True, description="Show as an estimate; entries keep the rate people confirm"
+    )
+
+
 class RateRequest(BaseModel):
     """Quote-currency units for one unit of the expense currency (major units)."""
 
@@ -52,6 +70,15 @@ class RateRequest(BaseModel):
     rate: RateText
     source: Literal["manual", "estimated"] = "manual"
     as_of: AwareDatetime | None = None
+
+
+class BaseRateRequest(RateRequest):
+    """A rate to the plan's base currency, which the request names."""
+
+    base_currency: CurrencyCode = Field(
+        description="The base currency this rate converts into; 409 BASE_CURRENCY_CHANGED "
+        "when the plan moved to another one since"
+    )
 
 
 class PayerRequest(BaseModel):
@@ -89,6 +116,15 @@ class WeightShare(BaseModel):
 
     participant_id: UUID
     weight: StrictInt
+
+
+class SplitAdjustment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    participant_id: UUID
+    adjustment_minor: StrictInt = Field(
+        description="Added to (or, when negative, taken off) this person's equal share"
+    )
 
 
 class EqualSplit(BaseModel):
@@ -147,8 +183,17 @@ class ItemizedSplit(BaseModel):
     extras: Annotated[list[SplitExtra], Field(max_length=10)] = Field(default_factory=list)
 
 
+class AdjustmentSplit(BaseModel):
+    """Equal shares after per-person adjustments; nobody may owe less than zero."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    method: Literal["adjustment"]
+    shares: Annotated[list[SplitAdjustment], Field(min_length=1, max_length=100)]
+
+
 Split = Annotated[
-    EqualSplit | ExactSplit | PercentageSplit | SharesSplit | ItemizedSplit,
+    EqualSplit | ExactSplit | PercentageSplit | SharesSplit | ItemizedSplit | AdjustmentSplit,
     Field(discriminator="method"),
 ]
 
@@ -161,12 +206,18 @@ class ExpenseRequest(BaseModel):
     description: Description
     category: ExpenseCategory = "other"
     occurred_on: date
+    occurred_at: AwareDatetime | None = Field(
+        default=None, description="When it happened; occurred_on must be its local date"
+    )
+    occurred_timezone: TimezoneName | None = Field(
+        default=None, description="IANA zone of occurred_at (shown as 20:10 JST)"
+    )
     notes: LongText | None = None
     amount_minor: StrictInt
     currency: CurrencyCode
     payers: Annotated[list[PayerRequest], Field(min_length=1, max_length=100)]
     split: Split
-    base_rate: RateRequest | None = Field(
+    base_rate: BaseRateRequest | None = Field(
         default=None,
         description="Rate to the plan's base currency, for budgets and display only",
     )
@@ -174,6 +225,16 @@ class ExpenseRequest(BaseModel):
         default=None,
         description="The planned cost this expense pays for; it then counts once, as actual",
     )
+
+    @model_validator(mode="after")
+    def local_date_matches(self) -> Self:
+        if (self.occurred_at is None) != (self.occurred_timezone is None):
+            raise ValueError("send occurred_at and occurred_timezone together")
+        if self.occurred_at is not None and self.occurred_timezone is not None:
+            local = self.occurred_at.astimezone(ZoneInfo(self.occurred_timezone)).date()
+            if local != self.occurred_on:
+                raise ValueError("occurred_on must be the local date of occurred_at")
+        return self
 
 
 class ExpenseCreateRequest(ExpenseRequest):
@@ -250,6 +311,8 @@ class RevisionResponse(BaseModel):
     description: str
     category: ExpenseCategory
     occurred_on: date
+    occurred_at: datetime | None
+    occurred_timezone: str | None
     notes: str | None
     amount_minor: int
     currency: str
@@ -257,8 +320,19 @@ class RevisionResponse(BaseModel):
     split: Split
     split_algorithm: str
     shares: list[ShareResponse]
+    base_change_number: int = Field(
+        description="Base-currency changes before this revision; later changes apply to base"
+    )
+    personal: bool = Field(
+        description="One person paid and is the only one sharing it; it moves no balance"
+    )
     base: BaseAmountResponse
     commitment_id: UUID | None
+    source: Literal["http", "sync"] = Field(description="Written online, or pushed by sync")
+    client_created_at: datetime | None = Field(
+        description="When the device made the change (offline edits sync later)"
+    )
+    device_label: str | None = Field(description="The device of the session that wrote it")
     created_by_user_id: UUID
     created_at: datetime
 
@@ -289,6 +363,35 @@ class FundAvailabilityResponse(BaseModel):
     available_minor: int
 
 
+class LedgerConfirmationResponse(BaseModel):
+    participant_id: UUID
+    confirmed_at: datetime
+
+
+class BaseCurrencyChangeResponse(BaseModel):
+    """Values recorded before ``number`` convert at ``rate`` (to_currency per from_currency)."""
+
+    number: int
+    from_currency: str
+    to_currency: str
+    rate: str
+    rate_source: Literal["manual", "estimated"]
+    rate_as_of: datetime
+    ledger_seq: int
+    changed_at: datetime
+
+
+class BaseCurrencyRequest(BaseModel):
+    """Move the plan to another base currency; a rate is needed once it has money in it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    currency: CurrencyCode
+    rate: RateRequest | None = Field(
+        default=None, description="Units of the new base for one unit of the current base"
+    )
+
+
 class LedgerResponse(BaseModel):
     """The plan's balances per participant and currency, never netted across currencies."""
 
@@ -300,7 +403,44 @@ class LedgerResponse(BaseModel):
     fund: list[FundAvailabilityResponse] = Field(
         description="Money the participants recorded as pooled; Beluno holds and moves none"
     )
+    count_personal_spend: bool = Field(
+        description="Budgets count expenses whose only payer is their only sharer"
+    )
+    settle_tolerance_minor: int = Field(
+        description="Base-currency balances at or under this count as settled"
+    )
+    confirmations: list[LedgerConfirmationResponse] = Field(
+        description="Who confirmed the ledger at the current ledger_seq; any new entry clears it"
+    )
+    base_changes: list[BaseCurrencyChangeResponse] = Field(
+        description="Base-currency changes, oldest first: the chain base values are read through"
+    )
     version: int
+
+
+class LedgerSettingsRequest(BaseModel):
+    """Change only the settings sent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    count_personal_spend: bool | None = None
+    settle_tolerance_minor: StrictInt | None = Field(default=None, ge=0, le=10**10)
+
+    @model_validator(mode="after")
+    def something_changes(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("send at least one setting to change")
+        if any(getattr(self, name) is None for name in self.model_fields_set):
+            raise ValueError("settings cannot be null")
+        return self
+
+
+class LedgerConfirmRequest(BaseModel):
+    """Confirm the ledger exactly as you saw it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ledger_seq: StrictInt = Field(ge=0)
 
 
 SettlementMethod = Literal["cash", "bank_transfer", "card", "mobile_payment", "other"]
@@ -391,6 +531,7 @@ TransactionKind = Literal[
     "fund_withdrawal",
     "adjustment",
     "conversion",
+    "conversion_reversal",
 ]
 
 
@@ -412,6 +553,7 @@ class TransactionResponse(BaseModel):
     refund_id: UUID | None
     settlement_id: UUID | None
     fund_movement_id: UUID | None
+    consolidation_id: UUID | None
     reverses_transaction_id: UUID | None
     memo: str | None
     created_by_user_id: UUID | None
@@ -463,6 +605,66 @@ class SettlementPreviewResponse(BaseModel):
     currency: str
     transfers: list[SuggestedTransfer]
     fund_payouts: list[SuggestedFundPayout]
+
+
+class ConsolidationRateRequest(BaseModel):
+    """Base-currency units for one unit of ``currency`` (major units), frozen for good."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    currency: CurrencyCode
+    rate: RateText
+    source: Literal["manual", "estimated"] = "manual"
+    as_of: AwareDatetime | None = None
+
+
+class ConsolidateRequest(BaseModel):
+    """One rate for every foreign currency that still has open balances."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    base_currency: CurrencyCode = Field(
+        description="The base currency the rates convert into; 409 BASE_CURRENCY_CHANGED "
+        "when the plan moved to another one since"
+    )
+    rates: Annotated[list[ConsolidationRateRequest], Field(min_length=1, max_length=50)]
+
+    @model_validator(mode="after")
+    def one_rate_per_currency(self) -> Self:
+        currencies = [rate.currency for rate in self.rates]
+        if len(set(currencies)) != len(currencies):
+            raise ValueError("send one rate per currency")
+        return self
+
+
+class ConsolidationRateResponse(BaseModel):
+    currency: str
+    rate: str
+    source: Literal["manual", "estimated"]
+    as_of: datetime
+
+
+class ConsolidationLineResponse(BaseModel):
+    participant_id: UUID
+    currency: str
+    amount_minor: int = Field(description="The balance moved out of this currency")
+    base_amount_minor: int = Field(description="What it became in the base currency")
+
+
+class ConsolidationResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    base_currency: str
+    state: Literal["active", "reversed"]
+    rates: list[ConsolidationRateResponse]
+    lines: list[ConsolidationLineResponse]
+    created_by_user_id: UUID
+    created_at: datetime
+    reversed_by_user_id: UUID | None
+    reversed_at: datetime | None
+    version: int
+    updated_at: datetime
 
 
 BudgetScope = Literal["total", "category", "participant", "daily"]
@@ -555,7 +757,7 @@ class CommitmentCreateRequest(BaseModel):
     currency: CurrencyCode
     amount_minor: StrictInt
     state: Literal["estimated", "committed"] = "estimated"
-    base_rate: RateRequest | None = None
+    base_rate: BaseRateRequest | None = None
 
 
 class CommitmentUpdateRequest(BaseModel):
@@ -566,7 +768,7 @@ class CommitmentUpdateRequest(BaseModel):
     currency: CurrencyCode
     amount_minor: StrictInt
     state: Literal["estimated", "committed", "converted_to_expense", "cancelled", "refunded"]
-    base_rate: RateRequest | None = None
+    base_rate: BaseRateRequest | None = None
 
 
 class CommitmentResponse(BaseModel):
@@ -581,6 +783,7 @@ class CommitmentResponse(BaseModel):
     currency: str
     amount_minor: int
     base: BaseAmountResponse
+    base_change_number: int
     expense_id: UUID | None
     created_by_user_id: UUID
     version: int
@@ -594,20 +797,60 @@ FUND_NOTICE = (
 )
 
 
+class FundTarget(BaseModel):
+    """What every member is asked to put in."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    currency: CurrencyCode
+    amount_minor: StrictInt
+
+
 class FundSettingsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     custodian_participant_id: UUID | None = None
     note: Note | None = None
+    target: FundTarget | None = None
 
 
 class FundSettingsResponse(BaseModel):
     plan_id: UUID
     custodian_participant_id: UUID | None
     note: str | None
+    target: FundTarget | None
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class FundCountRequest(BaseModel):
+    """Cash counted in the kitty; the server records what the ledger expected."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID | None = None
+    currency: CurrencyCode
+    counted_minor: StrictInt = Field(ge=0)
+    note: Note | None = None
+
+
+class FundCountResponse(BaseModel):
+    id: UUID
+    plan_id: UUID
+    currency: str
+    counted_minor: int
+    expected_minor: int
+    difference_minor: int = Field(description="Counted minus expected; 0 means it matches")
+    note: str | None
+    counted_by_user_id: UUID
+    created_at: datetime
+
+
+class MemberContribution(BaseModel):
+    participant_id: UUID
+    currency: str
+    contributed_minor: int
 
 
 class FundMovementRequest(BaseModel):
@@ -637,6 +880,10 @@ class FundMovementResponse(BaseModel):
 class FundResponse(BaseModel):
     settings: FundSettingsResponse | None
     available: list[FundAvailabilityResponse]
+    contributions: list[MemberContribution] = Field(
+        description="What each participant put in, per currency, to compare with the target"
+    )
+    counts: list[FundCountResponse] = Field(description="The latest count in each currency")
     notice: str = Field(default=FUND_NOTICE)
 
 

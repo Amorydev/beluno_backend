@@ -99,3 +99,37 @@ def transfer_postings(payer: Party, receiver: Party, amount_minor: int) -> Posti
 
 def adjustment_postings(entries: Iterable[tuple[Party, int]]) -> Postings:
     return _collect(entries)
+
+
+def consolidation_amounts(balances: Mapping[UUID, int], converted_total: int) -> dict[UUID, int]:
+    """Base-currency amounts for one currency's balances, summing to exactly zero.
+
+    ``balances`` sum to zero (the fund holds nothing in that currency), and
+    ``converted_total`` is what the creditors' side converts to. Creditors share
+    it by their balances and debtors share the same total by theirs, each with
+    the largest-remainder rule in participant-id order, so every amount is within
+    about a unit of its exact value and the base side stays zero-sum.
+    """
+
+    if sum(balances.values()) != 0:
+        raise ValueError("balances to consolidate must sum to zero")
+    if converted_total < 0:
+        raise ValueError("the converted total cannot be negative")
+    ordered = sorted((pid for pid, value in balances.items() if value), key=str)
+    creditors = [pid for pid in ordered if balances[pid] > 0]
+    debtors = [pid for pid in ordered if balances[pid] < 0]
+    amounts: dict[UUID, int] = {}
+    if creditors:
+        for pid, value in zip(
+            creditors,
+            largest_remainder(converted_total, [balances[pid] for pid in creditors]),
+            strict=True,
+        ):
+            amounts[pid] = value
+        for pid, value in zip(
+            debtors,
+            largest_remainder(converted_total, [-balances[pid] for pid in debtors]),
+            strict=True,
+        ):
+            amounts[pid] = -value
+    return amounts

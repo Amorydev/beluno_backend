@@ -25,7 +25,12 @@ submitted values.
 | `WAIVER_EXCEEDS_DEBT` | 409 | A waiver would forgive more than the debtor owes and the creditor is owed in that currency |
 | `REFUND_EXCEEDS_AMOUNT` | 409 | Refunds would exceed the expense's current amount (also when a revision goes below them) |
 | `FUND_INSUFFICIENT` | 409 | A fund-paid expense, withdrawal, or adjustment would overdraw the plan fund in that currency |
-| `BASE_CURRENCY_LOCKED` | 409 | The plan already has financial records in its base currency |
+| `NOT_AVAILABLE_FOR_HANGOUT` | 409 | Budgets, cost commitments, and the kitty (settings, contributions, withdrawals, counts, fund-paid expenses, refunds to the fund) are for trips only |
+| `LEDGER_CHANGED` | 409 | A confirmation named an older `ledger_seq`; review the latest entries and confirm again |
+| `FUND_NOT_EMPTY` | 409 | The kitty still holds money in a currency to consolidate; pay it out first |
+| `CONSOLIDATION_SETTLED` | 409 | A payment or waiver still in effect was recorded after this consolidation; reverse it first or keep the base-currency balances |
+| `BASE_CURRENCY_CHANGED` | 409 | A rate named a base currency the plan has since moved away from; refresh and send a rate to the current one |
+| `CONSOLIDATION_OPEN` | 409 | An active consolidation exists and the ledger is not settled; settle up or reverse that consolidation before changing the base currency |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Same `Idempotency-Key` or `operation_id` was sent with a different request |
 | `OPERATION_SKIPPED` | 409 (push item only) | The operation was not attempted: an earlier operation on the same scope must be retried first, or a dependency was not applied |
 | `VERSION_CONFLICT` | 412 | `expected_version`/`If-Match` is stale; `current` carries the canonical representation |

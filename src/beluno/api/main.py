@@ -159,6 +159,7 @@ def create_app(
         crews.router,
         plans.router,
         finance.currency_router,
+        finance.fx_router,
         finance.router,
         invites.router,
         sync.router,

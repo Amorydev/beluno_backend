@@ -2,8 +2,9 @@
 
 Spend is computed on read from canonical rows: the current revision of every
 live expense, minus its live refunds, converted with the revision's own
-snapshot. Spend in another currency without a snapshot is reported as
-``unconverted`` and never added silently. Each cost source counts in exactly one
+snapshot and then through every later base-currency change. Spend in another
+currency without a snapshot is reported as ``unconverted`` and never added
+silently. Each cost source counts in exactly one
 tier: an expense (actual), else a committed commitment, else an estimate, so a
 booking and the expense that paid for it are never counted twice.
 """
@@ -26,18 +27,20 @@ from beluno.db.ids import new_id
 from beluno.db.models.finance import (
     Budget,
     CostCommitment,
-    Currency,
     Expense,
+    ExpensePayer,
     ExpenseRefund,
     ExpenseRevision,
     ExpenseSplit,
     FxSnapshot,
+    LedgerHead,
     LedgerTransaction,
     RefundShare,
 )
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
-from beluno.modules.finance.fx import RateSource, convert
+from beluno.modules.finance.base_currency import base_chain
+from beluno.modules.finance.fx import RateSource
 from beluno.modules.finance.ledger import Ledger, open_ledger
 from beluno.modules.finance.money import check_amount
 from beluno.modules.finance.states import BudgetTier, CommitmentState, commitment_tier
@@ -104,6 +107,7 @@ async def create_budget(
     ctx: CommandContext, plan_id: UUID, budget_id: UUID | None, draft: BudgetDraft
 ) -> Budget:
     ledger = await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    ledger.require_trip()
     _check_scope(ledger, draft)
     check_amount(draft.limit_minor, field="limit_minor")
     currency = ledger.access.plan.base_currency
@@ -137,7 +141,7 @@ async def create_budget(
 async def update_budget(
     ctx: CommandContext, plan_id: UUID, budget_id: UUID, limit_minor: int, expected_version: int
 ) -> Budget:
-    await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    (await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)).require_trip()
     budget = await _locked(ctx, plan_id, budget_id)
     if budget.version != expected_version:
         raise version_conflict(budget)
@@ -151,7 +155,7 @@ async def update_budget(
 
 
 async def delete_budget(ctx: CommandContext, plan_id: UUID, budget_id: UUID) -> None:
-    await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    (await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)).require_trip()
     budget = await _locked(ctx, plan_id, budget_id)
     budget.deleted_at = ctx.now
     budget.version += 1
@@ -178,7 +182,7 @@ async def get_budgets(ctx: CommandContext, plan_id: UUID) -> BudgetOverview:
     access = await load_plan(ctx, plan_id)
     require_plan(access, PlanAction.VIEW_FINANCE)
     base_currency = access.plan.base_currency
-    currencies = {row.code: row for row in (await ctx.session.execute(select(Currency))).scalars()}
+    chain = await base_chain(ctx, plan_id, base_currency)
     merged = {
         row.id: row.merged_into_participant_id
         for row in (
@@ -196,14 +200,20 @@ async def get_budgets(ctx: CommandContext, plan_id: UUID) -> BudgetOverview:
     )
     per_participant: dict[UUID, int] = defaultdict(int)
     per_day: dict[date, int] = defaultdict(int)
+    head = await ctx.session.get(LedgerHead, plan_id)
+    count_personal = head.count_personal_spend if head is not None else True
     live = await _live_revisions(ctx, plan_id)
     splits_by_revision = await _splits(ctx, [revision.id for revision, _ in live])
+    payers_by_revision = await _payers(ctx, [revision.id for revision, _ in live])
     refunds_by_expense = await _live_refund_shares(ctx, [r.expense_id for r, _ in live])
     for revision, rate in live:
+        splits = splits_by_revision.get(revision.id, [])
+        if not count_personal and _personal(payers_by_revision.get(revision.id, []), splits):
+            continue
         refunds = refunds_by_expense.get(revision.expense_id, {})
         net = revision.amount_minor - sum(refunds.values())
         consumption: dict[UUID, int] = defaultdict(int)
-        for participant_id, owed in splits_by_revision.get(revision.id, []):
+        for participant_id, owed in splits:
             consumption[_resolve(merged, participant_id)] += owed
         for participant_id, amount in refunds.items():
             consumption[_resolve(merged, participant_id)] -= amount
@@ -211,22 +221,22 @@ async def get_budgets(ctx: CommandContext, plan_id: UUID) -> BudgetOverview:
         def to_base(
             amount: int, revision: ExpenseRevision = revision, rate: FxSnapshot | None = rate
         ) -> int | None:
-            if revision.currency == base_currency:
-                return amount
-            if rate is None:
-                return None
-            return convert(
+            return chain.value(
                 amount,
-                from_exponent=currencies[revision.currency].exponent,
-                to_exponent=currencies[base_currency].exponent,
-                rate=rate.rate,
+                revision.currency,
+                origin=revision.base_currency,
+                number=revision.base_change_number,
+                rate=rate.rate if rate else None,
             )
 
         base_net = to_base(net)
         if base_net is None:
             overview.unconverted[(BudgetTier.ACTUAL, revision.currency)] += net
             continue
-        if rate is not None and rate.source == RateSource.ESTIMATED.value:
+        if revision.currency != base_currency and (
+            (rate is not None and rate.source == RateSource.ESTIMATED.value)
+            or chain.estimated_after(revision.base_change_number)
+        ):
             overview.estimated_rates = True
         overview.total.add(BudgetTier.ACTUAL, base_net)
         overview.categories[revision.category].add(BudgetTier.ACTUAL, base_net)
@@ -237,13 +247,24 @@ async def get_budgets(ctx: CommandContext, plan_id: UUID) -> BudgetOverview:
         tier = commitment_tier(CommitmentState(commitment.state))
         if tier is None:
             continue
-        if commitment.base_amount_minor is None:
+        number = commitment.base_change_number
+        base_amount = chain.value(
+            commitment.amount_minor,
+            commitment.currency,
+            origin=chain.origin(number),
+            number=number,
+            rate=rate.rate if rate else None,
+        )
+        if base_amount is None:
             overview.unconverted[(tier, commitment.currency)] += commitment.amount_minor
             continue
-        if rate is not None and rate.source == RateSource.ESTIMATED.value:
+        if commitment.currency != base_currency and (
+            (rate is not None and rate.source == RateSource.ESTIMATED.value)
+            or chain.estimated_after(number)
+        ):
             overview.estimated_rates = True
-        overview.total.add(tier, commitment.base_amount_minor)
-        overview.categories[commitment.category].add(tier, commitment.base_amount_minor)
+        overview.total.add(tier, base_amount)
+        overview.categories[commitment.category].add(tier, base_amount)
     budgets = await ctx.session.execute(
         select(Budget)
         .where(Budget.plan_id == plan_id, Budget.deleted_at.is_(None))
@@ -305,6 +326,26 @@ async def _splits(
     for revision_id, participant_id, owed in rows.all():
         found[revision_id].append((participant_id, owed))
     return found
+
+
+async def _payers(ctx: CommandContext, revision_ids: list[UUID]) -> dict[UUID, list[UUID | None]]:
+    found: dict[UUID, list[UUID | None]] = defaultdict(list)
+    if not revision_ids:
+        return found
+    rows = await ctx.session.execute(
+        select(ExpensePayer.revision_id, ExpensePayer.participant_id)
+        .where(ExpensePayer.revision_id.in_(revision_ids))
+        .order_by(ExpensePayer.revision_id, ExpensePayer.position)
+    )
+    for revision_id, participant_id in rows.all():
+        found[revision_id].append(participant_id)
+    return found
+
+
+def _personal(payers: list[UUID | None], splits: list[tuple[UUID, int]]) -> bool:
+    """One participant paid and is the only one sharing it."""
+
+    return len(payers) == 1 and len(splits) == 1 and payers[0] == splits[0][0]
 
 
 async def _live_refund_shares(

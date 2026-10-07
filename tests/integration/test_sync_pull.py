@@ -128,7 +128,7 @@ async def test_bootstrap_then_changes_converge_on_a_plan(
     api: httpx.AsyncClient, identity_provider: IdentityProviderStub
 ) -> None:
     owner = await sign_in(api, identity_provider, name="Owner")
-    plan = await make_plan(api, owner, participants=[{"placeholder_name": "Grandma"}])
+    plan = await make_plan(api, owner, type="trip", participants=[{"placeholder_name": "Grandma"}])
     budget = await api.post(
         f"/v1/plans/{plan['id']}/budgets",
         json={"scope": "total", "limit_minor": 50_000},

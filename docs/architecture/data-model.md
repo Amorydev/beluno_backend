@@ -40,12 +40,16 @@ The `people` schema holds each user's private, saved lists of people:
 The `finance` schema holds each plan's ledger (ADR 0003). Amounts are `BIGINT`
 minor units of a currency pinned in `finance.currencies`.
 
-- **plan_ledger_heads**: one per plan; `ledger_seq`, status (`open|settled|reopened`), open dispute count; every finance write locks it after the plan row.
+- **plan_ledger_heads**: one per plan; `ledger_seq`, status (`open|settled|reopened`), open dispute count, money settings (`count_personal_spend`, `settle_tolerance_minor`), base-currency change count; every finance write locks it after the plan row.
 - **ledger_accounts / account_balances**: one account per participant and currency plus a fund account per currency; balances are a synchronous projection.
-- **expenses / expense_revisions / expense_payers / expense_splits**: stable identity plus immutable revisions with raw split input, `lr-v1` resolved shares, and an optional base-currency snapshot.
-- **expense_refunds / refund_shares**, **settlements** (payments and waivers), **fund_settings / fund_movements**, **fx_snapshots**.
-- **ledger_transactions / ledger_postings**: the journal; every transaction sums to zero per currency and carries the next `ledger_seq`.
-- **budgets** and **cost_commitments** (finance-owned; other modules use the `CostCommitmentPort`).
+- **expenses / expense_revisions / expense_payers / expense_splits**: stable identity plus immutable revisions with raw split input, `lr-v1` resolved shares, an optional base-currency snapshot, revision origin (`http|sync`), optional occurred time and timezone, and base-currency change number.
+- **expense_refunds / refund_shares**, **settlements** (payments and waivers), **fund_settings / fund_movements** (target per member), **fund_counts** (kitty stocktakes), **fx_snapshots**.
+- **ledger_transactions / ledger_postings**: the journal; every transaction sums to zero per currency and carries the next `ledger_seq`. Transaction kinds: `expense`, `expense_reversal`, `refund`, `settlement`, `settlement_reversal`, `fund_contribution`, `fund_withdrawal`, `conversion`, `conversion_reversal`, `adjustment`.
+- **ledger_confirmations**: append-only; each participant confirms the ledger at one sequence.
+- **budgets** and **cost_commitments** (finance-owned; other modules use the `CostCommitmentPort`); commitments carry base-currency change number.
+- **base_currency_changes**: append-only numbered rate per plan (old-to-new).
+- **consolidations / consolidation_rates / consolidation_lines**: a consolidation row (`active`, then possibly `reversed` once) with append-only rates (one frozen FX snapshot per converted currency) and lines (per participant and currency: the balance moved and the base amount it became).
+- **market_rates** (reference table, append-only, worker-only insert): daily rates for offline estimates.
 
 Canonical rows are append-only (triggers reject UPDATE/DELETE); deferred
 constraint triggers verify sums and posting shapes at commit; RLS limits every

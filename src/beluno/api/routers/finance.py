@@ -15,13 +15,16 @@ from beluno.api.dependencies import ActorDep, RunnerDep, RuntimeDep
 from beluno.api.finance_presenters import (
     budget_overview_response,
     commitment_response,
+    consolidation_response,
     currency_response,
     expense_response,
     explanation_entry,
+    fund_count_response,
     fund_movement_response,
     fund_settings_response,
     ledger_response,
     preview_response,
+    rate_text,
     revision_response,
     settlement_response,
     transaction_response,
@@ -45,6 +48,7 @@ from beluno.contracts.errors import validation_error
 from beluno.contracts.finance import (
     AdjustmentRequest,
     BalanceExplanation,
+    BaseCurrencyRequest,
     BudgetCreateRequest,
     BudgetOverviewResponse,
     BudgetResponse,
@@ -52,17 +56,26 @@ from beluno.contracts.finance import (
     CommitmentCreateRequest,
     CommitmentResponse,
     CommitmentUpdateRequest,
+    ConsolidateRequest,
+    ConsolidationResponse,
     CurrencyResponse,
     ExpenseCreateRequest,
     ExpenseRequest,
     ExpenseResponse,
     FundAvailabilityResponse,
+    FundCountRequest,
+    FundCountResponse,
     FundMovementRequest,
     FundMovementResponse,
     FundResponse,
     FundSettingsRequest,
     FundSettingsResponse,
+    LedgerConfirmRequest,
     LedgerResponse,
+    LedgerSettingsRequest,
+    MarketRateResponse,
+    MarketRatesResponse,
+    MemberContribution,
     RefundRequest,
     RevisionResponse,
     SettlementPreviewResponse,
@@ -72,13 +85,16 @@ from beluno.contracts.finance import (
     TransactionResponse,
     WaiverRequest,
 )
+from beluno.contracts.plans import PlanResponse
 from beluno.modules.context import open_context
 from beluno.modules.finance import (
     budgets,
     commitments,
+    consolidation,
     currencies,
     expenses,
     funds,
+    market_rates,
     settlements,
     views,
 )
@@ -86,6 +102,7 @@ from beluno.sync.commands import Command, EmptyPayload
 
 router = APIRouter(prefix="/v1/plans/{plan_id}", tags=["finance"])
 currency_router = APIRouter(prefix="/v1/currencies", tags=["finance"])
+fx_router = APIRouter(prefix="/v1/fx", tags=["finance"])
 
 READ_ERRORS = problem_responses(401, 403, 404, 422, 503)
 CurrencyQuery = Annotated[str, Query(pattern=r"^[A-Z]{3}$")]
@@ -100,6 +117,48 @@ async def list_currencies(runtime: RuntimeDep, actor: ActorDep) -> list[Currency
     async with open_context(runtime, actor) as ctx:
         rows = await currencies.list_currencies(ctx)
     return [currency_response(row) for row in rows]
+
+
+@fx_router.get("/rates", response_model=MarketRatesResponse, responses=READ_ERRORS)
+async def list_market_rates(
+    base: CurrencyQuery, runtime: RuntimeDep, actor: ActorDep
+) -> MarketRatesResponse:
+    """The latest published market rates from ``base``, for offline estimates only."""
+
+    async with open_context(runtime, actor) as ctx:
+        rows = await market_rates.latest_rates(ctx, base)
+    return MarketRatesResponse(
+        base=base,
+        rates=[
+            MarketRateResponse(
+                quote=row.quote_currency,
+                rate=rate_text(row.rate),
+                as_of=row.as_of,
+                source=row.source,
+            )
+            for row in rows
+        ],
+    )
+
+
+@router.post("/base-currency", response_model=PlanResponse, responses=WRITE_ERRORS)
+async def change_base_currency(
+    plan_id: UUID,
+    body: BaseCurrencyRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> PlanResponse:
+    """Move the plan to another base currency (owner or admin, plan version in If-Match).
+
+    Original amounts and postings never change; budgets and the settle tolerance are
+    re-denominated at the rate, and base values read through the chain of changes.
+    """
+
+    call = command_call(idempotency_key, if_match=if_match, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.PLAN_CHANGE_BASE_CURRENCY, call, body))
 
 
 @router.get("/ledger", response_model=LedgerResponse, responses=READ_ERRORS)
@@ -234,6 +293,92 @@ def _seq_cursor(cursor: str | None) -> int | None:
     if not cursor.isdigit() or len(cursor) > 18:
         raise validation_error("cursor is invalid")
     return int(cursor)
+
+
+@router.patch("/ledger/settings", response_model=LedgerResponse, responses=WRITE_ERRORS)
+async def configure_ledger(
+    plan_id: UUID,
+    body: LedgerSettingsRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> LedgerResponse:
+    """Money settings (managers): count personal spend, and the settled-under tolerance."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.LEDGER_CONFIGURE, call, body))
+
+
+@router.post("/ledger/confirm", response_model=LedgerResponse, responses=WRITE_ERRORS)
+async def confirm_ledger(
+    plan_id: UUID,
+    body: LedgerConfirmRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> LedgerResponse:
+    """Say the ledger at ``ledger_seq`` looks right to you; any later entry makes it stale."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.LEDGER_CONFIRM, call, body))
+
+
+@router.get(
+    "/ledger/consolidations", response_model=list[ConsolidationResponse], responses=READ_ERRORS
+)
+async def list_consolidations(
+    plan_id: UUID, runtime: RuntimeDep, actor: ActorDep
+) -> list[ConsolidationResponse]:
+    async with open_context(runtime, actor) as ctx:
+        found = await consolidation.list_consolidations(ctx, plan_id)
+    return [consolidation_response(view) for view in found]
+
+
+@router.post(
+    "/ledger/consolidations",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ConsolidationResponse,
+    responses=WRITE_ERRORS,
+)
+async def consolidate_ledger(
+    plan_id: UUID,
+    body: ConsolidateRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> ConsolidationResponse:
+    """Settle everything in the base currency (owner or admin) at rates frozen now."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.LEDGER_CONSOLIDATE, call, body))
+
+
+@router.post(
+    "/ledger/consolidations/{consolidation_id}/reverse",
+    response_model=ConsolidationResponse,
+    responses=WRITE_ERRORS,
+)
+async def reverse_consolidation(
+    plan_id: UUID,
+    consolidation_id: UUID,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    if_match: IfMatch = None,
+    idempotency_key: IdempotencyKey = None,
+) -> ConsolidationResponse:
+    """Undo the latest consolidation exactly, while nobody has settled up since."""
+
+    call = command_call(
+        idempotency_key, if_match=if_match, plan_id=plan_id, consolidation_id=consolidation_id
+    )
+    return finish(
+        response,
+        await runner.run(actor, commands.LEDGER_REVERSE_CONSOLIDATION, call, EmptyPayload()),
+    )
 
 
 @router.get("/ledger/transactions", response_model=TransactionPage, responses=READ_ERRORS)
@@ -579,12 +724,23 @@ async def get_fund(plan_id: UUID, runtime: RuntimeDep, actor: ActorDep) -> FundR
     async with open_context(runtime, actor) as ctx:
         settings = await funds.get_settings(ctx, plan_id)
         available = await views.fund_availability(ctx, plan_id)
+        contributions = await funds.contributions(ctx, plan_id)
+        counts = await funds.latest_counts(ctx, plan_id)
     return FundResponse(
         settings=fund_settings_response(settings) if settings else None,
         available=[
             FundAvailabilityResponse(currency=currency, available_minor=amount)
             for currency, amount in available
         ],
+        contributions=[
+            MemberContribution(
+                participant_id=row.participant_id,
+                currency=row.currency,
+                contributed_minor=row.contributed_minor,
+            )
+            for row in contributions
+        ],
+        counts=[fund_count_response(count) for count in counts],
     )
 
 
@@ -654,6 +810,26 @@ async def withdraw_from_fund(
 ) -> FundMovementResponse:
     call = command_call(idempotency_key, plan_id=plan_id)
     return finish(response, await runner.run(actor, commands.FUND_WITHDRAW, call, body))
+
+
+@router.post(
+    "/fund/counts",
+    status_code=status.HTTP_201_CREATED,
+    response_model=FundCountResponse,
+    responses=WRITE_ERRORS,
+)
+async def count_fund(
+    plan_id: UUID,
+    body: FundCountRequest,
+    runner: RunnerDep,
+    actor: ActorDep,
+    response: Response,
+    idempotency_key: IdempotencyKey = None,
+) -> FundCountResponse:
+    """The custodian or a manager records the cash counted; nothing is posted."""
+
+    call = command_call(idempotency_key, plan_id=plan_id)
+    return finish(response, await runner.run(actor, commands.FUND_COUNT, call, body))
 
 
 @router.post(

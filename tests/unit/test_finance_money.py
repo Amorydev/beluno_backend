@@ -6,15 +6,17 @@ from decimal import Decimal
 from uuid import UUID
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from beluno.contracts.errors import BelunoError
+from beluno.modules.finance.base_currency import BaseChain, ChainStep
 from beluno.modules.finance.fx import convert, implied_rate, parse_rate
 from beluno.modules.finance.money import MAX_AMOUNT_MINOR, check_amount
 from beluno.modules.finance.postings import (
     FUND,
     Party,
+    consolidation_amounts,
     expense_postings,
     refund_allocation,
     refund_postings,
@@ -91,6 +93,22 @@ def test_exact_shares_must_add_up() -> None:
     with pytest.raises(BelunoError) as error:
         resolve_split(900, SplitSpec(SplitMethod.EXACT, entries(500, 300)))
     assert code(error) == "SPLIT_INVALID"
+
+
+def test_adjustments_shift_equal_shares_by_exact_minor_units() -> None:
+    adjusted = SplitSpec(SplitMethod.ADJUSTMENT, entries(100, 0, -100))
+    assert owed(resolve_split(1_000, adjusted)) == [434, 333, 233]
+    # Adjustments beyond the amount share the negative rest the same way.
+    over = SplitSpec(SplitMethod.ADJUSTMENT, entries(80, 80))
+    assert owed(resolve_split(100, over)) == [50, 50]
+    uneven = SplitSpec(SplitMethod.ADJUSTMENT, entries(12, 12, 1))
+    assert owed(resolve_split(20, uneven)) == [10, 10, 0]
+    with pytest.raises(BelunoError) as negative:
+        resolve_split(100, SplitSpec(SplitMethod.ADJUSTMENT, entries(0, 200)))
+    assert code(negative) == "SPLIT_INVALID"
+    with pytest.raises(BelunoError) as huge:
+        resolve_split(100, SplitSpec(SplitMethod.ADJUSTMENT, entries(MAX_AMOUNT_MINOR + 1, 0)))
+    assert code(huge) == "SPLIT_INVALID"
 
 
 def test_itemized_bill_spreads_tax_and_tip_over_item_subtotals() -> None:
@@ -238,6 +256,57 @@ def test_debt_preview_is_deterministic_and_pays_out_the_fund() -> None:
         simplify_debts({a: 1, b: -2})
 
 
+def test_debt_preview_leaves_out_balances_within_the_tolerance() -> None:
+    a, b, c = PEOPLE[:3]
+    preview = simplify_debts({a: -103, b: 100, c: 3}, tolerance=5)
+    assert [
+        (t.from_participant_id, t.to_participant_id, t.amount_minor) for t in preview.transfers
+    ] == [(a, b, 100)]
+    assert simplify_debts({a: -3, b: 3}, tolerance=5).transfers == []
+    # B's 2 stays in the fund: within the tolerance it counts as settled.
+    payout = simplify_debts({a: 10, b: 2}, fund_available=12, tolerance=5)
+    assert [(p.to_participant_id, p.amount_minor) for p in payout.fund_payouts] == [(a, 10)]
+    # Small debts that add up to a large credit are still suggested, exactly.
+    small = dict(zip(PEOPLE[1:6], [-40] * 5, strict=True))
+    owed = simplify_debts({a: 200, **small}, tolerance=50)
+    assert sorted((t.from_participant_id, t.amount_minor) for t in owed.transfers) == sorted(
+        (pid, 40) for pid in small
+    )
+
+
+def test_consolidation_shares_the_converted_total_on_each_side() -> None:
+    a, b, c = PEOPLE[:3]
+    assert consolidation_amounts({a: 2_000, b: -1_000, c: -1_000}, 1_340) == {
+        a: 1_340,
+        b: -670,
+        c: -670,
+    }
+    # One unit left over goes to the larger remainder on each side.
+    assert consolidation_amounts({a: 1, b: 2, c: -3}, 10) == {a: 3, b: 7, c: -10}
+    assert consolidation_amounts({}, 0) == {}
+    with pytest.raises(ValueError):
+        consolidation_amounts({a: 1, b: -2}, 5)
+
+
+def test_base_values_follow_each_later_base_change() -> None:
+    chain = BaseChain(
+        current="USD",
+        steps=(
+            ChainStep(1, "USD", "EUR", Decimal("0.9"), estimated=False),
+            ChainStep(2, "EUR", "USD", Decimal("1.1"), estimated=True),
+        ),
+        exponents={"USD": 2, "EUR": 2, "JPY": 0},
+    )
+    # Amounts already in today's base count as they are.
+    assert chain.value(1_000, "USD", origin="USD", number=0, rate=None) == 1_000
+    # Yen valued in USD before both changes: snapshot, then 0.9, then 1.1.
+    assert chain.value(3_000, "JPY", origin="USD", number=0, rate=Decimal("0.0067")) == 1_990
+    assert chain.value(500, "EUR", origin="EUR", number=1, rate=None) == 550
+    assert chain.value(3_000, "JPY", origin="USD", number=0, rate=None) is None
+    assert (chain.origin(0), chain.origin(1), chain.origin(2)) == ("USD", "EUR", "USD")
+    assert (chain.estimated_after(0), chain.estimated_after(2)) == (True, False)
+
+
 def test_ledger_status_and_commitment_tiers() -> None:
     assert next_ledger_status(LedgerStatus.OPEN, balances_zero=True, has_live_settlement=False) is (
         LedgerStatus.OPEN
@@ -292,6 +361,8 @@ def test_every_method_resolves_to_the_exact_amount(
         spec = SplitSpec(method, entries(*points))
     elif method is SplitMethod.EXACT:
         spec = SplitSpec(method, entries(*largest_remainder(amount, [1] * people)))
+    elif method is SplitMethod.ADJUSTMENT:
+        spec = SplitSpec(method, entries(amount // 2, *([0] * (people - 1))))
     else:
         cut = largest_remainder(amount, [1] * min(people, 10))
         cut = [value for value in cut if value > 0]
@@ -395,3 +466,51 @@ def test_conversion_is_within_half_a_unit_of_the_exact_value(
         return
     converted = convert(amount, from_exponent=from_exponent, to_exponent=to_exponent, rate=rate)
     assert abs(Decimal(converted) - exact) <= Decimal("0.5")
+
+
+@given(
+    st.lists(
+        st.integers(min_value=-(10**9), max_value=10**9).filter(bool), min_size=1, max_size=30
+    ),
+    st.decimals(min_value=Decimal("0.000001"), max_value=Decimal("100000"), places=6),
+    st.sampled_from([(0, 2), (2, 0), (2, 2), (3, 0)]),
+)
+@settings(max_examples=300, deadline=None)
+def test_consolidation_is_zero_sum_and_close_to_each_exact_value(
+    values: list[int], rate: Decimal, exponents: tuple[int, int]
+) -> None:
+    balances = dict(zip(PEOPLE, values, strict=False))
+    balances[PEOPLE[len(balances)]] = -sum(balances.values())
+    balances = {pid: value for pid, value in balances.items() if value}
+    from_exponent, to_exponent = exponents
+    positive = sum(value for value in balances.values() if value > 0)
+    scale = rate * Decimal(10) ** (to_exponent - from_exponent)
+    assume(positive * scale <= MAX_AMOUNT_MINOR)
+    total = convert(positive, from_exponent=from_exponent, to_exponent=to_exponent, rate=rate)
+    amounts = consolidation_amounts(balances, total)
+    assert sum(amounts.values()) == 0
+    assert set(amounts) == set(balances)
+    for pid, value in balances.items():
+        assert (value > 0) == (amounts[pid] >= 0) or amounts[pid] == 0
+        assert abs(Decimal(amounts[pid]) - Decimal(value) * scale) < 2
+
+
+@given(
+    st.lists(st.integers(min_value=-10_000, max_value=10_000), min_size=1, max_size=12),
+    st.integers(min_value=0, max_value=500),
+)
+@settings(max_examples=300, deadline=None)
+def test_the_preview_is_empty_exactly_when_everyone_is_within_the_tolerance(
+    values: list[int], tolerance: int
+) -> None:
+    balances = dict(zip(PEOPLE, values, strict=False))
+    balances[PEOPLE[len(balances)]] = -sum(balances.values())
+    preview = simplify_debts(balances, tolerance=tolerance)
+    settled = all(abs(value) <= tolerance for value in balances.values())
+    assert (preview.transfers == []) == settled
+    # Whatever is suggested leaves nobody outside the tolerance.
+    after = dict(balances)
+    for transfer in preview.transfers:
+        after[transfer.from_participant_id] += transfer.amount_minor
+        after[transfer.to_participant_id] -= transfer.amount_minor
+    assert all(abs(value) <= tolerance for value in after.values())

@@ -318,7 +318,7 @@ async def test_foreign_currency_uses_exponents_and_labelled_base_snapshots(
             ann,
             [ann, bea],
             currency="JPY",
-            base_rate={"rate": "0.0067", "source": "estimated"},
+            base_rate={"rate": "0.0067", "source": "estimated", "base_currency": "USD"},
         ),
     )
     base = with_rate["revision"]["base"]
@@ -341,10 +341,11 @@ async def test_foreign_currency_uses_exponents_and_labelled_base_snapshots(
         (ann, "KWD"): -5000,
         (bea, "KWD"): 5000,
     }
-    locked = await api.patch(
-        trip.path(), json={"base_currency": "EUR"}, headers=if_match(1, trip.owner)
+    # With money in the plan, moving the base currency needs a rate from the current one.
+    rateless = await api.post(
+        trip.path("/base-currency"), json={"currency": "EUR"}, headers=if_match(1, trip.owner)
     )
-    assert locked.status_code == 409 and locked.json()["code"] == "BASE_CURRENCY_LOCKED"
+    assert rateless.status_code == 422
 
 
 async def test_currency_catalog_and_plan_currencies_are_validated(
@@ -365,9 +366,9 @@ async def test_currency_catalog_and_plan_currencies_are_validated(
         json={"type": "hangout", "title": "Fresh", "base_currency": "USD"},
         headers=trip.owner.headers,
     )
-    moved = await api.patch(
-        f"/v1/plans/{fresh.json()['id']}",
-        json={"base_currency": "EUR"},
+    moved = await api.post(
+        f"/v1/plans/{fresh.json()['id']}/base-currency",
+        json={"currency": "EUR"},
         headers=if_match(1, trip.owner),
     )
     assert moved.status_code == 200 and moved.json()["base_currency"] == "EUR"

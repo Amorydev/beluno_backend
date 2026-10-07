@@ -8,12 +8,17 @@ from pydantic import BaseModel, TypeAdapter
 
 from beluno.contracts.finance import (
     AdjustmentRequest,
+    AdjustmentSplit,
     BaseAmountResponse,
+    BaseCurrencyChangeResponse,
     BudgetOverviewResponse,
     BudgetResponse,
     CommitmentCreateRequest,
     CommitmentResponse,
     CommitmentUpdateRequest,
+    ConsolidationLineResponse,
+    ConsolidationRateResponse,
+    ConsolidationResponse,
     CurrencyResponse,
     EqualSplit,
     ExactSplit,
@@ -21,10 +26,13 @@ from beluno.contracts.finance import (
     ExpenseResponse,
     ExplanationEntry,
     FundAvailabilityResponse,
+    FundCountResponse,
     FundMovementRequest,
     FundMovementResponse,
     FundSettingsResponse,
+    FundTarget,
     LedgerBalanceResponse,
+    LedgerConfirmationResponse,
     LedgerResponse,
     PaidAmountResponse,
     PayerResponse,
@@ -48,9 +56,11 @@ from beluno.contracts.finance import (
 )
 from beluno.db.models.finance import (
     Budget,
+    Consolidation,
     CostCommitment,
     Currency,
     Expense,
+    FundCount,
     FundMovement,
     FundSettings,
     FxSnapshot,
@@ -59,11 +69,13 @@ from beluno.db.models.finance import (
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.budgets import BudgetOverview, Spend
 from beluno.modules.finance.commitments import CommitmentDraft, CommitmentView, commitment_view
+from beluno.modules.finance.consolidation import ConsolidationView, consolidation_view
 from beluno.modules.finance.expenses import (
     ExpenseDraft,
     ExpenseView,
     RefundDraft,
     RefundView,
+    RevisionOrigin,
     RevisionView,
     expense_view,
 )
@@ -127,6 +139,11 @@ def split_spec(split: Split) -> SplitSpec:
             SplitMethod.SHARES,
             tuple(SplitEntry(s.participant_id, s.weight) for s in split.shares),
         )
+    if isinstance(split, AdjustmentSplit):
+        return SplitSpec(
+            SplitMethod.ADJUSTMENT,
+            tuple(SplitEntry(s.participant_id, s.adjustment_minor) for s in split.shares),
+        )
     return SplitSpec(
         SplitMethod.ITEMIZED,
         items=tuple(
@@ -141,11 +158,13 @@ def split_spec(split: Split) -> SplitSpec:
     )
 
 
-def expense_draft(body: ExpenseRequest) -> ExpenseDraft:
+def expense_draft(body: ExpenseRequest, origin: RevisionOrigin) -> ExpenseDraft:
     return ExpenseDraft(
         description=body.description,
         category=body.category,
         occurred_on=body.occurred_on,
+        occurred_at=body.occurred_at,
+        occurred_timezone=body.occurred_timezone,
         notes=body.notes,
         amount_minor=body.amount_minor,
         currency=body.currency,
@@ -160,11 +179,13 @@ def expense_draft(body: ExpenseRequest) -> ExpenseDraft:
                 rate=body.base_rate.rate,
                 source=RateSource(body.base_rate.source),
                 as_of=body.base_rate.as_of,
+                base_currency=body.base_rate.base_currency,
             )
             if body.base_rate
             else None
         ),
         commitment_id=body.commitment_id,
+        origin=origin,
     )
 
 
@@ -212,6 +233,16 @@ def base_amount(
     )
 
 
+def is_personal(view: RevisionView) -> bool:
+    """Its only payer is also its only sharer: spending that moves no balance."""
+
+    return (
+        len(view.payers) == 1
+        and len(view.splits) == 1
+        and view.payers[0].participant_id == view.splits[0].participant_id
+    )
+
+
 def revision_response(view: RevisionView) -> RevisionResponse:
     revision = view.revision
     base = base_amount(
@@ -224,6 +255,8 @@ def revision_response(view: RevisionView) -> RevisionResponse:
             "description": revision.description,
             "category": revision.category,
             "occurred_on": revision.occurred_on,
+            "occurred_at": revision.occurred_at,
+            "occurred_timezone": revision.occurred_timezone,
             "notes": revision.notes,
             "amount_minor": revision.amount_minor,
             "currency": revision.currency,
@@ -241,8 +274,13 @@ def revision_response(view: RevisionView) -> RevisionResponse:
                 ShareResponse(participant_id=split.participant_id, owed_minor=split.owed_minor)
                 for split in view.splits
             ],
+            "base_change_number": revision.base_change_number,
+            "personal": is_personal(view),
             "base": base,
             "commitment_id": revision.commitment_id,
+            "source": revision.source,
+            "client_created_at": revision.client_created_at,
+            "device_label": revision.device_label,
             "created_by_user_id": revision.created_by_user_id,
             "created_at": revision.created_at,
         }
@@ -313,6 +351,29 @@ def ledger_response(snapshot: LedgerSnapshot) -> LedgerResponse:
                 for view in snapshot.accounts
                 if view.account.participant_id is None
             ],
+            "count_personal_spend": head.count_personal_spend if head else True,
+            "settle_tolerance_minor": head.settle_tolerance_minor if head else 0,
+            "confirmations": [
+                LedgerConfirmationResponse(
+                    participant_id=row.participant_id, confirmed_at=row.confirmed_at
+                )
+                for row in snapshot.confirmations
+            ],
+            "base_changes": [
+                BaseCurrencyChangeResponse.model_validate(
+                    {
+                        "number": change.change_number,
+                        "from_currency": change.from_currency,
+                        "to_currency": change.to_currency,
+                        "rate": rate_text(rate.rate),
+                        "rate_source": rate.source,
+                        "rate_as_of": rate.as_of,
+                        "ledger_seq": change.ledger_seq,
+                        "changed_at": change.created_at,
+                    }
+                )
+                for change, rate in snapshot.base_changes
+            ],
             "version": head.version if head else 0,
         }
     )
@@ -331,7 +392,47 @@ async def present_finance_current(ctx: CommandContext, entity: object) -> BaseMo
         return fund_settings_response(entity)
     if isinstance(entity, CostCommitment):
         return commitment_response(await commitment_view(ctx, entity))
+    if isinstance(entity, Consolidation):
+        return consolidation_response(await consolidation_view(ctx, entity))
     return None
+
+
+def consolidation_response(view: ConsolidationView) -> ConsolidationResponse:
+    consolidation = view.consolidation
+    return ConsolidationResponse.model_validate(
+        {
+            "id": consolidation.id,
+            "plan_id": consolidation.plan_id,
+            "base_currency": consolidation.base_currency,
+            "state": consolidation.state,
+            "rates": [
+                ConsolidationRateResponse.model_validate(
+                    {
+                        "currency": rate.currency,
+                        "rate": rate_text(snapshot.rate),
+                        "source": snapshot.source,
+                        "as_of": snapshot.as_of,
+                    }
+                )
+                for rate, snapshot in view.rates
+            ],
+            "lines": [
+                ConsolidationLineResponse(
+                    participant_id=line.participant_id,
+                    currency=line.currency,
+                    amount_minor=line.amount_minor,
+                    base_amount_minor=line.base_amount_minor,
+                )
+                for line in view.lines
+            ],
+            "created_by_user_id": consolidation.created_by_user_id,
+            "created_at": consolidation.created_at,
+            "reversed_by_user_id": consolidation.reversed_by_user_id,
+            "reversed_at": consolidation.reversed_at,
+            "version": consolidation.version,
+            "updated_at": consolidation.updated_at,
+        }
+    )
 
 
 # --- settlements and ledger views ---------------------------------------------------
@@ -420,6 +521,7 @@ def transaction_response(view: TransactionView) -> TransactionResponse:
             "refund_id": tx.refund_id,
             "settlement_id": tx.settlement_id,
             "fund_movement_id": tx.fund_movement_id,
+            "consolidation_id": tx.consolidation_id,
             "reverses_transaction_id": tx.reverses_transaction_id,
             "memo": tx.memo,
             "created_by_user_id": tx.created_by_user_id,
@@ -543,6 +645,7 @@ def commitment_draft(body: CommitmentCreateRequest | CommitmentUpdateRequest) ->
                 rate=body.base_rate.rate,
                 source=RateSource(body.base_rate.source),
                 as_of=body.base_rate.as_of,
+                base_currency=body.base_rate.base_currency,
             )
             if body.base_rate
             else None
@@ -567,6 +670,7 @@ def commitment_response(view: CommitmentView) -> CommitmentResponse:
             "base": base_amount(
                 commitment.currency, view.base_currency, commitment.base_amount_minor, view.rate
             ),
+            "base_change_number": commitment.base_change_number,
             "expense_id": commitment.expense_id,
             "created_by_user_id": commitment.created_by_user_id,
             "version": commitment.version,
@@ -584,9 +688,28 @@ def fund_settings_response(settings: FundSettings) -> FundSettingsResponse:
         plan_id=settings.plan_id,
         custodian_participant_id=settings.custodian_participant_id,
         note=settings.note,
+        target=(
+            FundTarget(currency=settings.target_currency, amount_minor=settings.target_minor)
+            if settings.target_currency is not None and settings.target_minor is not None
+            else None
+        ),
         version=settings.version,
         created_at=settings.created_at,
         updated_at=settings.updated_at,
+    )
+
+
+def fund_count_response(count: FundCount) -> FundCountResponse:
+    return FundCountResponse(
+        id=count.id,
+        plan_id=count.plan_id,
+        currency=count.currency,
+        counted_minor=count.counted_minor,
+        expected_minor=count.expected_minor,
+        difference_minor=count.counted_minor - count.expected_minor,
+        note=count.note,
+        counted_by_user_id=count.counted_by_user_id,
+        created_at=count.created_at,
     )
 
 

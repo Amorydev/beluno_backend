@@ -81,6 +81,10 @@ class PlanAction(StrEnum):
     CONTRIBUTE_FUND = "plan.fund.contribute"
     MANAGE_FUND = "plan.fund.manage"
     ADJUST_LEDGER = "plan.ledger.adjust"
+    CONFIGURE_LEDGER = "plan.ledger.configure"
+    CONFIRM_LEDGER = "plan.ledger.confirm"
+    CONSOLIDATE_LEDGER = "plan.ledger.consolidate"
+    CHANGE_BASE_CURRENCY = "plan.base_currency.change"
 
 
 ALL_PLAN_ROLES = frozenset(PlanRole)
@@ -154,6 +158,14 @@ PLAN_RULES: dict[PlanAction, Rule] = {
     PlanAction.ADJUST_LEDGER: Rule(
         frozenset({PlanRole.OWNER}), EDITABLE_PLAN_STATES, registered_only=True, step_up=True
     ),
+    # Money settings of the plan (count personal spend, the settled-under tolerance).
+    PlanAction.CONFIGURE_LEDGER: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
+    # Everyone may say the ledger looks right to them; it never blocks anything.
+    PlanAction.CONFIRM_LEDGER: Rule(ALL_PLAN_ROLES, SETTLEMENT_PLAN_STATES),
+    # Converting every balance into the base currency changes what everyone owes.
+    PlanAction.CONSOLIDATE_LEDGER: Rule(PLAN_MANAGERS, SETTLEMENT_PLAN_STATES),
+    # It re-denominates budgets and every base-currency value everyone sees.
+    PlanAction.CHANGE_BASE_CURRENCY: Rule(PLAN_MANAGERS, EDITABLE_PLAN_STATES),
 }
 
 

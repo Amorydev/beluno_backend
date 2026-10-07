@@ -39,13 +39,18 @@ from beluno.db.models.finance import (
 from beluno.db.models.plans import PlanParticipant
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.currencies import supported_currency
-from beluno.modules.finance.errors import fund_insufficient, participant_not_eligible
+from beluno.modules.finance.errors import (
+    fund_insufficient,
+    not_available_for_hangout,
+    participant_not_eligible,
+)
 from beluno.modules.finance.postings import Party, Postings, reversal_postings
 from beluno.modules.finance.states import LedgerStatus, SettlementStatus, next_ledger_status
 from beluno.modules.sync_audit.recorder import ChangeScope, record_change
 from beluno.observability.metrics import instruments
 
 LEDGER_ENTITY = "ledger"
+TRIP = "trip"
 MAX_MERGE_DEPTH = 16
 # Participants who may still settle up: everyone with history except merged rows
 # (their money moved to the survivor) and people never admitted.
@@ -70,6 +75,12 @@ class Ledger:
         return self.access.plan.id
 
     # --- references ---------------------------------------------------------------
+
+    def require_trip(self) -> None:
+        """Budgets, cost commitments, and the fund exist for trips only."""
+
+        if self.access.plan.type != TRIP:
+            raise not_available_for_hangout()
 
     async def currency(self, code: str) -> Currency:
         if code not in self.currencies:
@@ -127,9 +138,13 @@ class Ledger:
         refund_id: UUID | None = None,
         settlement_id: UUID | None = None,
         fund_movement_id: UUID | None = None,
+        consolidation_id: UUID | None = None,
         reverses: LedgerTransaction | None = None,
     ) -> LedgerTransaction:
         ctx = self.ctx
+        if any(party.is_fund for entries in postings.values() for party in entries):
+            # Fund-paid expenses, refunds to the fund, and fund adjustments included.
+            self.require_trip()
         self.head.ledger_seq += 1
         transaction = LedgerTransaction(
             id=new_id(),
@@ -142,6 +157,7 @@ class Ledger:
             refund_id=refund_id,
             settlement_id=settlement_id,
             fund_movement_id=fund_movement_id,
+            consolidation_id=consolidation_id,
             reverses_transaction_id=reverses.id if reverses else None,
             memo=memo,
             created_by_user_id=ctx.actor.user_id if ctx.actor else None,
@@ -233,6 +249,7 @@ class Ledger:
             postings=reversed_entries,
             expense_id=original.expense_id,
             settlement_id=original.settlement_id,
+            consolidation_id=original.consolidation_id,
             reverses=original,
         )
 
@@ -250,6 +267,21 @@ class Ledger:
         for (participant_id, _currency), account in self.accounts.items():
             if participant_id is None and self.balances[account.id].balance_minor > 0:
                 raise fund_insufficient()
+        await self.update_status()
+        await self.touch()
+
+    def everyone_settled(self) -> bool:
+        """Every participant is at zero; base-currency balances within the tolerance count."""
+
+        base = self.access.plan.base_currency
+        tolerance = self.head.settle_tolerance_minor
+        return all(
+            abs(self.balances[account.id].balance_minor) <= (tolerance if currency == base else 0)
+            for (participant_id, currency), account in self.accounts.items()
+            if participant_id is not None
+        )
+
+    async def update_status(self) -> None:
         live_settlements = (
             await self.ctx.session.execute(
                 select(func.count())
@@ -260,17 +292,11 @@ class Ledger:
                 )
             )
         ).scalar_one()
-        balances_zero = all(
-            self.balances[account.id].balance_minor == 0
-            for (participant_id, _currency), account in self.accounts.items()
-            if participant_id is not None
-        )
         self.head.status = next_ledger_status(
             LedgerStatus(self.head.status),
-            balances_zero=balances_zero,
+            balances_zero=self.everyone_settled(),
             has_live_settlement=live_settlements > 0,
         ).value
-        await self.touch()
 
     async def touch(self) -> None:
         """Bump the ledger entity version (balances, status, or dispute count changed)."""
@@ -364,6 +390,9 @@ async def lock_head(ctx: CommandContext, plan_id: UUID) -> LedgerHead:
         ledger_seq=0,
         status=LedgerStatus.OPEN.value,
         disputed_settlements=0,
+        count_personal_spend=True,
+        settle_tolerance_minor=0,
+        base_change_count=0,
         version=1,
         created_at=ctx.now,
         updated_at=ctx.now,
@@ -385,12 +414,3 @@ async def lock_head(ctx: CommandContext, plan_id: UUID) -> LedgerHead:
         scope_id=plan_id,
     )
     return head
-
-
-async def ledger_exists(ctx: CommandContext, plan_id: UUID) -> bool:
-    """Whether the plan has any finance data (its base currency is then fixed)."""
-
-    found = await ctx.session.execute(
-        select(LedgerHead.plan_id).where(LedgerHead.plan_id == plan_id)
-    )
-    return found.scalar_one_or_none() is not None

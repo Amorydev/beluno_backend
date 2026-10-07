@@ -151,14 +151,16 @@ class PlanCreateRequest(BaseModel):
 
 
 class PlanUpdateRequest(BaseModel):
-    """Omitted fields stay unchanged; ``null`` clears description or location."""
+    """Omitted fields stay unchanged; ``null`` clears description or location.
+
+    The base currency changes through ``POST /v1/plans/{plan_id}/base-currency``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     title: Title | None = None
     activity: HangoutActivity | None = None
     timing: PlanTiming | None = None
-    base_currency: CurrencyCode | None = None
     destinations: Destinations | None = None
     pass_color: PassColor | None = None
     expected_size: int | None = Field(default=None, ge=1, le=50)

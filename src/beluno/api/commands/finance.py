@@ -9,10 +9,13 @@ from beluno.api.finance_presenters import (
     budget_response,
     commitment_draft,
     commitment_response,
+    consolidation_response,
     expense_draft,
     expense_response,
+    fund_count_response,
     fund_movement_response,
     fund_settings_response,
+    ledger_response,
     movement_draft,
     refund_draft,
     settlement_draft,
@@ -20,39 +23,69 @@ from beluno.api.finance_presenters import (
     transaction_response,
     waiver_draft,
 )
+from beluno.api.presenters import plan_response
 from beluno.contracts.finance import (
     AdjustmentRequest,
+    BaseCurrencyRequest,
     BudgetCreateRequest,
     BudgetResponse,
     BudgetUpdateRequest,
     CommitmentCreateRequest,
     CommitmentResponse,
     CommitmentUpdateRequest,
+    ConsolidateRequest,
+    ConsolidationResponse,
     ExpenseCreateRequest,
     ExpenseRequest,
     ExpenseResponse,
+    FundCountRequest,
+    FundCountResponse,
     FundMovementRequest,
     FundMovementResponse,
     FundSettingsRequest,
     FundSettingsResponse,
+    LedgerConfirmRequest,
+    LedgerResponse,
+    LedgerSettingsRequest,
     RefundRequest,
     SettlementRequest,
     SettlementResponse,
     TransactionResponse,
     WaiverRequest,
 )
+from beluno.contracts.plans import PlanResponse
 from beluno.modules.context import CommandContext
-from beluno.modules.finance import budgets, commitments, expenses, funds, settlements, views
+from beluno.modules.finance import (
+    base_currency,
+    budgets,
+    commitments,
+    consolidation,
+    expenses,
+    funds,
+    ledger_settings,
+    settlements,
+    views,
+)
+from beluno.modules.finance.expenses import RevisionOrigin
+from beluno.modules.finance.fx import RateSource
+from beluno.modules.finance.rates import RateInput
 from beluno.modules.iam.rate_limits import FINANCE_WRITES_PER_PLAN
 from beluno.sync.commands import Command, CommandCall, EmptyPayload, required_version, version_of
 
 FINANCE_FEATURE = "finance"
 
 
+def _origin(call: CommandCall) -> RevisionOrigin:
+    source = expenses.SYNC if call.source == "push" else expenses.HTTP
+    return RevisionOrigin(source=source, client_created_at=call.client_created_at)
+
+
 async def _create_expense(
     ctx: CommandContext, call: CommandCall, body: ExpenseCreateRequest
 ) -> ExpenseResponse:
-    view = await expenses.create_expense(ctx, call.id("plan_id"), body.id, expense_draft(body))
+    view = await expenses.create_expense(
+        ctx, call.id("plan_id"), body.id, expense_draft(body, _origin(call))
+    )
     return expense_response(view)
 
 
@@ -60,7 +93,11 @@ async def _revise_expense(
     ctx: CommandContext, call: CommandCall, body: ExpenseRequest
 ) -> ExpenseResponse:
     view = await expenses.revise_expense(
-        ctx, call.id("plan_id"), call.id("expense_id"), expense_draft(body), required_version(call)
+        ctx,
+        call.id("plan_id"),
+        call.id("expense_id"),
+        expense_draft(body, _origin(call)),
+        required_version(call),
     )
     return expense_response(view)
 
@@ -177,8 +214,22 @@ async def _put_fund(
         custodian_participant_id=body.custodian_participant_id,
         note=body.note,
         expected_version=call.expected_version,
+        target=(
+            funds.FundTarget(body.target.currency, body.target.amount_minor)
+            if body.target
+            else None
+        ),
     )
     return fund_settings_response(settings)
+
+
+async def _count_fund(
+    ctx: CommandContext, call: CommandCall, body: FundCountRequest
+) -> FundCountResponse:
+    draft = funds.CountDraft(
+        count_id=body.id, currency=body.currency, counted_minor=body.counted_minor, note=body.note
+    )
+    return fund_count_response(await funds.count_fund(ctx, call.id("plan_id"), draft))
 
 
 async def _contribute(
@@ -200,6 +251,59 @@ async def _adjust(
 ) -> TransactionResponse:
     transaction = await funds.adjust_ledger(ctx, call.id("plan_id"), adjustment_draft(body))
     return transaction_response(await views.transaction_view(ctx, transaction))
+
+
+async def _configure_ledger(
+    ctx: CommandContext, call: CommandCall, body: LedgerSettingsRequest
+) -> LedgerResponse:
+    draft = ledger_settings.LedgerSettingsDraft(
+        count_personal_spend=body.count_personal_spend,
+        settle_tolerance_minor=body.settle_tolerance_minor,
+    )
+    return ledger_response(await ledger_settings.configure_ledger(ctx, call.id("plan_id"), draft))
+
+
+async def _confirm_ledger(
+    ctx: CommandContext, call: CommandCall, body: LedgerConfirmRequest
+) -> LedgerResponse:
+    snapshot = await ledger_settings.confirm_ledger(ctx, call.id("plan_id"), body.ledger_seq)
+    return ledger_response(snapshot)
+
+
+async def _consolidate(
+    ctx: CommandContext, call: CommandCall, body: ConsolidateRequest
+) -> ConsolidationResponse:
+    rates = {
+        rate.currency: RateInput(rate=rate.rate, source=RateSource(rate.source), as_of=rate.as_of)
+        for rate in body.rates
+    }
+    view = await consolidation.consolidate(
+        ctx, call.id("plan_id"), body.id, body.base_currency, rates
+    )
+    return consolidation_response(view)
+
+
+async def _reverse_consolidation(
+    ctx: CommandContext, call: CommandCall, body: EmptyPayload
+) -> ConsolidationResponse:
+    view = await consolidation.reverse_consolidation(
+        ctx, call.id("plan_id"), call.id("consolidation_id"), required_version(call)
+    )
+    return consolidation_response(view)
+
+
+async def _change_base_currency(
+    ctx: CommandContext, call: CommandCall, body: BaseCurrencyRequest
+) -> PlanResponse:
+    rate = (
+        RateInput(rate=body.rate.rate, source=RateSource(body.rate.source), as_of=body.rate.as_of)
+        if body.rate
+        else None
+    )
+    view = await base_currency.change_base_currency(
+        ctx, call.id("plan_id"), required_version(call), body.currency, rate
+    )
+    return plan_response(view)
 
 
 EXPENSE_CREATE = Command(
@@ -403,6 +507,17 @@ FUND_WITHDRAW = Command(
     rate_limit=FINANCE_WRITES_PER_PLAN,
     rate_limit_target="plan_id",
 )
+FUND_COUNT = Command(
+    name="fund.count",
+    payload_model=FundCountRequest,
+    response_model=FundCountResponse,
+    handler=_count_fund,
+    target_fields=("plan_id",),
+    status=201,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
 LEDGER_ADJUST = Command(
     name="ledger.adjust",
     payload_model=AdjustmentRequest,
@@ -410,6 +525,67 @@ LEDGER_ADJUST = Command(
     handler=_adjust,
     target_fields=("plan_id",),
     status=201,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
+LEDGER_CONFIGURE = Command(
+    name="ledger.configure",
+    payload_model=LedgerSettingsRequest,
+    response_model=LedgerResponse,
+    handler=_configure_ledger,
+    target_fields=("plan_id",),
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+LEDGER_CONFIRM = Command(
+    name="ledger.confirm",
+    payload_model=LedgerConfirmRequest,
+    response_model=LedgerResponse,
+    handler=_confirm_ledger,
+    target_fields=("plan_id",),
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
+LEDGER_CONSOLIDATE = Command(
+    name="ledger.consolidate",
+    payload_model=ConsolidateRequest,
+    response_model=ConsolidationResponse,
+    handler=_consolidate,
+    target_fields=("plan_id",),
+    status=201,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+LEDGER_REVERSE_CONSOLIDATION = Command(
+    name="ledger.reverse_consolidation",
+    payload_model=EmptyPayload,
+    response_model=ConsolidationResponse,
+    handler=_reverse_consolidation,
+    target_fields=("plan_id", "consolidation_id"),
+    versioned=True,
+    etag=version_of,
+    feature=FINANCE_FEATURE,
+    rate_limit=FINANCE_WRITES_PER_PLAN,
+    rate_limit_target="plan_id",
+)
+
+PLAN_CHANGE_BASE_CURRENCY = Command(
+    name="plan.change_base_currency",
+    payload_model=BaseCurrencyRequest,
+    response_model=PlanResponse,
+    handler=_change_base_currency,
+    target_fields=("plan_id",),
+    versioned=True,
+    etag=version_of,
     feature=FINANCE_FEATURE,
     rate_limit=FINANCE_WRITES_PER_PLAN,
     rate_limit_target="plan_id",
@@ -433,5 +609,11 @@ COMMANDS: list[Command[Any, Any]] = [
     FUND_UPDATE,
     FUND_CONTRIBUTE,
     FUND_WITHDRAW,
+    FUND_COUNT,
     LEDGER_ADJUST,
+    LEDGER_CONFIGURE,
+    LEDGER_CONFIRM,
+    LEDGER_CONSOLIDATE,
+    LEDGER_REVERSE_CONSOLIDATION,
+    PLAN_CHANGE_BASE_CURRENCY,
 ]

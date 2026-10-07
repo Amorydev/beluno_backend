@@ -58,7 +58,6 @@ async def _update(ctx: CommandContext, call: CommandCall, body: PlanUpdateReques
         title=body.title,
         activity=body.activity if "activity" in fields else service.UNSET,
         timing=timing_input(body.timing) if body.timing else None,
-        base_currency=body.base_currency,
         destinations=(
             tuple(item.model_dump(mode="json") for item in body.destinations)
             if body.destinations is not None

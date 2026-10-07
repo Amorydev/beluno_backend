@@ -29,10 +29,11 @@ from beluno.db.ids import new_id
 from beluno.db.models.finance import CostCommitment, Expense, FxSnapshot
 from beluno.db.models.plans import Plan
 from beluno.modules.context import CommandContext
+from beluno.modules.finance.base_currency import base_currency_at
 from beluno.modules.finance.fx import RateSource, convert, parse_rate
 from beluno.modules.finance.ledger import Ledger, ledger_for, open_ledger
 from beluno.modules.finance.money import check_amount
-from beluno.modules.finance.rates import RateInput, record_rate
+from beluno.modules.finance.rates import RateInput, record_rate, require_current_base
 from beluno.modules.finance.states import (
     COMMITMENT_TRANSITIONS,
     LINKABLE_COMMITMENT_STATES,
@@ -82,7 +83,9 @@ async def commitment_view(ctx: CommandContext, commitment: CostCommitment) -> Co
     )
     plan = await ctx.session.get(Plan, commitment.plan_id)
     assert plan is not None
-    return CommitmentView(commitment=commitment, rate=rate, base_currency=plan.base_currency)
+    # The base amount is in the base currency of the time it was valued.
+    base = await base_currency_at(ctx, plan.id, commitment.base_change_number, plan.base_currency)
+    return CommitmentView(commitment=commitment, rate=rate, base_currency=base)
 
 
 # --- manual commitments (REST) --------------------------------------------------------
@@ -92,6 +95,7 @@ async def create_manual(
     ctx: CommandContext, plan_id: UUID, commitment_id: UUID | None, draft: CommitmentDraft
 ) -> CommitmentView:
     ledger = await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    ledger.require_trip()
     if draft.state not in LINKABLE_COMMITMENT_STATES:
         raise validation_error("a new commitment is estimated or committed")
     identity = commitment_id or new_id()
@@ -107,6 +111,7 @@ async def update_manual(
     expected_version: int,
 ) -> CommitmentView:
     ledger = await open_ledger(ctx, plan_id, PlanAction.MANAGE_BUDGETS)
+    ledger.require_trip()
     commitment = await _locked(ctx, plan_id, commitment_id)
     if commitment.source_type != MANUAL:
         raise forbidden("Change this cost where it was planned")
@@ -150,6 +155,7 @@ class CostCommitmentPort:
         if draft.state not in LINKABLE_COMMITMENT_STATES:
             raise ValueError("ports record estimated or committed costs; use cancel()")
         ledger = await ledger_for(ctx, access)
+        ledger.require_trip()
         existing = await _by_source(ctx, access.plan.id, source_type, source_id, commitment_kind)
         if existing is None:
             return await _create(ledger, source_type, source_id, commitment_kind, draft)
@@ -257,6 +263,8 @@ async def _apply(ledger: Ledger, commitment: CostCommitment, draft: CommitmentDr
     check_amount(draft.amount_minor, field="amount_minor")
     currency = await ledger.currency(draft.currency)
     base_currency = ledger.access.plan.base_currency
+    if draft.base_rate is not None:
+        require_current_base(draft.base_rate, base_currency)
     snapshot_id: UUID | None = None
     base_amount: int | None = None
     if draft.currency == base_currency:
@@ -287,6 +295,7 @@ async def _apply(ledger: Ledger, commitment: CostCommitment, draft: CommitmentDr
     commitment.amount_minor = draft.amount_minor
     commitment.base_fx_snapshot_id = snapshot_id
     commitment.base_amount_minor = base_amount
+    commitment.base_change_number = ledger.head.base_change_count
 
 
 async def _bump(ledger: Ledger, commitment: CostCommitment, action: str) -> None:

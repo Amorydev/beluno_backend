@@ -118,7 +118,7 @@ async def test_overview_converts_labels_and_never_adds_unconverted_spend(
     transport.update(
         category="transport",
         occurred_on="2026-10-07",
-        base_rate={"rate": "0.0067", "source": "estimated"},
+        base_rate={"rate": "0.0067", "source": "estimated", "base_currency": "USD"},
     )
     await add_expense(api, trip.owner, trip, transport)
     await add_expense(api, trip.owner, trip, equal_expense(2500, ann, [ann], currency="KWD"))

@@ -17,17 +17,20 @@ A scope is one independent change stream with its own cursor:
 | Scope | Entities (`entity_type`) | Who may read it |
 |---|---|---|
 | `user:{id}` | `user`, `session`, `plan_access`, `crew` | the user (`self`) |
-| `plan:{id}` | `plan`, `plan_participant`, `plan_invite` (managers); finance: `ledger`, `expense`, `settlement`, `budget`, `cost_commitment`, `fund`, `fund_movement` | active participants (`manager` = owner/admin, `member` = everyone else); pending participants and invites are shown to managers only |
+| `plan:{id}` | `plan`, `plan_participant`, `plan_invite` (managers); finance: `ledger`, `expense`, `settlement`, `budget`, `cost_commitment`, `fund`, `fund_movement`, `fund_count`, `consolidation` | active participants (`manager` = owner/admin, `member` = everyone else); pending participants and invites are shown to managers only |
 
 Entity payloads are the REST representations with one exception: the `plan`
 entity has no `my_participant` (use the caller's `plan_participant` row).
 Entities never embed other entities. Invites carry no token. Finance values
 that are not independent entities travel inside their owner: an `expense`
 carries its current immutable revision (payers, split input, resolved shares,
-base-currency snapshot) and its refunds; the single `ledger` entity per plan
-(`entity_id` = plan id) carries the ledger status, sequence, open dispute
-count, and every account balance per currency. Revision history and the
-journal are REST-only (`/expenses/{id}/revisions`, `/ledger/transactions`). `plan_access`
+base-currency snapshot and the base-change number it was valued at, occurred
+time and zone, revision origin) and its refunds; the single `ledger` entity per
+plan (`entity_id` = plan id) carries the ledger status, sequence, open dispute
+count, money settings, every account balance per currency, the confirmations
+at the current sequence, and every base-currency change (the chain clients read
+base values through). A `consolidation` carries its frozen rates and lines.
+Revision history and the journal are REST-only (`/expenses/{id}/revisions`, `/ledger/transactions`). `plan_access`
 is a user-scope signal (`PlanAccessSignal`) describing the caller's own
 participation; a non-active state means the matching scope is no longer theirs
 unless the directory still lists it.

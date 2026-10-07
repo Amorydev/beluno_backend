@@ -44,9 +44,28 @@ class LedgerHead(Base):
     ledger_seq: Mapped[int] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(Text)
     disputed_settlements: Mapped[int]
+    # Money settings: whether budgets count personal spend, and the base-currency
+    # balance below which a person counts as settled.
+    count_personal_spend: Mapped[bool]
+    settle_tolerance_minor: Mapped[int] = mapped_column(BigInteger)
+    # How many times the plan's base currency changed while it had finance data.
+    base_change_count: Mapped[int]
     version: Mapped[int]
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
+
+
+class LedgerConfirmation(Base):
+    """A participant said the ledger looked right at one sequence (append-only)."""
+
+    __tablename__ = "ledger_confirmations"
+    __table_args__ = SCHEMA
+
+    plan_id: Mapped[UUID] = mapped_column(primary_key=True)
+    participant_id: Mapped[UUID] = mapped_column(primary_key=True)
+    ledger_seq: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    confirmed_by_user_id: Mapped[UUID]
+    confirmed_at: Mapped[datetime]
 
 
 class LedgerAccount(Base):
@@ -108,6 +127,8 @@ class CostCommitment(Base):
     amount_minor: Mapped[int] = mapped_column(BigInteger)
     base_amount_minor: Mapped[int | None] = mapped_column(BigInteger)
     base_fx_snapshot_id: Mapped[UUID | None]
+    # The base-currency change count its base amount was valued at.
+    base_change_number: Mapped[int]
     expense_id: Mapped[UUID | None]
     created_by_user_id: Mapped[UUID]
     version: Mapped[int]
@@ -145,6 +166,8 @@ class ExpenseRevision(Base):
     description: Mapped[str] = mapped_column(Text)
     category: Mapped[str] = mapped_column(Text)
     occurred_on: Mapped[date]
+    occurred_at: Mapped[datetime | None]
+    occurred_timezone: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     split_method: Mapped[str] = mapped_column(Text)
     split_algorithm: Mapped[str] = mapped_column(Text)
@@ -152,7 +175,11 @@ class ExpenseRevision(Base):
     base_currency: Mapped[str] = mapped_column(CHAR(3))
     base_amount_minor: Mapped[int | None] = mapped_column(BigInteger)
     base_fx_snapshot_id: Mapped[UUID | None]
+    base_change_number: Mapped[int]
     commitment_id: Mapped[UUID | None]
+    source: Mapped[str] = mapped_column(Text)
+    client_created_at: Mapped[datetime | None]
+    device_label: Mapped[str | None] = mapped_column(Text)
     created_by_user_id: Mapped[UUID]
     created_at: Mapped[datetime]
 
@@ -243,9 +270,28 @@ class FundSettings(Base):
     plan_id: Mapped[UUID] = mapped_column(primary_key=True)
     custodian_participant_id: Mapped[UUID | None]
     note: Mapped[str | None] = mapped_column(Text)
+    # What each member is asked to put in ("¥5,000 of ¥10,000").
+    target_currency: Mapped[str | None] = mapped_column(CHAR(3))
+    target_minor: Mapped[int | None] = mapped_column(BigInteger)
     version: Mapped[int]
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
+
+
+class FundCount(Base):
+    """Cash counted in the kitty against what the ledger expected; posts nothing."""
+
+    __tablename__ = "fund_counts"
+    __table_args__ = SCHEMA
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    plan_id: Mapped[UUID]
+    currency: Mapped[str] = mapped_column(CHAR(3))
+    counted_minor: Mapped[int] = mapped_column(BigInteger)
+    expected_minor: Mapped[int] = mapped_column(BigInteger)
+    note: Mapped[str | None] = mapped_column(Text)
+    counted_by_user_id: Mapped[UUID]
+    created_at: Mapped[datetime]
 
 
 class FundMovement(Base):
@@ -278,6 +324,7 @@ class LedgerTransaction(Base):
     refund_id: Mapped[UUID | None]
     settlement_id: Mapped[UUID | None]
     fund_movement_id: Mapped[UUID | None]
+    consolidation_id: Mapped[UUID | None]
     reverses_transaction_id: Mapped[UUID | None]
     memo: Mapped[str | None] = mapped_column(Text)
     created_by_user_id: Mapped[UUID | None]
@@ -312,3 +359,75 @@ class Budget(Base):
     created_at: Mapped[datetime]
     updated_at: Mapped[datetime]
     deleted_at: Mapped[datetime | None]
+
+
+class MarketRate(Base):
+    """A market rate a provider published (reference data, no tenant, append-only)."""
+
+    __tablename__ = "market_rates"
+    __table_args__ = SCHEMA
+
+    base_currency: Mapped[str] = mapped_column(CHAR(3), primary_key=True)
+    quote_currency: Mapped[str] = mapped_column(CHAR(3), primary_key=True)
+    as_of: Mapped[datetime] = mapped_column(primary_key=True)
+    rate: Mapped[Decimal] = mapped_column(Numeric(28, 12))
+    source: Mapped[str] = mapped_column(Text)
+    fetched_at: Mapped[datetime]
+
+
+class Consolidation(Base):
+    """Every foreign-currency balance converted into the base currency at frozen rates."""
+
+    __tablename__ = "consolidations"
+    __table_args__ = SCHEMA
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    plan_id: Mapped[UUID]
+    base_currency: Mapped[str] = mapped_column(CHAR(3))
+    state: Mapped[str] = mapped_column(Text)
+    created_by_user_id: Mapped[UUID]
+    created_at: Mapped[datetime]
+    reversed_by_user_id: Mapped[UUID | None]
+    reversed_at: Mapped[datetime | None]
+    version: Mapped[int]
+    updated_at: Mapped[datetime]
+
+
+class ConsolidationRate(Base):
+    __tablename__ = "consolidation_rates"
+    __table_args__ = SCHEMA
+
+    consolidation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    currency: Mapped[str] = mapped_column(CHAR(3), primary_key=True)
+    plan_id: Mapped[UUID]
+    fx_snapshot_id: Mapped[UUID]
+
+
+class ConsolidationLine(Base):
+    """One participant's balance in one currency and the base amount it became."""
+
+    __tablename__ = "consolidation_lines"
+    __table_args__ = SCHEMA
+
+    consolidation_id: Mapped[UUID] = mapped_column(primary_key=True)
+    currency: Mapped[str] = mapped_column(CHAR(3), primary_key=True)
+    participant_id: Mapped[UUID] = mapped_column(primary_key=True)
+    plan_id: Mapped[UUID]
+    amount_minor: Mapped[int] = mapped_column(BigInteger)
+    base_amount_minor: Mapped[int] = mapped_column(BigInteger)
+
+
+class BaseCurrencyChange(Base):
+    """The plan's base currency moved at a frozen rate (append-only, numbered from 1)."""
+
+    __tablename__ = "base_currency_changes"
+    __table_args__ = SCHEMA
+
+    plan_id: Mapped[UUID] = mapped_column(primary_key=True)
+    change_number: Mapped[int] = mapped_column(primary_key=True)
+    from_currency: Mapped[str] = mapped_column(CHAR(3))
+    to_currency: Mapped[str] = mapped_column(CHAR(3))
+    fx_snapshot_id: Mapped[UUID]
+    ledger_seq: Mapped[int] = mapped_column(BigInteger)
+    created_by_user_id: Mapped[UUID]
+    created_at: Mapped[datetime]

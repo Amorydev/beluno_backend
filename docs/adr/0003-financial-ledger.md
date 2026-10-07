@@ -79,4 +79,51 @@ than overwriting history. Projections are rebuildable caches.
 - Corrections are new entries; history explains every balance exactly.
 - One plan's finance writes serialize on its ledger head; measure before
   sharding a hot plan.
-- A plan's base currency is fixed once it has financial records.
+- A plan's base currency can change at a frozen rate (see Update 2026-10-06).
+
+## Update (2026-10-06): money alignment
+
+- **Hangouts** keep expenses, refunds, settlements, and waivers; budgets, cost
+  commitments, and every fund path are for trips (`409 NOT_AVAILABLE_FOR_HANGOUT`).
+- **Revisions** may carry `occurred_at` and an IANA `occurred_timezone`
+  (`occurred_on` is the local date there), and record their `source` (`http` or
+  `sync`), the device's `client_created_at`, and the session's `device_label`.
+  Split method `adjustment` gives signed per-person adjustments in minor units
+  and shares the rest equally with `lr-v1` (a negative rest is shared the same
+  way, negated); a split that leaves anyone owing below zero is rejected. A
+  revision whose only payer is its only sharer is reported as `personal`.
+- **Settings** on the ledger head: `count_personal_spend` (budget view) and
+  `settle_tolerance_minor`. Base-currency balances within the tolerance count
+  as settled for the status and stay out of suggested transfers; when that
+  would leave someone outside it unmatched, the exact transfers are suggested,
+  so the preview is empty exactly when everyone is settled. Postings stay
+  exact. Participants confirm the ledger at its current sequence
+  (`ledger_confirmations`); any new entry makes confirmations stale.
+- **Kitty**: an optional per-member target, and cash counts against what the
+  ledger expects; counts post nothing.
+- **Market rates** are reference data for offline estimates; no entry reads them.
+- **Consolidation** freezes one rate per foreign currency with open balances
+  (the kitty must be empty in it) and appends one `conversion` that moves every
+  such balance into the base currency, allocated with the largest-remainder rule
+  on each side so it stays zero-sum per currency. Immutable lines record each
+  person's move and the database checks the entry posts exactly them, again
+  whenever a rate or line is added, and that a consolidation is `reversed`
+  exactly when its `conversion_reversal` exists. The latest consolidation can
+  be undone by an exact `conversion_reversal` until a payment or waiver still in
+  effect is recorded after it; it is finished once the ledger is settled.
+- **Base currency** changes at a frozen old-to-new rate recorded as a numbered,
+  immutable change. Revisions and commitments keep the change number they were
+  valued at; base values read through every later change, and amounts already in
+  today's base count as they are. Budget limits and the settle tolerance are
+  re-denominated (capped at the largest supported amount); postings and
+  original amounts never change. A change waits while a consolidation is active
+  and the ledger is not settled (`409 CONSOLIDATION_OPEN`). With finance data,
+  the database lets the plan's base currency move only along its latest
+  recorded change, and the change count never goes back.
+- **Rates name their base.** `base_rate` on expenses and commitments and every
+  consolidation request carry the `base_currency` the rate converts into; once
+  the plan has moved on they are refused (`409 BASE_CURRENCY_CHANGED`), so an
+  offline device can never post a rate made for an older base.
+- **Contract changes** the OpenAPI checker cannot see: `base_rate` and the
+  consolidation request require `base_currency`; responses gain the transaction
+  kind `conversion_reversal` and the split method `adjustment`.

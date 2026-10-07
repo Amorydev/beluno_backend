@@ -68,7 +68,7 @@ async def test_ninety_day_offline_device_catches_up_and_older_cursors_resync(
     plan = (
         await api.post(
             "/v1/plans",
-            json={"type": "hangout", "title": "v1", "base_currency": "USD"},
+            json={"type": "trip", "title": "v1", "base_currency": "USD"},
             headers=owner.headers,
         )
     ).json()

@@ -1,9 +1,10 @@
 """Model-based ledger check: random finance histories against a reference model.
 
 Hypothesis drives sequences of expenses, revisions, voids, refunds, settlements,
-reversals, fund flows, fund-paid expenses, and a placeholder merge through the
-public API. A small reference model applies the same accepted commands to the
-pure money kernel. After every history the server's balances must equal the
+reversals, fund flows, fund-paid expenses, a placeholder merge, and settling
+everything in the base currency (and undoing it) through the public API. A
+small reference model applies the same accepted commands to the pure money
+kernel. After every history the server's balances must equal the
 model's, every currency must sum to zero, merged participants must hold nothing,
 the fund must never be overdrawn, and the reconciler must find no drift.
 Examples are derandomized, so a failure reproduces from the printed example.
@@ -14,6 +15,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, field
+from decimal import Decimal
 from uuid import UUID
 
 import httpx
@@ -24,9 +26,11 @@ from hypothesis import strategies as st
 from beluno.api.main import create_app
 from beluno.config import Settings
 from beluno.db.session import Database
+from beluno.modules.finance.fx import convert
 from beluno.modules.finance.postings import (
     FUND,
     Party,
+    consolidation_amounts,
     expense_postings,
     refund_allocation,
     refund_postings,
@@ -41,7 +45,10 @@ pytestmark = pytest.mark.integration
 
 PEOPLE = ("Ann", "Bea", "Cam", "Dee")
 CURRENCIES = ("USD", "JPY")
+# USD cents for one yen, frozen when everything is settled in USD.
+JPY_RATE = "0.0067"
 EXPECTED_REFUSALS = {
+    "CONSOLIDATION_SETTLED",
     "FUND_INSUFFICIENT",
     "REFUND_EXCEEDS_AMOUNT",
     "INVALID_STATE_TRANSITION",
@@ -64,6 +71,8 @@ steps = st.lists(
                 "contribute",
                 "withdraw",
                 "merge",
+                "consolidate",
+                "unconsolidate",
             )
         ),
         st.integers(0, 3),
@@ -103,12 +112,21 @@ class ModelSettlement:
     live: bool = True
 
 
+@dataclass
+class ModelConversion:
+    id: str
+    version: int
+    postings: dict[str, dict[Party, int]]
+    live: bool = True
+
+
 class Model:
     def __init__(self, trip: FinancePlan) -> None:
         self.trip = trip
         self.expenses: list[ModelExpense] = []
         self.settlements: list[ModelSettlement] = []
         self.flows: list[tuple[str, str, int, str]] = []
+        self.conversions: list[ModelConversion] = []
         self.merged: dict[str, str] = {}
 
     def person(self, index: int) -> str:
@@ -157,7 +175,31 @@ class Model:
                 if kind == "contribution"
                 else transfer_postings(FUND, party, amount),
             )
+        for conversion in self.conversions:
+            if conversion.live:
+                for currency, postings in conversion.postings.items():
+                    add(currency, postings)
         return {key: value for key, value in totals.items() if value != 0}
+
+    def consolidation(self) -> dict[str, dict[Party, int]]:
+        """The conversion settling every yen balance in USD, as the server must post it."""
+
+        yen = {
+            UUID(pid): value
+            for (pid, currency), value in self.balances().items()
+            if currency == "JPY" and pid is not None
+        }
+        total = convert(
+            sum(value for value in yen.values() if value > 0),
+            from_exponent=0,
+            to_exponent=2,
+            rate=Decimal(JPY_RATE),
+        )
+        dollars = consolidation_amounts(yen, total)
+        return {
+            "JPY": {Party(pid): -value for pid, value in yen.items()},
+            "USD": {Party(pid): value for pid, value in dollars.items()},
+        }
 
 
 class Driver:
@@ -298,6 +340,33 @@ class Driver:
                 kind = "contribution" if action == "contribute" else "withdrawal"
                 model.flows.append((kind, person, amount, currency))
             return
+        if action == "consolidate":
+            # The kitty pays out its yen first, then everything is settled in USD.
+            held = -model.balances().get((None, "JPY"), 0)
+            if held > 0:
+                await self.run(("withdraw", who, count, held, CURRENCIES.index("JPY")))
+            expected = model.consolidation()
+            response = await self.api.post(
+                self.trip.path("/ledger/consolidations"),
+                json={"base_currency": "USD", "rates": [{"currency": "JPY", "rate": JPY_RATE}]},
+                headers=self.owner.headers,
+            )
+            if self.accepted(response):
+                data = response.json()
+                model.conversions.append(ModelConversion(data["id"], data["version"], expected))
+            return
+        if action == "unconsolidate":
+            live_conversions = [c for c in model.conversions if c.live]
+            if not live_conversions:
+                return
+            conversion = live_conversions[-1]
+            response = await self.api.post(
+                self.trip.path(f"/ledger/consolidations/{conversion.id}/reverse"),
+                headers=if_match(conversion.version, self.owner),
+            )
+            if self.accepted(response):
+                conversion.live = False
+            return
         # merge: Bea claims the "Dee" placeholder once, merging it into her row.
         dee, bea = self.trip.people["Dee"], self.trip.people["Bea"]
         if dee in model.merged:
@@ -321,7 +390,7 @@ async def run_example(
     identity_provider: IdentityProviderStub,
     admin: AdminDatabase,
     script: list[Step],
-) -> None:
+) -> Model:
     admin.truncate_all()
     database = Database(live_settings)
     app = create_app(
@@ -369,6 +438,7 @@ async def run_example(
         plan_id,
     )
     assert holding_merged == 0
+    return model
 
 
 @given(script=steps)
@@ -403,5 +473,13 @@ def test_handwritten_history_with_merge_refunds_and_fund(
         ("reverse", 0, 0, 1, 0),
         ("withdraw", 0, 0, 500, 0),
         ("refund", 0, 0, 100, 1),
+        ("consolidate", 1, 0, 1, 0),
+        ("expense", 2, 1, 333, 1),
+        ("unconsolidate", 0, 0, 1, 0),
+        ("consolidate", 2, 0, 1, 0),
+        ("settle", 1, 1, 90, 0),
+        ("unconsolidate", 0, 0, 1, 0),
     ]
-    asyncio.run(run_example(live_settings, identity_provider, admin, script))
+    model = asyncio.run(run_example(live_settings, identity_provider, admin, script))
+    # The first consolidation was undone; the second stays because of the later payment.
+    assert [conversion.live for conversion in model.conversions] == [False, True]

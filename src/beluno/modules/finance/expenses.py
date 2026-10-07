@@ -10,8 +10,8 @@ each one bumps the expense version and appends a ``refund`` transaction.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -29,14 +29,15 @@ from beluno.db.models.finance import (
     ExpenseRefund,
     ExpenseRevision,
     ExpenseSplit,
-    FundSettings,
     FxSnapshot,
     LedgerTransaction,
     RefundShare,
 )
+from beluno.db.models.iam import AuthSession
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.commitments import link_expense, release_expense
 from beluno.modules.finance.errors import refund_exceeds_amount, split_invalid
+from beluno.modules.finance.funds import require_custodian_or_manager
 from beluno.modules.finance.fx import convert, parse_rate
 from beluno.modules.finance.ledger import Ledger, open_ledger
 from beluno.modules.finance.money import check_amount
@@ -46,7 +47,7 @@ from beluno.modules.finance.postings import (
     refund_allocation,
     refund_postings,
 )
-from beluno.modules.finance.rates import RateInput, record_rate
+from beluno.modules.finance.rates import RateInput, record_rate, require_current_base
 from beluno.modules.finance.splits import (
     SPLIT_ALGORITHM,
     Payer,
@@ -59,6 +60,16 @@ from beluno.modules.iam.users import is_actor_account
 from beluno.modules.sync_audit.recorder import ChangeScope, record_mutation
 
 EXPENSE_ENTITY = "expense"
+HTTP = "http"
+SYNC = "sync"
+
+
+@dataclass(frozen=True)
+class RevisionOrigin:
+    """Where a revision came from, for readable history ("synced from Minh's phone")."""
+
+    source: str = HTTP
+    client_created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +86,10 @@ class ExpenseDraft:
     base_rate: RateInput | None = None
     # The cost commitment this expense now accounts for (converted atomically).
     commitment_id: UUID | None = None
+    # The instant and zone it happened in; ``occurred_on`` is its local date there.
+    occurred_at: datetime | None = None
+    occurred_timezone: str | None = None
+    origin: RevisionOrigin = field(default_factory=RevisionOrigin)
 
 
 @dataclass(frozen=True)
@@ -502,6 +517,8 @@ async def _append_revision(
         ledger.participant(share.participant_id, keep=kept)
     base_currency = ledger.access.plan.base_currency
     base_amount, snapshot = await _base_amount(ledger, draft, currency.exponent, base_currency)
+    actor = ctx.require_actor()
+    session = await ctx.session.get(AuthSession, actor.session_id)
     revision = ExpenseRevision(
         id=revision_id,
         plan_id=expense.plan_id,
@@ -512,6 +529,8 @@ async def _append_revision(
         description=draft.description,
         category=draft.category,
         occurred_on=draft.occurred_on,
+        occurred_at=draft.occurred_at,
+        occurred_timezone=draft.occurred_timezone,
         notes=draft.notes,
         split_method=draft.split.method.value,
         split_algorithm=SPLIT_ALGORITHM,
@@ -519,8 +538,12 @@ async def _append_revision(
         base_currency=base_currency,
         base_amount_minor=base_amount,
         base_fx_snapshot_id=snapshot.id if snapshot else None,
+        base_change_number=ledger.head.base_change_count,
         commitment_id=draft.commitment_id,
-        created_by_user_id=ctx.require_actor().user_id,
+        source=draft.origin.source,
+        client_created_at=draft.origin.client_created_at,
+        device_label=session.device_label if session else None,
+        created_by_user_id=actor.user_id,
         created_at=ctx.now,
     )
     ctx.session.add(revision)
@@ -557,13 +580,10 @@ async def _append_revision(
 async def _require_fund_spender(ledger: Ledger) -> None:
     """Spending pooled money is a fund manager's or the custodian's call, like a withdrawal."""
 
-    if decide_plan(PlanAction.MANAGE_FUND, ledger.access.subject) is Decision.ALLOW:
-        return
-    settings = await ledger.ctx.session.get(FundSettings, ledger.plan_id)
-    own = ledger.access.participant
-    if settings is not None and own is not None and settings.custodian_participant_id == own.id:
-        return
-    raise forbidden("Only the fund's custodian or a plan manager can pay from the fund")
+    ledger.require_trip()
+    await require_custodian_or_manager(
+        ledger, "Only the fund's custodian or a plan manager can pay from the fund"
+    )
 
 
 async def _base_amount(
@@ -571,6 +591,8 @@ async def _base_amount(
 ) -> tuple[int | None, FxSnapshot | None]:
     """The labelled base-currency value: identity, a stored snapshot, or unknown."""
 
+    if draft.base_rate is not None:
+        require_current_base(draft.base_rate, base_currency)
     if draft.currency == base_currency:
         return draft.amount_minor, None
     if draft.base_rate is None:

@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Money alignment"
-status: pending
+status: completed
 priority: P1
 effort: "~2 weeks"
 dependencies: [1]
@@ -60,7 +60,7 @@ Budgets, cost commitments, and the fund are trip-only. Their commands return `40
 
 ### 7. Settle everything in the base currency ("All in VND")
 
-- Command `ledger.consolidate` (managers, or `budgets.manage`) freezes one rate per foreign currency (from the feed or entered manually). It then appends one `conversion` entry per foreign currency, moving every participant balance in that currency into the base currency at the frozen rate.
+- Command `ledger.consolidate` (owner or admin) freezes one rate per foreign currency (from the feed or entered manually). It then appends one `conversion` entry per foreign currency, moving every participant balance in that currency into the base currency at the frozen rate.
 - Base-side amounts use largest remainder so each entry stays zero-sum in both currencies.
 - Source rows: `finance.consolidations` and `finance.consolidation_rates` (immutable), referenced by the transactions. The database verifies zero-sum per currency; reconciliation re-derives the converted amounts.
 - Requires zero fund availability in each converted currency (`409 FUND_NOT_EMPTY`), so the kitty pays out first.
@@ -94,6 +94,12 @@ Budgets, cost commitments, and the fund are trip-only. Their commands return `40
 ### Settings placement
 
 `count_personal_spend` and `settle_tolerance_minor` live on the finance side (ledger head columns via `ledger.configure`) so finance keeps owning money rules. The trip settings screen reads them from the `ledger` entity.
+
+## Execution Decisions (user, 2026-10-06)
+
+- **FX provider:** none yet. Build the table, endpoint, daily job, and `RateProvider` port with a no-op adapter; the endpoint returns an empty list until a provider is chosen. Manual rates always work.
+- **Who may consolidate:** owner and admin only (`ledger.consolidate`, `ledger.reverse_consolidation`). The `budgets.manage` capability does not grant it: consolidation changes everyone's balances, not the budget.
+- **Branch:** `feat/money-alignment`, cut from the realignment branch (PR #5 merges on its own).
 
 ## Architecture notes
 
@@ -140,12 +146,12 @@ Budgets, cost commitments, and the fund are trip-only. Their commands return `40
 
 ## Success Criteria
 
-- [ ] Every money screen in release 1 renders from API or sync data without client-side ledger math beyond display, rate estimates, and revision diffs.
-- [ ] Consolidation keeps every transaction zero-sum per currency. Reversal restores balances exactly. The reference model converges with consolidation steps.
-- [ ] A base currency change leaves every original amount and posting unchanged, and budget totals equal a recomputation from originals through the chain.
-- [ ] Hangouts reject budget, commitment, and fund commands; trips are unaffected.
-- [ ] Ledger confirmations go stale on the next entry. Tolerance never alters postings.
-- [ ] Full gates green on real PostgreSQL.
+- [x] Every money screen in release 1 renders from API or sync data without client-side ledger math beyond display, rate estimates, and revision diffs.
+- [x] Consolidation keeps every transaction zero-sum per currency. Reversal restores balances exactly. The reference model converges with consolidation steps.
+- [x] A base currency change leaves every original amount and posting unchanged, and budget totals equal a recomputation from originals through the chain.
+- [x] Hangouts reject budget, commitment, and fund commands; trips are unaffected.
+- [x] Ledger confirmations go stale on the next entry. Tolerance never alters postings.
+- [x] Full gates green on real PostgreSQL.
 
 ## Risk Assessment
 
@@ -155,3 +161,31 @@ Budgets, cost commitments, and the fund are trip-only. Their commands return `40
 | Base change chain drifts from recomputation | Single helper with golden tests; reconciliation compares the budget view against recomputation. |
 | Rate provider unavailable | Feed is optional; manual and client-estimated rates always work. |
 | Scope creep into payments | No provider, bank, or wallet integration; DESIGN.md forbids in-app payments. |
+
+## Completion Notes (2026-10-06)
+
+Built on `feat/money-alignment` in nine commits (hangout guards, expense details, money settings and confirmations, kitty, market rates, consolidation, base currency change, docs, review fixes). Gates: 505 passed, 0 skipped, coverage 95 %, ruff/format/mypy clean, OpenAPI exported and compatible with the realignment branch and `main`. Migration `000008_money_alignment` is tested on a database that already holds finance rows.
+
+Deviations, decided during implementation:
+
+- One `conversion` transaction per consolidation, covering every converted currency (zero-sum in each), instead of one per currency.
+- Consolidation and base currency change are owner/admin only. For the base change the plan named `budgets.manage`; the plan row's write guard limits plan updates to managers, and the change re-denominates everyone's budgets.
+- Cost commitments are read through the change chain (they keep the change number they were valued at) instead of being re-denominated; budget limits and the settle tolerance are re-denominated (capped at 10^12).
+- `plan.update` no longer accepts `base_currency`; `POST /v1/plans/{id}/base-currency` is the one path (no rate needed without finance data).
+- Rates name their base currency (`base_rate.base_currency`, consolidation `base_currency`) and are refused with `409 BASE_CURRENCY_CHANGED` once the plan moved on (added after review: an offline rate would otherwise be read in the new base).
+- Settle tolerance in the preview: people within it are left out, but when that strands someone outside it the exact transfers are suggested, so the preview is empty exactly when the ledger counts as settled.
+- `ledger.confirm` takes the exact current `ledger_seq` (`409 LEDGER_CHANGED` otherwise) and never creates a ledger.
+- `GET /v1/fx/rates` returns rates stored for the requested base only (no cross rates) until a provider is chosen.
+- Reconciliation does not re-derive consolidation amounts or recompute budgets: the database verifies each conversion against its immutable lines on every insert, and the budget view is computed from originals on every read (nothing stored to drift).
+
+Accepted, documented:
+
+- A budget view read while a base change commits may mix old and new base values once; the next read is consistent.
+- Changing the base after the ledger was settled under the tolerance can reopen it: leftover balances in the old base are now a foreign currency and settle exactly.
+- An active consolidation counts as finished once the ledger is settled.
+
+Reports: `reports/code-reviewer-261006-money-alignment-review-report.md`, `reports/tester-261006-money-alignment-gates-report.md`, `reports/docs-manager-261006-money-alignment-docs-report.md`.
+
+Open:
+
+- FX provider for market estimates (ECB lacks VND).

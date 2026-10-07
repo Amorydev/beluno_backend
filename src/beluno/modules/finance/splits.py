@@ -9,6 +9,12 @@ Every method reduces to integer weights and the largest-remainder rule:
 
 Inputs are integers (weights, basis points, exact minor units), so the result
 is the same on every server and client that implements the same version.
+
+``adjustment`` gives each listed party a signed adjustment in minor units and
+shares what is left equally: ``owed = adjustment + lr-v1 share of (amount -
+sum of adjustments)``. When the adjustments exceed the amount, the negative
+rest is shared the same way (its largest-remainder units go to the same
+parties, negated). No party may end up owing less than zero.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from uuid import UUID
 from beluno.modules.finance.errors import split_invalid
 from beluno.modules.finance.money import (
     BASIS_POINTS_TOTAL,
+    MAX_AMOUNT_MINOR,
     MAX_EXTRAS,
     MAX_ITEMS,
     MAX_PAYERS,
@@ -38,6 +45,7 @@ class SplitMethod(StrEnum):
     PERCENTAGE = "percentage"
     SHARES = "shares"
     ITEMIZED = "itemized"
+    ADJUSTMENT = "adjustment"
 
 
 @dataclass(frozen=True)
@@ -45,7 +53,8 @@ class SplitEntry:
     """One party of a non-itemized split.
 
     ``value`` is ignored for ``equal``; it is the exact owed amount for ``exact``,
-    basis points for ``percentage``, and an integer weight for ``shares``.
+    basis points for ``percentage``, an integer weight for ``shares``, and a
+    signed adjustment in minor units for ``adjustment``.
     """
 
     participant_id: UUID
@@ -129,6 +138,8 @@ def resolve_split(amount_minor: int, spec: SplitSpec) -> list[Share]:
         if any(value <= 0 for value in points) or sum(points) != BASIS_POINTS_TOTAL:
             raise split_invalid("percentages must be positive and add up to exactly 100")
         owed = largest_remainder(amount_minor, points)
+    elif spec.method is SplitMethod.ADJUSTMENT:
+        owed = _adjusted(amount_minor, [entry.value for entry in entries])
     else:
         weights = [entry.value for entry in entries]
         if any(value <= 0 or value > MAX_WEIGHT for value in weights):
@@ -137,6 +148,18 @@ def resolve_split(amount_minor: int, spec: SplitSpec) -> list[Share]:
     return [
         Share(participant, value) for participant, value in zip(participants, owed, strict=True)
     ]
+
+
+def _adjusted(amount_minor: int, adjustments: list[int]) -> list[int]:
+    if any(abs(value) > MAX_AMOUNT_MINOR for value in adjustments):
+        raise split_invalid(f"adjustments must be at most {MAX_AMOUNT_MINOR} minor units")
+    rest = amount_minor - sum(adjustments)
+    equal = largest_remainder(abs(rest), [1] * len(adjustments))
+    sign = -1 if rest < 0 else 1
+    owed = [value + sign * part for value, part in zip(adjustments, equal, strict=True)]
+    if any(value < 0 for value in owed):
+        raise split_invalid("adjustments must not leave anyone owing less than nothing")
+    return owed
 
 
 def _itemized(amount_minor: int, spec: SplitSpec) -> list[Share]:

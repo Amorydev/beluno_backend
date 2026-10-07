@@ -64,6 +64,32 @@
         "title": "AdjustmentRequest",
         "type": "object"
       },
+      "AdjustmentSplit": {
+        "additionalProperties": false,
+        "description": "Equal shares after per-person adjustments; nobody may owe less than zero.",
+        "properties": {
+          "method": {
+            "const": "adjustment",
+            "title": "Method",
+            "type": "string"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/SplitAdjustment"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Shares",
+            "type": "array"
+          }
+        },
+        "required": [
+          "method",
+          "shares"
+        ],
+        "title": "AdjustmentSplit",
+        "type": "object"
+      },
       "BalanceExplanation": {
         "properties": {
           "currency": {
@@ -180,6 +206,132 @@
           "rate_as_of"
         ],
         "title": "BaseAmountResponse",
+        "type": "object"
+      },
+      "BaseCurrencyChangeResponse": {
+        "description": "Values recorded before ``number`` convert at ``rate`` (to_currency per from_currency).",
+        "properties": {
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "from_currency": {
+            "title": "From Currency",
+            "type": "string"
+          },
+          "ledger_seq": {
+            "title": "Ledger Seq",
+            "type": "integer"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "rate": {
+            "title": "Rate",
+            "type": "string"
+          },
+          "rate_as_of": {
+            "format": "date-time",
+            "title": "Rate As Of",
+            "type": "string"
+          },
+          "rate_source": {
+            "enum": [
+              "manual",
+              "estimated"
+            ],
+            "title": "Rate Source",
+            "type": "string"
+          },
+          "to_currency": {
+            "title": "To Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "from_currency",
+          "to_currency",
+          "rate",
+          "rate_source",
+          "rate_as_of",
+          "ledger_seq",
+          "changed_at"
+        ],
+        "title": "BaseCurrencyChangeResponse",
+        "type": "object"
+      },
+      "BaseCurrencyRequest": {
+        "additionalProperties": false,
+        "description": "Move the plan to another base currency; a rate is needed once it has money in it.",
+        "properties": {
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Units of the new base for one unit of the current base"
+          }
+        },
+        "required": [
+          "currency"
+        ],
+        "title": "BaseCurrencyRequest",
+        "type": "object"
+      },
+      "BaseRateRequest": {
+        "additionalProperties": false,
+        "description": "A rate to the plan's base currency, which the request names.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "base_currency": {
+            "description": "The base currency this rate converts into; 409 BASE_CURRENCY_CHANGED when the plan moved to another one since",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "rate": {
+            "pattern": "^\\d{1,10}(\\.\\d{1,12})?$",
+            "title": "Rate",
+            "type": "string"
+          },
+          "source": {
+            "default": "manual",
+            "enum": [
+              "manual",
+              "estimated"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rate",
+          "base_currency"
+        ],
+        "title": "BaseRateRequest",
         "type": "object"
       },
       "BudgetCreateRequest": {
@@ -652,7 +804,7 @@
           "base_rate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RateRequest"
+                "$ref": "#/components/schemas/BaseRateRequest"
               },
               {
                 "type": "null"
@@ -723,6 +875,10 @@
           },
           "base": {
             "$ref": "#/components/schemas/BaseAmountResponse"
+          },
+          "base_change_number": {
+            "title": "Base Change Number",
+            "type": "integer"
           },
           "category": {
             "enum": [
@@ -831,6 +987,7 @@
           "currency",
           "amount_minor",
           "base",
+          "base_change_number",
           "expense_id",
           "created_by_user_id",
           "version",
@@ -850,7 +1007,7 @@
           "base_rate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RateRequest"
+                "$ref": "#/components/schemas/BaseRateRequest"
               },
               {
                 "type": "null"
@@ -902,6 +1059,251 @@
           "state"
         ],
         "title": "CommitmentUpdateRequest",
+        "type": "object"
+      },
+      "ConsolidateRequest": {
+        "additionalProperties": false,
+        "description": "One rate for every foreign currency that still has open balances.",
+        "properties": {
+          "base_currency": {
+            "description": "The base currency the rates convert into; 409 BASE_CURRENCY_CHANGED when the plan moved to another one since",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "rates": {
+            "items": {
+              "$ref": "#/components/schemas/ConsolidationRateRequest"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Rates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base_currency",
+          "rates"
+        ],
+        "title": "ConsolidateRequest",
+        "type": "object"
+      },
+      "ConsolidationLineResponse": {
+        "properties": {
+          "amount_minor": {
+            "description": "The balance moved out of this currency",
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "base_amount_minor": {
+            "description": "What it became in the base currency",
+            "title": "Base Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "currency",
+          "amount_minor",
+          "base_amount_minor"
+        ],
+        "title": "ConsolidationLineResponse",
+        "type": "object"
+      },
+      "ConsolidationRateRequest": {
+        "additionalProperties": false,
+        "description": "Base-currency units for one unit of ``currency`` (major units), frozen for good.",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "rate": {
+            "pattern": "^\\d{1,10}(\\.\\d{1,12})?$",
+            "title": "Rate",
+            "type": "string"
+          },
+          "source": {
+            "default": "manual",
+            "enum": [
+              "manual",
+              "estimated"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "rate"
+        ],
+        "title": "ConsolidationRateRequest",
+        "type": "object"
+      },
+      "ConsolidationRateResponse": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "rate": {
+            "title": "Rate",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "manual",
+              "estimated"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "rate",
+          "source",
+          "as_of"
+        ],
+        "title": "ConsolidationRateResponse",
+        "type": "object"
+      },
+      "ConsolidationResponse": {
+        "properties": {
+          "base_currency": {
+            "title": "Base Currency",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by_user_id": {
+            "format": "uuid",
+            "title": "Created By User Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ConsolidationLineResponse"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "rates": {
+            "items": {
+              "$ref": "#/components/schemas/ConsolidationRateResponse"
+            },
+            "title": "Rates",
+            "type": "array"
+          },
+          "reversed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed At"
+          },
+          "reversed_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversed By User Id"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "reversed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "plan_id",
+          "base_currency",
+          "state",
+          "rates",
+          "lines",
+          "created_by_user_id",
+          "created_at",
+          "reversed_by_user_id",
+          "reversed_at",
+          "version",
+          "updated_at"
+        ],
+        "title": "ConsolidationResponse",
         "type": "object"
       },
       "CreatedInviteResponse": {
@@ -1573,7 +1975,7 @@
           "base_rate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RateRequest"
+                "$ref": "#/components/schemas/BaseRateRequest"
               },
               {
                 "type": "null"
@@ -1644,10 +2046,36 @@
             ],
             "title": "Notes"
           },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it happened; occurred_on must be its local date",
+            "title": "Occurred At"
+          },
           "occurred_on": {
             "format": "date",
             "title": "Occurred On",
             "type": "string"
+          },
+          "occurred_timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IANA zone of occurred_at (shown as 20:10 JST)",
+            "title": "Occurred Timezone"
           },
           "payers": {
             "items": {
@@ -1661,6 +2089,7 @@
           "split": {
             "discriminator": {
               "mapping": {
+                "adjustment": "#/components/schemas/AdjustmentSplit",
                 "equal": "#/components/schemas/EqualSplit",
                 "exact": "#/components/schemas/ExactSplit",
                 "itemized": "#/components/schemas/ItemizedSplit",
@@ -1684,6 +2113,9 @@
               },
               {
                 "$ref": "#/components/schemas/ItemizedSplit"
+              },
+              {
+                "$ref": "#/components/schemas/AdjustmentSplit"
               }
             ],
             "title": "Split"
@@ -1711,7 +2143,7 @@
           "base_rate": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RateRequest"
+                "$ref": "#/components/schemas/BaseRateRequest"
               },
               {
                 "type": "null"
@@ -1770,10 +2202,36 @@
             ],
             "title": "Notes"
           },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it happened; occurred_on must be its local date",
+            "title": "Occurred At"
+          },
           "occurred_on": {
             "format": "date",
             "title": "Occurred On",
             "type": "string"
+          },
+          "occurred_timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IANA zone of occurred_at (shown as 20:10 JST)",
+            "title": "Occurred Timezone"
           },
           "payers": {
             "items": {
@@ -1787,6 +2245,7 @@
           "split": {
             "discriminator": {
               "mapping": {
+                "adjustment": "#/components/schemas/AdjustmentSplit",
                 "equal": "#/components/schemas/EqualSplit",
                 "exact": "#/components/schemas/ExactSplit",
                 "itemized": "#/components/schemas/ItemizedSplit",
@@ -1810,6 +2269,9 @@
               },
               {
                 "$ref": "#/components/schemas/ItemizedSplit"
+              },
+              {
+                "$ref": "#/components/schemas/AdjustmentSplit"
               }
             ],
             "title": "Split"
@@ -1968,7 +2430,8 @@
               "fund_contribution",
               "fund_withdrawal",
               "adjustment",
-              "conversion"
+              "conversion",
+              "conversion_reversal"
             ],
             "title": "Kind",
             "type": "string"
@@ -2102,6 +2565,117 @@
           "available_minor"
         ],
         "title": "FundAvailabilityResponse",
+        "type": "object"
+      },
+      "FundCountRequest": {
+        "additionalProperties": false,
+        "description": "Cash counted in the kitty; the server records what the ledger expected.",
+        "properties": {
+          "counted_minor": {
+            "minimum": 0.0,
+            "title": "Counted Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "currency",
+          "counted_minor"
+        ],
+        "title": "FundCountRequest",
+        "type": "object"
+      },
+      "FundCountResponse": {
+        "properties": {
+          "counted_by_user_id": {
+            "format": "uuid",
+            "title": "Counted By User Id",
+            "type": "string"
+          },
+          "counted_minor": {
+            "title": "Counted Minor",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "difference_minor": {
+            "description": "Counted minus expected; 0 means it matches",
+            "title": "Difference Minor",
+            "type": "integer"
+          },
+          "expected_minor": {
+            "title": "Expected Minor",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "plan_id",
+          "currency",
+          "counted_minor",
+          "expected_minor",
+          "difference_minor",
+          "note",
+          "counted_by_user_id",
+          "created_at"
+        ],
+        "title": "FundCountResponse",
         "type": "object"
       },
       "FundMovementRequest": {
@@ -2244,6 +2818,22 @@
             "title": "Available",
             "type": "array"
           },
+          "contributions": {
+            "description": "What each participant put in, per currency, to compare with the target",
+            "items": {
+              "$ref": "#/components/schemas/MemberContribution"
+            },
+            "title": "Contributions",
+            "type": "array"
+          },
+          "counts": {
+            "description": "The latest count in each currency",
+            "items": {
+              "$ref": "#/components/schemas/FundCountResponse"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
           "notice": {
             "default": "Beluno records what participants pooled with a custodian; it never holds, moves, or stores money.",
             "title": "Notice",
@@ -2262,7 +2852,9 @@
         },
         "required": [
           "settings",
-          "available"
+          "available",
+          "contributions",
+          "counts"
         ],
         "title": "FundResponse",
         "type": "object"
@@ -2293,6 +2885,16 @@
               }
             ],
             "title": "Note"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "FundSettingsRequest",
@@ -2333,6 +2935,16 @@
             "title": "Plan Id",
             "type": "string"
           },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FundTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -2347,11 +2959,33 @@
           "plan_id",
           "custodian_participant_id",
           "note",
+          "target",
           "version",
           "created_at",
           "updated_at"
         ],
         "title": "FundSettingsResponse",
+        "type": "object"
+      },
+      "FundTarget": {
+        "additionalProperties": false,
+        "description": "What every member is asked to put in.",
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "amount_minor"
+        ],
+        "title": "FundTarget",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -2745,6 +3379,42 @@
         "title": "LedgerBalanceResponse",
         "type": "object"
       },
+      "LedgerConfirmRequest": {
+        "additionalProperties": false,
+        "description": "Confirm the ledger exactly as you saw it.",
+        "properties": {
+          "ledger_seq": {
+            "minimum": 0.0,
+            "title": "Ledger Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ledger_seq"
+        ],
+        "title": "LedgerConfirmRequest",
+        "type": "object"
+      },
+      "LedgerConfirmationResponse": {
+        "properties": {
+          "confirmed_at": {
+            "format": "date-time",
+            "title": "Confirmed At",
+            "type": "string"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "confirmed_at"
+        ],
+        "title": "LedgerConfirmationResponse",
+        "type": "object"
+      },
       "LedgerResponse": {
         "description": "The plan's balances per participant and currency, never netted across currencies.",
         "properties": {
@@ -2754,6 +3424,27 @@
             },
             "title": "Balances",
             "type": "array"
+          },
+          "base_changes": {
+            "description": "Base-currency changes, oldest first: the chain base values are read through",
+            "items": {
+              "$ref": "#/components/schemas/BaseCurrencyChangeResponse"
+            },
+            "title": "Base Changes",
+            "type": "array"
+          },
+          "confirmations": {
+            "description": "Who confirmed the ledger at the current ledger_seq; any new entry clears it",
+            "items": {
+              "$ref": "#/components/schemas/LedgerConfirmationResponse"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "count_personal_spend": {
+            "description": "Budgets count expenses whose only payer is their only sharer",
+            "title": "Count Personal Spend",
+            "type": "boolean"
           },
           "disputed_settlements": {
             "title": "Disputed Settlements",
@@ -2776,6 +3467,11 @@
             "title": "Plan Id",
             "type": "string"
           },
+          "settle_tolerance_minor": {
+            "description": "Base-currency balances at or under this count as settled",
+            "title": "Settle Tolerance Minor",
+            "type": "integer"
+          },
           "status": {
             "enum": [
               "open",
@@ -2797,9 +3493,128 @@
           "disputed_settlements",
           "balances",
           "fund",
+          "count_personal_spend",
+          "settle_tolerance_minor",
+          "confirmations",
+          "base_changes",
           "version"
         ],
         "title": "LedgerResponse",
+        "type": "object"
+      },
+      "LedgerSettingsRequest": {
+        "additionalProperties": false,
+        "description": "Change only the settings sent.",
+        "properties": {
+          "count_personal_spend": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count Personal Spend"
+          },
+          "settle_tolerance_minor": {
+            "anyOf": [
+              {
+                "maximum": 10000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settle Tolerance Minor"
+          }
+        },
+        "title": "LedgerSettingsRequest",
+        "type": "object"
+      },
+      "MarketRateResponse": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "rate": {
+            "description": "Quote-currency units for one base-currency unit",
+            "title": "Rate",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "quote",
+          "rate",
+          "as_of",
+          "source"
+        ],
+        "title": "MarketRateResponse",
+        "type": "object"
+      },
+      "MarketRatesResponse": {
+        "description": "Published market rates for offline estimates; never applied to the ledger.",
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "estimate_only": {
+            "const": true,
+            "default": true,
+            "description": "Show as an estimate; entries keep the rate people confirm",
+            "title": "Estimate Only",
+            "type": "boolean"
+          },
+          "rates": {
+            "items": {
+              "$ref": "#/components/schemas/MarketRateResponse"
+            },
+            "title": "Rates",
+            "type": "array"
+          }
+        },
+        "required": [
+          "base",
+          "rates"
+        ],
+        "title": "MarketRatesResponse",
+        "type": "object"
+      },
+      "MemberContribution": {
+        "properties": {
+          "contributed_minor": {
+            "title": "Contributed Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "currency",
+          "contributed_minor"
+        ],
+        "title": "MemberContribution",
         "type": "object"
       },
       "Page_ExpenseResponse_": {
@@ -4055,7 +4870,7 @@
       },
       "PlanUpdateRequest": {
         "additionalProperties": false,
-        "description": "Omitted fields stay unchanged; ``null`` clears description or location.",
+        "description": "Omitted fields stay unchanged; ``null`` clears description or location.\n\nThe base currency changes through ``POST /v1/plans/{plan_id}/base-currency``.",
         "properties": {
           "activity": {
             "anyOf": [
@@ -4077,18 +4892,6 @@
               }
             ],
             "title": "Activity"
-          },
-          "base_currency": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Z]{3}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Currency"
           },
           "description": {
             "anyOf": [
@@ -5181,6 +5984,11 @@
           "base": {
             "$ref": "#/components/schemas/BaseAmountResponse"
           },
+          "base_change_number": {
+            "description": "Base-currency changes before this revision; later changes apply to base",
+            "title": "Base Change Number",
+            "type": "integer"
+          },
           "category": {
             "enum": [
               "food",
@@ -5194,6 +6002,19 @@
             ],
             "title": "Category",
             "type": "string"
+          },
+          "client_created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the device made the change (offline edits sync later)",
+            "title": "Client Created At"
           },
           "commitment_id": {
             "anyOf": [
@@ -5225,6 +6046,18 @@
             "title": "Description",
             "type": "string"
           },
+          "device_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The device of the session that wrote it",
+            "title": "Device Label"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -5241,10 +6074,33 @@
             ],
             "title": "Notes"
           },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At"
+          },
           "occurred_on": {
             "format": "date",
             "title": "Occurred On",
             "type": "string"
+          },
+          "occurred_timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred Timezone"
           },
           "payers": {
             "items": {
@@ -5252,6 +6108,11 @@
             },
             "title": "Payers",
             "type": "array"
+          },
+          "personal": {
+            "description": "One person paid and is the only one sharing it; it moves no balance",
+            "title": "Personal",
+            "type": "boolean"
           },
           "revision_number": {
             "title": "Revision Number",
@@ -5264,9 +6125,19 @@
             "title": "Shares",
             "type": "array"
           },
+          "source": {
+            "description": "Written online, or pushed by sync",
+            "enum": [
+              "http",
+              "sync"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
           "split": {
             "discriminator": {
               "mapping": {
+                "adjustment": "#/components/schemas/AdjustmentSplit",
                 "equal": "#/components/schemas/EqualSplit",
                 "exact": "#/components/schemas/ExactSplit",
                 "itemized": "#/components/schemas/ItemizedSplit",
@@ -5290,6 +6161,9 @@
               },
               {
                 "$ref": "#/components/schemas/ItemizedSplit"
+              },
+              {
+                "$ref": "#/components/schemas/AdjustmentSplit"
               }
             ],
             "title": "Split"
@@ -5305,6 +6179,8 @@
           "description",
           "category",
           "occurred_on",
+          "occurred_at",
+          "occurred_timezone",
           "notes",
           "amount_minor",
           "currency",
@@ -5312,8 +6188,13 @@
           "split",
           "split_algorithm",
           "shares",
+          "base_change_number",
+          "personal",
           "base",
           "commitment_id",
+          "source",
+          "client_created_at",
+          "device_label",
           "created_by_user_id",
           "created_at"
         ],
@@ -5890,6 +6771,27 @@
         "title": "SpendResponse",
         "type": "object"
       },
+      "SplitAdjustment": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustment_minor": {
+            "description": "Added to (or, when negative, taken off) this person's equal share",
+            "title": "Adjustment Minor",
+            "type": "integer"
+          },
+          "participant_id": {
+            "format": "uuid",
+            "title": "Participant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "participant_id",
+          "adjustment_minor"
+        ],
+        "title": "SplitAdjustment",
+        "type": "object"
+      },
       "SplitExtra": {
         "additionalProperties": false,
         "description": "Tax, tip, or a service charge, spread over the item subtotals.",
@@ -6157,6 +7059,18 @@
       "TransactionResponse": {
         "description": "One balanced journal entry; its postings sum to zero in each currency.",
         "properties": {
+          "consolidation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consolidation Id"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -6213,7 +7127,8 @@
               "fund_contribution",
               "fund_withdrawal",
               "adjustment",
-              "conversion"
+              "conversion",
+              "conversion_reversal"
             ],
             "title": "Kind",
             "type": "string"
@@ -6303,6 +7218,7 @@
           "refund_id",
           "settlement_id",
           "fund_movement_id",
+          "consolidation_id",
           "reverses_transaction_id",
           "memo",
           "created_by_user_id",
@@ -7800,6 +8716,95 @@
         ]
       }
     },
+    "/v1/fx/rates": {
+      "get": {
+        "description": "The latest published market rates from ``base``, for offline estimates only.",
+        "operationId": "list_market_rates_v1_fx_rates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "base",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Z]{3}$",
+              "title": "Base",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketRatesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Market Rates",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/v1/invites/preview": {
       "post": {
         "operationId": "preview_invite_v1_invites_preview_post",
@@ -8937,6 +9942,182 @@
         "summary": "Update Plan",
         "tags": [
           "plans"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/base-currency": {
+      "post": {
+        "description": "Move the plan to another base currency (owner or admin, plan version in If-Match).\n\nOriginal amounts and postings never change; budgets and the settle tolerance are\nre-denominated at the rate, and base values read through the chain of changes.",
+        "operationId": "change_base_currency_v1_plans__plan_id__base_currency_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BaseCurrencyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change Base Currency",
+        "tags": [
+          "finance"
         ]
       }
     },
@@ -11538,6 +12719,166 @@
         ]
       }
     },
+    "/v1/plans/{plan_id}/fund/counts": {
+      "post": {
+        "description": "The custodian or a manager records the cash counted; nothing is posted.",
+        "operationId": "count_fund_v1_plans__plan_id__fund_counts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FundCountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundCountResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Count Fund",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/v1/plans/{plan_id}/fund/movements": {
       "get": {
         "operationId": "list_fund_movements_v1_plans__plan_id__fund_movements_get",
@@ -12680,6 +14021,592 @@
         ]
       }
     },
+    "/v1/plans/{plan_id}/ledger/confirm": {
+      "post": {
+        "description": "Say the ledger at ``ledger_seq`` looks right to you; any later entry makes it stale.",
+        "operationId": "confirm_ledger_v1_plans__plan_id__ledger_confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedgerConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm Ledger",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/ledger/consolidations": {
+      "get": {
+        "operationId": "list_consolidations_v1_plans__plan_id__ledger_consolidations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConsolidationResponse"
+                  },
+                  "title": "Response List Consolidations V1 Plans  Plan Id  Ledger Consolidations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Consolidations",
+        "tags": [
+          "finance"
+        ]
+      },
+      "post": {
+        "description": "Settle everything in the base currency (owner or admin) at rates frozen now.",
+        "operationId": "consolidate_ledger_v1_plans__plan_id__ledger_consolidations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsolidateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsolidationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Consolidate Ledger",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/ledger/consolidations/{consolidation_id}/reverse": {
+      "post": {
+        "description": "Undo the latest consolidation exactly, while nobody has settled up since.",
+        "operationId": "reverse_consolidation_v1_plans__plan_id__ledger_consolidations__consolidation_id__reverse_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "consolidation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Consolidation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsolidationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reverse Consolidation",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
     "/v1/plans/{plan_id}/ledger/explanation": {
       "get": {
         "description": "Every entry behind one participant's balance (or the fund's, without participant_id).",
@@ -12820,6 +14747,166 @@
           }
         ],
         "summary": "Explain Balance",
+        "tags": [
+          "finance"
+        ]
+      }
+    },
+    "/v1/plans/{plan_id}/ledger/settings": {
+      "patch": {
+        "description": "Money settings (managers): count personal spend, and the settled-under tolerance.",
+        "operationId": "configure_ledger_v1_plans__plan_id__ledger_settings_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional client-generated key; a repeat with the same key and body returns the stored outcome and sets Idempotency-Replayed: true.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedgerSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Bearer authentication is missing, invalid, expired, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The current relationship does not allow this action."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The resource is absent or not visible to the caller."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request conflicts with the current resource state."
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The If-Match version is stale."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "The request does not satisfy the contract."
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "An If-Match header is required."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "Too many requests; retry after the Retry-After interval."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProblemResponse"
+                }
+              }
+            },
+            "description": "A dependency or feature is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Configure Ledger",
         "tags": [
           "finance"
         ]
