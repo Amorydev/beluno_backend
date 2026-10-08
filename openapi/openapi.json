@@ -7176,6 +7176,19 @@
             ],
             "title": "Location Label"
           },
+          "owner_participant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client id for the creator's participant, so an offline client can refer to it (payer, split) before the plan reaches the server",
+            "title": "Owner Participant Id"
+          },
           "participants": {
             "items": {
               "$ref": "#/components/schemas/ParticipantSeed"

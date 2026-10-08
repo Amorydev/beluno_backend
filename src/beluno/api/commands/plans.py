@@ -48,6 +48,7 @@ async def _create(ctx: CommandContext, call: CommandCall, body: PlanCreateReques
         description=body.description,
         location_label=body.location_label,
         seeds=tuple(seed_of(seed) for seed in body.participants),
+        owner_participant_id=body.owner_participant_id,
     )
     return plan_response(await service.create_plan(ctx, draft))
 
