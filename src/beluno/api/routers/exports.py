@@ -40,6 +40,9 @@ async def export_plan(
     runtime: RuntimeDep,
     actor: ActorDep,
     format: Literal["csv", "json", "accounting", "pdf"] = Query(default="csv"),
+    lang: Literal["vi", "en"] | None = Query(
+        default=None, description="The PDF's language; the caller's profile locale by default"
+    ),
 ) -> Response:
     """Everyone in the plan may export what they can already see: CSV has one row per
     expense (original amount and base-currency snapshot); JSON has every entity sync
@@ -58,7 +61,7 @@ async def export_plan(
         elif format == "accounting":
             file = await paid_exports.plan_accounting_csv(ctx, plan_id)
         else:
-            file = await paid_exports.plan_pdf(ctx, plan_id)
+            file = await paid_exports.plan_pdf(ctx, plan_id, lang)
     return await _download(file)
 
 
