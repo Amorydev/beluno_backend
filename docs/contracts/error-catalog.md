@@ -6,7 +6,7 @@ submitted values.
 
 | Code | HTTP | Meaning |
 |---|---:|---|
-| `AUTHENTICATION_REQUIRED` | 401 | Credential missing, invalid, expired, revoked, or an email code that does not verify |
+| `AUTHENTICATION_REQUIRED` | 401 | Credential missing, invalid, expired, revoked, or an email code or magic link that does not verify (a link is checked against the `challenge_id` of the device that requested it) |
 | `AUTHENTICATION_UNAVAILABLE` | 503 | Token signing/verification or a sign-in provider is not configured or unreachable |
 | `FORBIDDEN` | 403 | Current relationship does not permit the action |
 | `STEP_UP_REQUIRED` | 403 | Sensitive action needs a sign-in within the step-up window |

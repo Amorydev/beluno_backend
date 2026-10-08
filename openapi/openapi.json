@@ -2718,7 +2718,7 @@
       },
       "EmailVerifyRequest": {
         "additionalProperties": false,
-        "description": "Either ``challenge_id`` + ``code`` from the email, or the magic-link ``link_token``.",
+        "description": "``challenge_id`` with either the ``code`` from the email or the magic-link ``link_token``.\n\nThe link needs the challenge id too: only the device that asked for the email holds it, so a\nforwarded or intercepted link cannot sign in anywhere else.",
         "properties": {
           "challenge_id": {
             "anyOf": [

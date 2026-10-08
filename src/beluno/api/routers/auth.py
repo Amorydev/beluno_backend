@@ -132,10 +132,11 @@ async def verify_email_challenge(
     # rejected sign-in (e.g. merge consent needed) leaves the challenge unused.
     tokens: IssuedTokens | None = None
     async with open_context(runtime, actor) as ctx:
+        assert body.challenge_id is not None
         if body.link_token is not None:
-            identity = await email_challenges.verify_link(ctx, body.link_token)
+            identity = await email_challenges.verify_link(ctx, body.challenge_id, body.link_token)
         else:
-            assert body.challenge_id is not None and body.code is not None
+            assert body.code is not None
             identity = await email_challenges.verify_code(ctx, body.challenge_id, body.code)
         if identity is not None:
             tokens = await authenticate(
