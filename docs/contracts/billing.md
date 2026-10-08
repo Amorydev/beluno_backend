@@ -80,7 +80,9 @@ them. Hangouts get the accounting CSV free; the report is for trips.
   description, category, and date; other rows their own date (or the day they were
   recorded, in the plan's time zone). Owner memos are left out. Text a spreadsheet would
   read as a formula starts with `'`. Base-currency snapshots are in the free CSV.
-- **PDF trip report** (English for now): cover (title, dates, stops, people), spending
+- **PDF trip report** (Vietnamese or English: `lang=vi|en`, else the reader's profile
+  locale; Vietnamese writes `1.234,56 USD` and `12/03/2027`, English `1,234.56 USD` and
+  `12 Mar 2027`): cover (title, dates, stops, people), spending
   by category in the base currency, each person's paid and share per currency with
   their balance, suggested transfers, and the expenses by date with a receipt mark (at
   most 1,000 rows; the rest are counted, and the accounting CSV lists them all). Receipt
