@@ -128,6 +128,14 @@ delivers a batch with one `send_each` call (10-second HTTP timeout); FCM outages
 credential problems back off up to five attempts, then fail; tokens FCM no longer
 accepts are deleted.
 
+### Receipt archives
+
+The worker builds zips one at a time in `BELUNO_RECEIPT_ARCHIVE_DIR` (staging: the
+`archive-work` volume; never the RAM-backed `/tmp`), up to
+`BELUNO_RECEIPT_ARCHIVE_MAX_BYTES` (default 2 GiB) each, so give that volume room for
+one. Zips stay in storage a day; the hourly `media.sweep` fails builds a crash left
+behind.
+
 ### News from the team
 
 `uv run python scripts/news.py --key <slug> --operator <name> --title-vi ... --body-vi ...

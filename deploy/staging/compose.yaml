@@ -182,6 +182,10 @@ services:
       BELUNO_WORKER_DATABASE_URL: postgresql+psycopg://worker_runtime:${BELUNO_WORKER_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-beluno}
       # Push (optional): a Firebase service account JSON; unset, notifications are not sent.
       BELUNO_FCM_SERVICE_ACCOUNT_JSON: ${BELUNO_FCM_SERVICE_ACCOUNT_JSON:-}
+      # Receipt archives are built on disk, not in the RAM-backed /tmp.
+      BELUNO_RECEIPT_ARCHIVE_DIR: /var/lib/beluno/archives
+    volumes:
+      - archive-work:/var/lib/beluno/archives
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -287,6 +291,7 @@ services:
       - prometheus
 
 volumes:
+  archive-work:
   postgres-data:
   rustfs-data:
   clamav-data:

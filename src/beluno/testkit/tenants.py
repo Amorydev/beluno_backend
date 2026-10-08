@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from beluno.db.ids import new_id
 from beluno.testkit.database import AdminDatabase
 from beluno.testkit.finance import FinancePlan, exercise_money_and_members
 from beluno.testkit.identity import IdentityProviderStub
@@ -27,7 +28,8 @@ async def full_tenant(
     settings, a ledger confirmation, join and claim links, a crew, a wanted place, an
     itinerary item with a cost and an answer, a decided poll, a booking with sealed
     secrets, a done task, packing items (a shared template, a private item), and a
-    problem report with diagnostics, a passkey, and a receipt awaiting upload."""
+    problem report with diagnostics, a passkey, a receipt awaiting upload, and a receipt
+    archive request."""
 
     trip = await exercise_money_and_members(api, provider, admin)
     owner = trip.owner
@@ -170,6 +172,15 @@ async def full_tenant(
     assert reported.status_code == 201, reported.text
     budgets = (await api.get(trip.path("/budgets"), headers=owner.headers)).json()["budgets"]
     assert budgets
+    # A receipt archive the owner asked for (building one needs storage and a pass).
+    archive_id = str(new_id())
+    admin.execute(
+        "INSERT INTO media_memories.receipt_archives (id, plan_id, requested_by_user_id,"
+        " state, created_at) VALUES (%s, %s, %s, 'pending', now())",
+        archive_id,
+        trip.plan_id,
+        owner.user_id,
+    )
     return FullTenant(
         trip=trip,
         ids={
@@ -191,5 +202,6 @@ async def full_tenant(
             "packing_item_id": template.json()["items"][0]["id"],
             "passkey_id": passkey.json()["id"],
             "media_id": receipt["id"],
+            "archive_id": archive_id,
         },
     )

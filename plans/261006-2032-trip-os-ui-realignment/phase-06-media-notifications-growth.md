@@ -146,6 +146,11 @@ Release 3: everything that needs external providers or storage. The previous pla
   - Fixed on the way: `alembic/env.py` let a developer's `.env` redirect migrations away from the database a caller (the test suite) named.
   - Review (`reports/code-reviewer-261008-0000-weekly-summary-news-review-report.md`): local-time logic, dedupe, grants, and message building hold (probed). Fixed: bursts held up other pushes (H1: urgent kinds first, up to ten batches a run, news only to people with a signed-in device); the weekly scan returns at once outside UTC Sunday and Monday and counts once per trip (M1); the news audit keeps what was sent (M2); tests for two time zones, a datetime trip, a poll, and a burst (M3). Left: a weekly summary held by quiet hours past Sunday midnight is dropped.
 
+- The receipt archive is on `feat/receipt-archive`:
+  - Migration `000023_receipt_archives`: requests per person (own-read RLS), `archive_entries` for the worker, archive keys in the deletion queue.
+  - `POST/GET /v1/plans/{id}/receipt-archives`; worker job `media.build_receipt_archive` writes the zip on disk one receipt at a time, uploads it, and queues its deletion a day later; `receipts.csv` lists each file's expense.
+  - Review (`reports/code-reviewer-261008-0040-receipt-archive-review-report.md`): fixed the security sweeps missing the table and route (C1); builds a crash cut short failed by the hourly sweep (H1); zips built on a disk volume, one build at a time (H2); voided expenses left out, a default taken without an answer (H3); ready archives reused until new receipts arrive, sizes checked before reading, 5 requests an hour (H4); one archive in the making per person (M1); a purged plan's zips deleted at once (M2); tests for each. Left: a receipt deleted after a zip was built stays in that zip for its day.
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.

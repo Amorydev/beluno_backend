@@ -21,10 +21,10 @@ from beluno.api.exports import (
     currency_exponents,
     names_of,
     plan_rows,
-    spreadsheet_text,
 )
 from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import PlanAction
+from beluno.contracts.common import spreadsheet_text
 from beluno.contracts.errors import conflict
 from beluno.db.models.plans import Plan
 from beluno.modules import billing

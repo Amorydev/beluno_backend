@@ -13,7 +13,6 @@ import pytest
 from pypdf import PdfReader
 
 from beluno.api import trip_report
-from beluno.db.ids import new_id
 from beluno.testkit.database import AdminDatabase
 from beluno.testkit.finance import (
     FinancePlan,
@@ -25,6 +24,7 @@ from beluno.testkit.finance import (
     ledger_balances,
 )
 from beluno.testkit.identity import IdentityProviderStub
+from beluno.testkit.stores import pass_for
 
 pytestmark = pytest.mark.integration
 
@@ -36,21 +36,6 @@ async def trip(
     api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
 ) -> FinancePlan:
     return await finance_plan(api, identity_provider, admin, members=("Bea", "Đạt"))
-
-
-def pass_for(admin: AdminDatabase, trip: FinancePlan) -> None:
-    """A Trip Pass as the store verification would record it."""
-
-    admin.execute(
-        "INSERT INTO billing.purchases (id, user_id, store, product, product_id, original_id,"
-        " plan_id, environment, purchased_at, created_at, updated_at) VALUES"
-        " (%s, %s, 'apple', 'trip_pass', 'beluno.trip_pass', %s, %s, 'Sandbox', now(), now(),"
-        " now())",
-        str(new_id()),
-        trip.owner.user_id,
-        str(new_id()),
-        trip.plan_id,
-    )
 
 
 async def export(api: httpx.AsyncClient, trip: FinancePlan, kind: str) -> httpx.Response:

@@ -35,6 +35,7 @@ from beluno.api.routers import (
     planning,
     plans,
     recap,
+    receipt_archives,
     support,
     sync,
 )
@@ -179,6 +180,7 @@ def create_app(
         exports.router,
         recap.router,
         support.router,
+        receipt_archives.router,
         billing.router,
         invites.router,
         sync.router,
