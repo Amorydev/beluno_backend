@@ -10,27 +10,30 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from beluno.api import accounting, trip_report
+from beluno.api import accounting, report_text, trip_report
 from beluno.api.exports import (
-    FUND,
     ExportFile,
     audit_export,
     currency_exponents,
     names_of,
     plan_rows,
 )
+from beluno.api.report_text import Language
 from beluno.authorization.access import load_plan, require_plan
 from beluno.authorization.policy import PlanAction
 from beluno.contracts.common import spreadsheet_text
 from beluno.contracts.errors import conflict
+from beluno.db.models.iam import User
 from beluno.db.models.plans import Plan
 from beluno.modules import billing
+from beluno.modules.account_deletion import FORMER_MEMBER
 from beluno.modules.context import CommandContext
 from beluno.modules.finance.views import ledger_snapshot
-from beluno.modules.recap import Recap, get_recap
+from beluno.modules.recap import get_recap
 
 ACCOUNTING_COLUMNS = (
     "date",
@@ -80,17 +83,29 @@ async def plan_accounting_csv(ctx: CommandContext, plan_id: UUID) -> ExportFile:
     return ExportFile(f"beluno-accounting-{plan_id}.csv", "text/csv; charset=utf-8", render)
 
 
-async def plan_pdf(ctx: CommandContext, plan_id: UUID) -> ExportFile:
-    """Paid feature: the trip report (spending, people, settling up, expenses)."""
+async def plan_pdf(
+    ctx: CommandContext, plan_id: UUID, language: Language | None = None
+) -> ExportFile:
+    """Paid feature: the trip report (spending, people, settling up, expenses), in
+    ``language`` or the caller's own (their profile's locale)."""
 
     plan = await _paid_plan(ctx, plan_id, "The trip report", trips_only=True)
+    if language is None:
+        caller = await ctx.session.get(User, ctx.require_actor().user_id)
+        language = report_text.language_for(caller.locale if caller else None)
     entities = await plan_rows(ctx, plan_id, "plan_participant", "expense", "media")
     recap = await get_recap(ctx, plan_id)
     snapshot = await ledger_snapshot(ctx, plan_id)
     exponents = await currency_exponents(ctx)
     await audit_export(ctx, plan_id, "pdf")
-    text = trip_report.printable
-    names = {key: text(value) for key, value in names_of(entities).items()}
+    clean = trip_report.printable
+    former = report_text.text("former_member", language)
+    # Deleted accounts carry a stored English name; the reader sees their own words.
+    names = {
+        key: former if value == FORMER_MEMBER else clean(value)
+        for key, value in names_of(entities).items()
+    }
+    names[None] = report_text.text("kitty", language)
     balances = {
         (
             str(view.account.participant_id) if view.account.participant_id else None,
@@ -105,10 +120,10 @@ async def plan_pdf(ctx: CommandContext, plan_id: UUID) -> ExportFile:
     }
 
     def money(minor: int | None, currency: str) -> str:
-        return "" if minor is None else trip_report.money(minor, currency, exponents)
+        return "" if minor is None else report_text.money(minor, currency, exponents, language)
 
     def who(participant_id: str | None) -> str:
-        return names.get(participant_id, "Former member")
+        return names.get(participant_id, former)
 
     expenses = sorted(
         (row for row in entities.get("expense", []) if row["state"] == "active"),
@@ -116,30 +131,31 @@ async def plan_pdf(ctx: CommandContext, plan_id: UUID) -> ExportFile:
     )
     shown = expenses[: trip_report.MAX_EXPENSE_ROWS]
     report = trip_report.TripReport(
-        title=text(plan.title),
-        dates=_dates(recap),
-        stops=" · ".join(text(stop.name) for stop in recap.stops),
+        title=clean(plan.title),
+        dates=report_text.dates(recap.start, recap.end, recap.days, language),
+        stops=" · ".join(clean(stop.name) for stop in recap.stops),
         people=recap.people,
         base_currency=recap.currency,
         spent=money(recap.spent_minor, recap.currency),
         spending_note=" ".join(
-            note
-            for note, applies in (
-                (
-                    "Some expenses have no rate to the base currency yet and are left out.",
-                    recap.unconverted,
-                ),
-                ("Some rates are estimates.", recap.estimated_rates),
+            report_text.text(key, language)
+            for key, applies in (
+                ("unconverted", recap.unconverted),
+                ("estimated", recap.estimated_rates),
             )
             if applies
         )
         or None,
         categories=[
-            (_label(category), money(spent, recap.currency), f"{points / 100:.0f}%")
+            (
+                report_text.category(category, language),
+                money(spent, recap.currency),
+                f"{points / 100:.0f}%",
+            )
             for category, spent, points in recap.categories
         ],
         people_rows=trip_report.person_rows(
-            accounting.spending_lines(entities), balances, names, exponents
+            accounting.spending_lines(entities), balances, names, exponents, language
         ),
         transfers=[
             trip_report.Transfer(
@@ -152,15 +168,17 @@ async def plan_pdf(ctx: CommandContext, plan_id: UUID) -> ExportFile:
         ],
         expenses=[
             trip_report.ExpenseRow(
-                occurred_on=row["revision"]["occurred_on"],
-                description=text(row["revision"]["description"]),
-                category=_label(row["revision"]["category"]),
+                occurred_on=report_text.day(
+                    date.fromisoformat(row["revision"]["occurred_on"]), language
+                ),
+                description=clean(row["revision"]["description"]),
+                category=report_text.category(row["revision"]["category"], language),
                 amount=money(row["revision"]["amount_minor"], row["revision"]["currency"]),
                 base_amount=money(
                     row["revision"]["base"]["amount_minor"], row["revision"]["base"]["currency"]
                 ),
                 paid_by=", ".join(
-                    FUND if payer["fund"] else who(payer["participant_id"])
+                    who(None) if payer["fund"] else who(payer["participant_id"])
                     for payer in row["revision"]["payers"]
                 ),
                 receipt=row["id"] in receipts,
@@ -168,7 +186,8 @@ async def plan_pdf(ctx: CommandContext, plan_id: UUID) -> ExportFile:
             for row in shown
         ],
         more_expenses=len(expenses) - len(shown),
-        generated_on=ctx.now.date(),
+        generated_on=report_text.day(ctx.now.date(), language),
+        language=language,
     )
     return ExportFile(
         f"beluno-trip-{plan_id}.pdf",
@@ -187,16 +206,3 @@ async def _paid_plan(ctx: CommandContext, plan_id: UUID, what: str, *, trips_onl
         raise conflict("NOT_AVAILABLE_FOR_HANGOUT", f"{what} is for trips")
     await billing.require_unlocked(ctx, plan_id, access.plan.type, what)
     return access.plan
-
-
-def _label(category: str) -> str:
-    return category.replace("_", " ").capitalize()
-
-
-def _dates(recap: Recap) -> str:
-    if recap.start is None:
-        return "Dates not set"
-    if recap.end is None or recap.end == recap.start:
-        return recap.start.strftime("%d %b %Y")
-    first, last = recap.start.strftime("%d %b %Y"), recap.end.strftime("%d %b %Y")
-    return f"{first} \N{EN DASH} {last} \N{MIDDLE DOT} {recap.days} days"

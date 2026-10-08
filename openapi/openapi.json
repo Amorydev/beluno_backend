@@ -19445,6 +19445,28 @@
               "title": "Format",
               "type": "string"
             }
+          },
+          {
+            "description": "The PDF's language; the caller's profile locale by default",
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "vi",
+                    "en"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The PDF's language; the caller's profile locale by default",
+              "title": "Lang"
+            }
           }
         ],
         "responses": {

@@ -101,8 +101,8 @@ tokens, and other people's private packing items never appear; each is audited a
 rate-limited.
 With a Trip Pass (or the owner's Pro; hangouts are free) two more formats open:
 `format=accounting`, a CSV with one row per person and journal entry whose `amount`
-adds up to the balances, and `format=pdf`, the trip report (spending by category, each
-person's paid and share, who pays whom, every expense with a receipt mark), rendered
+adds up to the balances, and `format=pdf`, the trip report in Vietnamese or English (`lang`; spending by category,
+each person's paid and share, who pays whom, every expense with a receipt mark), rendered
 with `fpdf2` and Noto Sans (OFL, `src/beluno/assets/fonts/`). The worker also packs every
 receipt of an unlocked trip into a zip on request (`/v1/plans/{id}/receipt-archives`),
 kept a day.
