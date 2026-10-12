@@ -47,7 +47,11 @@ class EmailChallengeResponse(BaseModel):
 
 
 class EmailVerifyRequest(BaseModel):
-    """Either ``challenge_id`` + ``code`` from the email, or the magic-link ``link_token``."""
+    """``challenge_id`` with either the ``code`` from the email or the magic-link ``link_token``.
+
+    The link needs the challenge id too: only the device that asked for the email holds it, so a
+    forwarded or intercepted link cannot sign in anywhere else.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -60,10 +64,8 @@ class EmailVerifyRequest(BaseModel):
 
     @model_validator(mode="after")
     def exactly_one_proof(self) -> Self:
-        code_parts = (self.challenge_id is not None, self.code is not None)
-        valid = not any(code_parts) if self.link_token is not None else all(code_parts)
-        if not valid:
-            raise ValueError("provide challenge_id with code, or link_token")
+        if self.challenge_id is None or (self.code is None) == (self.link_token is None):
+            raise ValueError("provide challenge_id with either code or link_token")
         return self
 
 
