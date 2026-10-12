@@ -177,3 +177,12 @@ def test_a_configured_app_store_verifies_fully_in_secure_environments() -> None:
     secure_settings(
         **store, apple_environment="Production", apple_app_apple_id=1
     ).assert_runtime_requirements()
+
+
+def test_blank_service_accounts_mean_not_configured() -> None:
+    # Compose passes an unset optional value as an empty string.
+    settings = Settings(  # type: ignore[call-arg]
+        _env_file=None, fcm_service_account_json="", google_play_service_account_json=" "
+    )
+    assert settings.fcm_service_account_json is None
+    assert settings.google_play_service_account_json is None
