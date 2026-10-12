@@ -1,0 +1,6 @@
+$ORIGIN beluno.site.
+$TTL 3600
+; DMARC for beluno.site. Hostinger's importer cuts TXT values at a semicolon, even an escaped one,
+; so each semicolon is written as its decimal escape \059, which PowerDNS reads back as a semicolon.
+; Delete the old _dmarc TXT record before importing: two DMARC records are invalid.
+_dmarc  IN  TXT  "v=DMARC1\059 p=none\059"

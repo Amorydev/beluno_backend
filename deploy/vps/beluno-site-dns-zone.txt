@@ -1,0 +1,13 @@
+$ORIGIN beluno.site.
+$TTL 300
+; Beluno staging on the VPS 107.155.65.94 (BIND / RFC 1035).
+; Before importing, delete Hostinger's parking records: the A record for @ and the CNAME for www.
+; Resend's records (DKIM, SPF and MX for "send") are added after creating the domain in Resend.
+
+@       IN  A      107.155.65.94
+api     IN  A      107.155.65.94
+files   IN  A      107.155.65.94
+www     IN  CNAME  beluno.site.
+
+; Email: report only, nothing is rejected yet.
+_dmarc  IN  TXT    "v=DMARC1; p=none;"

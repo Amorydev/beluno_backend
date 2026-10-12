@@ -80,6 +80,7 @@ class PlanDraft:
     description: str | None
     location_label: str | None
     seeds: tuple[Seed, ...]
+    owner_participant_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -183,8 +184,14 @@ def new_plan(
     return plan
 
 
-async def insert_plan_with_owner(ctx: CommandContext, plan: Plan) -> PlanParticipant:
-    """Insert a plan and its owner participant (the creator) in one savepoint."""
+async def insert_plan_with_owner(
+    ctx: CommandContext, plan: Plan, owner_participant_id: UUID | None = None
+) -> PlanParticipant:
+    """Insert a plan and its owner participant (the creator) in one savepoint.
+
+    ``owner_participant_id`` lets an offline client choose the owner's id; a taken id is
+    ``ALREADY_EXISTS`` like any other client-chosen id.
+    """
 
     actor = ctx.require_actor()
     if plan.type == TRIP and PlanState(plan.state) in TRIPS_IN_PROGRESS:
@@ -193,6 +200,7 @@ async def insert_plan_with_owner(ctx: CommandContext, plan: Plan) -> PlanPartici
     assert creator is not None
     owner = build_participant(
         ctx,
+        participant_id=owner_participant_id,
         plan_id=plan.id,
         identity_kind="user",
         user_id=creator.id,
@@ -234,7 +242,7 @@ async def create_plan(ctx: CommandContext, draft: PlanDraft) -> PlanView:
         description=draft.description,
         location_label=draft.location_label,
     )
-    owner = await insert_plan_with_owner(ctx, plan)
+    owner = await insert_plan_with_owner(ctx, plan, draft.owner_participant_id)
     await record_plan_change(
         ctx,
         plan,

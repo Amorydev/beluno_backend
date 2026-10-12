@@ -1,4 +1,4 @@
-"""A plan's uploaded files: receipts on expenses, trip covers, and trip memories.
+"""A plan's uploaded files: receipts on expenses, trip covers, and memories (trips and hangouts).
 
 The bytes never pass through the API:
 
@@ -264,6 +264,9 @@ async def set_highlight(
     # The plan row serialises picks, so the limit holds under concurrent picks.
     access = await load_plan(ctx, plan_id, for_update=True)
     require_plan(access, PlanAction.PICK_HIGHLIGHTS)
+    # Highlights feed the trip recap, which hangouts do not have.
+    if access.plan.type != "trip":
+        raise conflict("NOT_AVAILABLE_FOR_HANGOUT", "Recap highlights are for trips")
     media = await _find(ctx, plan_id, media_id, for_update=True)
     if media.kind != MEMORY or media.state != READY:
         raise invalid_state("only ready memories can be recap highlights")
@@ -483,10 +486,9 @@ async def _plan(ctx: CommandContext, plan_id: UUID, kind: str) -> PlanAccess:
         if access.plan.type != "trip":
             raise conflict("NOT_AVAILABLE_FOR_HANGOUT", "Covers are for trips")
     elif kind == MEMORY:
-        # Everyone on the trip shares photos, viewers too, until the trip is archived.
+        # Everyone on the plan shares photos, viewers too, until it is archived: trips and
+        # hangouts alike (a night out has its moments too).
         require_plan(access, PlanAction.SHARE_MEMORIES)
-        if access.plan.type != "trip":
-            raise conflict("NOT_AVAILABLE_FOR_HANGOUT", "Memories are for trips")
     else:
         raise validation_error("kind must be receipt, cover, or memory")
     return access
@@ -515,7 +517,7 @@ async def _require_place(ctx: CommandContext, plan_id: UUID, place_id: UUID | No
         )
     )
     if found is None:
-        raise validation_error("place_id does not name a saved place of this trip")
+        raise validation_error("place_id does not name a saved place of this plan")
 
 
 async def _may_delete(ctx: CommandContext, access: PlanAccess, media: Media) -> bool:
@@ -523,7 +525,7 @@ async def _may_delete(ctx: CommandContext, access: PlanAccess, media: Media) -> 
     manages expenses (the guard checks the same)."""
 
     if media.kind == MEMORY:
-        # Memories follow the trip's photo window (closed once archived).
+        # Memories follow the plan's photo window (closed once archived).
         require_plan(access, PlanAction.SHARE_MEMORIES)
     if access.role in PLAN_MANAGERS or await users.is_actor_account(ctx, media.uploaded_by_user_id):
         return True

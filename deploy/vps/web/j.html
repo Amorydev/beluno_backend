@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Join on Beluno</title>
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark" aria-hidden="true">B</div>
+    <a class="brand" href="/">Beluno</a>
+    <div class="lang" role="group" aria-label="Language"><button data-lang="vi" type="button">VI</button><button data-lang="en" type="button">EN</button></div>
+  </header>
+  <main>
+    <h1><span class="vi">Bạn được mời vào một nhóm trên Beluno</span><span class="en">You're invited to a group on Beluno</span></h1>
+    <p class="vi">Trên điện thoại đã cài Beluno, link này mở thẳng app. Nếu bạn đang thấy trang này:</p>
+    <p class="en">On a phone with Beluno installed, this link opens the app. If you're seeing this page:</p>
+    <ol>
+      <li><span class="vi">Cài Beluno (sắp có trên Google Play).</span><span class="en">Install Beluno (coming soon to Google Play).</span></li>
+      <li><span class="vi">Mở lại link mời trên điện thoại, hoặc copy link dưới đây và dán vào Beluno: <b>Got an invite? Scan or paste it to join</b> (hoặc Today → + → Join).</span><span class="en">Open the invite link again on your phone, or copy the link below and paste it in Beluno: <b>Got an invite? Scan or paste it to join</b> (or Today → + → Join).</span></li>
+    </ol>
+    <div class="card" id="invite" hidden>
+      <code id="link"></code>
+      <p><button class="btn" type="button" data-copy="link"><span class="vi">Copy link mời</span><span class="en">Copy invite link</span></button></p>
+      <p class="muted"><span class="vi">Link mời chỉ nằm trên máy bạn: trang này không gửi nó đi đâu.</span><span class="en">The invite stays on your device: this page never sends it anywhere.</span></p>
+    </div>
+    <div class="card" id="missing" hidden>
+      <p><span class="vi">Link này thiếu mã mời. Hãy xin người mời gửi lại link.</span><span class="en">This link has no invite code. Ask whoever invited you to send it again.</span></p>
+    </div>
+  </main>
+  <footer>
+    <a href="/help"><span class="vi">Trợ giúp</span><span class="en">Help</span></a>
+    <a href="/privacy"><span class="vi">Quyền riêng tư</span><span class="en">Privacy</span></a>
+  </footer>
+</div>
+<script src="/assets/site.js"></script>
+<script>
+  // The token is in the fragment, which browsers never send to a server.
+  (function () {
+    var token = location.hash.replace(/^#/, "");
+    var ok = /^[A-Za-z0-9_-]{20,128}$/.test(token);
+    document.getElementById(ok ? "invite" : "missing").hidden = false;
+    if (ok) document.getElementById("link").textContent = location.origin + "/j#" + token;
+  })();
+</script>
+</body>
+</html>

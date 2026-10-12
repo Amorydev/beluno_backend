@@ -131,6 +131,80 @@ async def test_batch_applies_in_order_and_replays_for_free(
     assert admin.scalar("SELECT version FROM plans.plans") == 2
 
 
+async def test_an_offline_plan_and_its_first_expense_arrive_in_one_batch(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
+) -> None:
+    owner = await sign_in(api, identity_provider, name="Owner")
+    plan_id, owner_id, create_id = new_id(), new_id(), new_id()
+    batch = [
+        op(
+            "plan.create",
+            operation_id=create_id,
+            payload={
+                "id": str(plan_id),
+                "owner_participant_id": str(owner_id),
+                "type": "hangout",
+                "title": "Dinner",
+                "base_currency": "USD",
+            },
+        ),
+        # Written offline: the payer is the owner id the client chose, before the plan existed.
+        op(
+            "expense.create",
+            target={"plan_id": str(plan_id)},
+            payload={
+                "description": "Hotpot",
+                "occurred_on": "2026-10-06",
+                "amount_minor": 4000,
+                "currency": "USD",
+                "payers": [{"participant_id": str(owner_id), "amount_minor": 4000}],
+                "split": {"method": "equal", "participant_ids": [str(owner_id)]},
+            },
+            depends_on=[create_id],
+        ),
+    ]
+
+    results = await push(api, owner, batch)
+
+    assert outcomes(results) == ["applied", "applied"], results
+    assert results[0]["body"]["my_participant"]["id"] == str(owner_id)
+    assert results[1]["body"]["revision"]["payers"][0]["participant_id"] == str(owner_id)
+    # A resend after a lost answer replays both with the same ids.
+    replayed = await push(api, owner, batch)
+    assert outcomes(replayed) == ["replayed", "replayed"]
+    assert replayed[0]["body"]["my_participant"]["id"] == str(owner_id)
+
+
+async def test_a_taken_owner_participant_id_conflicts_and_creates_nothing(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
+) -> None:
+    owner = await sign_in(api, identity_provider, name="Owner")
+    owner_id = new_id()
+
+    def create(plan_id: UUID) -> dict[str, Any]:
+        return op(
+            "plan.create",
+            payload={
+                "id": str(plan_id),
+                "owner_participant_id": str(owner_id),
+                "type": "hangout",
+                "title": "Dinner",
+                "base_currency": "USD",
+            },
+        )
+
+    first, second = new_id(), new_id()
+    assert outcomes(await push(api, owner, [create(first)])) == ["applied"]
+
+    results = await push(api, owner, [create(second)])
+
+    assert outcomes(results) == ["conflict"]
+    assert results[0]["problem"]["status"] == 409
+    assert results[0]["problem"]["code"] == "ALREADY_EXISTS"
+    listed = await api.get("/v1/plans", headers=owner.headers)
+    assert [item["id"] for item in listed.json()["items"]] == [str(first)]
+
+
 async def test_failures_are_isolated_and_dependencies_skip(
     api: httpx.AsyncClient, identity_provider: IdentityProviderStub, admin: AdminDatabase
 ) -> None:

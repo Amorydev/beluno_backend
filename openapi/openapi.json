@@ -2718,7 +2718,7 @@
       },
       "EmailVerifyRequest": {
         "additionalProperties": false,
-        "description": "Either ``challenge_id`` + ``code`` from the email, or the magic-link ``link_token``.",
+        "description": "``challenge_id`` with either the ``code`` from the email or the magic-link ``link_token``.\n\nThe link needs the challenge id too: only the device that asked for the email holds it, so a\nforwarded or intercepted link cannot sign in anywhere else.",
         "properties": {
           "challenge_id": {
             "anyOf": [
@@ -7175,6 +7175,19 @@
               }
             ],
             "title": "Location Label"
+          },
+          "owner_participant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Client id for the creator's participant, so an offline client can refer to it (payer, split) before the plan reaches the server",
+            "title": "Owner Participant Id"
           },
           "participants": {
             "items": {
@@ -19445,6 +19458,28 @@
               "title": "Format",
               "type": "string"
             }
+          },
+          {
+            "description": "The PDF's language; the caller's profile locale by default",
+            "in": "query",
+            "name": "lang",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "vi",
+                    "en"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The PDF's language; the caller's profile locale by default",
+              "title": "Lang"
+            }
           }
         ],
         "responses": {
@@ -23444,7 +23479,7 @@
         ]
       },
       "post": {
-        "description": "Record a receipt (anyone who adds expenses, on an expense that is not voided), a\ntrip cover (organisers), or a memory (anyone on the trip).",
+        "description": "Record a receipt (anyone who adds expenses, on an expense that is not voided), a\ntrip cover (organisers), or a memory (anyone on the trip or hangout).",
         "operationId": "create_media_v1_plans__plan_id__media_post",
         "parameters": [
           {

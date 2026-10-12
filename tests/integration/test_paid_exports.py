@@ -230,3 +230,39 @@ async def test_the_trip_report_shows_the_money(
     # One row shown, the other counted; script the font lacks shows as "?".
     assert "And 1 more expenses" in text
     assert trip_report.printable("ข้าว Phở") == "???? Phở"
+
+
+def pdf_text(response: httpx.Response) -> str:
+    assert response.status_code == 200, response.text
+    return "\n".join(page.extract_text() for page in PdfReader(io.BytesIO(response.content)).pages)
+
+
+async def test_the_trip_report_speaks_the_readers_language(
+    api: httpx.AsyncClient, trip: FinancePlan, admin: AdminDatabase
+) -> None:
+    pass_for(admin, trip)
+    owner, bea = trip.owner, trip.members["Bea"]
+    ann, bea_id = trip.people["Ann"], trip.people["Bea"]
+    await add_expense(
+        api, owner, trip, equal_expense(123_456, ann, [ann, bea_id], description="Khách sạn")
+    )
+    vietnamese = pdf_text(await export(api, trip, "pdf&lang=vi"))
+    for expected in ("Cần thanh toán", "Ăn uống", "1.234,56 USD", "Đã chi", "Khách sạn"):
+        assert expected in vietnamese, expected
+    assert "To settle up" not in vietnamese
+    # Without lang: the reader's profile decides.
+    assert "To settle up" in pdf_text(await export(api, trip, "pdf"))
+    profile = (await api.get("/v1/me", headers=bea.headers)).json()
+    await ok(
+        await api.patch(
+            "/v1/me", json={"locale": "vi-VN"}, headers=if_match(profile["version"], bea)
+        ),
+        200,
+    )
+    as_bea = await api.get(trip.path("/export?format=pdf"), headers=bea.headers)
+    assert "Cần thanh toán" in pdf_text(as_bea)
+    # Asking for English wins over the profile.
+    english = await api.get(trip.path("/export?format=pdf&lang=en"), headers=bea.headers)
+    assert "To settle up" in pdf_text(english)
+    refused = await api.get(trip.path("/export?format=pdf&lang=fr"), headers=owner.headers)
+    assert refused.status_code == 422

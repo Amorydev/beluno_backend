@@ -208,6 +208,7 @@ class Settings(BaseSettings):
         "booking_keys",
         "smtp_password",
         "google_play_service_account_json",
+        "fcm_service_account_json",
         "apple_bundle_id",
         "google_play_package_name",
         "google_play_push_audience",

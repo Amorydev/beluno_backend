@@ -232,13 +232,13 @@ async def test_magic_link_signs_in_once_and_google_is_linked_explicitly(
     identity_provider: IdentityProviderStub,
 ) -> None:
     started = await api.post("/v1/auth/email/challenges", json={"email": "dung@example.com"})
-    _, link_token = await deliver_pending_email(
-        environment, email_sender, started.json()["challenge_id"]
-    )
-    by_link = await api.post("/v1/auth/email/verify", json={"link_token": link_token})
+    challenge_id = started.json()["challenge_id"]
+    _, link_token = await deliver_pending_email(environment, email_sender, challenge_id)
+    proof = {"challenge_id": challenge_id, "link_token": link_token}
+    by_link = await api.post("/v1/auth/email/verify", json=proof)
     assert by_link.status_code == 200
     account = signed_in_from(by_link.json())
-    again = await api.post("/v1/auth/email/verify", json={"link_token": link_token})
+    again = await api.post("/v1/auth/email/verify", json=proof)
     assert again.status_code == 401
 
     # A Google identity with the same verified email is not attached automatically.
@@ -263,6 +263,49 @@ async def test_magic_link_signs_in_once_and_google_is_linked_explicitly(
     assert linked.json()["session_id"] == account.session_id
     google = await api.post("/v1/auth/google", json={"id_token": google_token})
     assert google.json()["user"]["id"] == account.user_id
+
+
+async def test_a_magic_link_only_signs_in_on_the_device_that_asked_for_it(
+    api: httpx.AsyncClient,
+    environment: IntegrationEnvironment,
+    email_sender: RecordingEmailSender,
+) -> None:
+    mine = await api.post("/v1/auth/email/challenges", json={"email": "giang@example.com"})
+    other = await api.post("/v1/auth/email/challenges", json={"email": "hoa@example.com"})
+    _, link_token = await deliver_pending_email(
+        environment, email_sender, mine.json()["challenge_id"]
+    )
+
+    # Forwarded, intercepted or opened elsewhere: the link alone, or with another challenge's id.
+    alone = await api.post("/v1/auth/email/verify", json={"link_token": link_token})
+    assert alone.status_code == 422
+    elsewhere = await api.post(
+        "/v1/auth/email/verify",
+        json={"challenge_id": other.json()["challenge_id"], "link_token": link_token},
+    )
+    assert elsewhere.status_code == 401
+    assert elsewhere.json()["code"] == "AUTHENTICATION_REQUIRED"
+
+    # Neither attempt spent the link: the device holding the challenge still signs in with it.
+    signed_in = await api.post(
+        "/v1/auth/email/verify",
+        json={"challenge_id": mine.json()["challenge_id"], "link_token": link_token},
+    )
+    assert signed_in.status_code == 200
+    assert signed_in.json()["user"]["email"] == "giang@example.com"
+
+
+async def test_a_code_and_a_link_together_are_refused(api: httpx.AsyncClient) -> None:
+    started = await api.post("/v1/auth/email/challenges", json={"email": "khanh@example.com"})
+    both = await api.post(
+        "/v1/auth/email/verify",
+        json={
+            "challenge_id": started.json()["challenge_id"],
+            "code": "123456",
+            "link_token": "x" * 43,
+        },
+    )
+    assert both.status_code == 422
 
 
 async def test_email_challenges_are_rate_limited_per_address(api: httpx.AsyncClient) -> None:

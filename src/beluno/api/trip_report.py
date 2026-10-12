@@ -5,14 +5,13 @@ share per currency with their balance, the suggested transfers, and every expens
 date (marking those with a receipt). Rendering is pure: ``render`` runs in a worker
 thread after the request's transaction has closed. Text uses Noto Sans (embedded,
 subset), so Vietnamese and other Latin, Greek, and Cyrillic names print correctly;
-characters it lacks (Thai, CJK, Arabic, Hebrew, emoji) print as ``?``.
+characters it lacks (Thai, CJK, Arabic, Hebrew, emoji) print as ``?``. The report is
+in Vietnamese or English (``beluno.api.report_text``).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
-from decimal import Decimal
 from functools import cache
 from pathlib import Path
 
@@ -23,6 +22,7 @@ from fpdf.enums import XPos, YPos
 from fpdf.fonts import FontFace
 
 from beluno.api.accounting import SpendingLine, spending_totals
+from beluno.api.report_text import Language, money, text
 
 FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 FAMILY = "NotoSans"
@@ -78,15 +78,8 @@ class TripReport:
     transfers: list[Transfer]
     expenses: list[ExpenseRow]  # at most MAX_EXPENSE_ROWS
     more_expenses: int  # left out of the table
-    generated_on: date
-
-
-def money(minor: int, currency: str, exponents: dict[str, int]) -> str:
-    """``1234567`` USD -> ``12,345.67 USD``."""
-
-    exponent = exponents.get(currency, 2)
-    value = Decimal(minor).scaleb(-exponent)
-    return f"{value:,.{exponent}f} {currency}"
+    generated_on: str
+    language: Language
 
 
 def person_rows(
@@ -94,6 +87,7 @@ def person_rows(
     balances: dict[tuple[str | None, str], int],
     names: dict[str | None, str],
     exponents: dict[str, int],
+    language: Language,
 ) -> list[PersonRow]:
     """Paid and share of expenses (refunds netted) per person and currency, and the
     ledger balance, which also counts payments, forgiven debts, and the kitty."""
@@ -105,11 +99,11 @@ def person_rows(
     )
     return [
         PersonRow(
-            names.get(participant_id, "Former member"),
+            names.get(participant_id, text("former_member", language)),
             currency,
-            money(spent.get((participant_id, currency), [0, 0])[0], currency, exponents),
-            money(spent.get((participant_id, currency), [0, 0])[1], currency, exponents),
-            money(balances.get((participant_id, currency), 0), currency, exponents),
+            money(spent.get((participant_id, currency), [0, 0])[0], currency, exponents, language),
+            money(spent.get((participant_id, currency), [0, 0])[1], currency, exponents, language),
+            money(balances.get((participant_id, currency), 0), currency, exponents, language),
         )
         for participant_id, currency in keys
     ]
@@ -132,8 +126,14 @@ def printable(text: str) -> str:
 
 
 def render(report: TripReport) -> bytes:
+    language = report.language
+
+    def say(key: str, **values: object) -> str:
+        return text(key, language, **values)
+
     pdf = FPDF(format="A4", unit="mm")
     pdf.set_title(report.title)
+    pdf.set_lang(language)
     pdf.set_creator("Beluno")
     pdf.add_font(FAMILY, "", str(FONTS / "NotoSans-Regular.ttf"))
     pdf.add_font(FAMILY, "B", str(FONTS / "NotoSans-Bold.ttf"))
@@ -149,49 +149,61 @@ def render(report: TripReport) -> bytes:
     for detail in (
         report.dates,
         report.stops,
-        f"{report.people} people · amounts in {report.base_currency} unless marked",
+        say("people_line", people=report.people, currency=report.base_currency),
     ):
         if detail:
             pdf.multi_cell(0, 6, detail, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_text_color(*INK)
     pdf.ln(4)
     pdf.set_font(FAMILY, "B", 16)
-    pdf.cell(0, 9, f"Spent: {report.spent}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 9, say("spent", amount=report.spent), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     if report.spending_note:
         _note(pdf, report.spending_note)
 
-    _heading(pdf, "By category")
+    nothing = say("nothing_yet")
+    _heading(pdf, say("by_category"))
     _table(
         pdf,
-        ("Category", "Amount", "Share"),
+        (say("category"), say("amount"), say("share_of_total")),
         [list(row) for row in report.categories],
         (2, 1.4, 0.8),
+        nothing,
     )
 
-    _heading(pdf, "People")
+    _heading(pdf, say("people"))
     _table(
         pdf,
-        ("Person", "Currency", "Paid", "Share", "Balance"),
+        (say("person"), say("currency"), say("paid"), say("share"), say("balance")),
         [[row.name, row.currency, row.paid, row.share, row.balance] for row in report.people_rows],
         (1.6, 0.8, 1.2, 1.2, 1.2),
+        nothing,
     )
-    _note(pdf, "Balance: positive gets money back, negative owes. It counts payments too.")
+    _note(pdf, say("balance_note"))
 
-    _heading(pdf, "To settle up")
+    _heading(pdf, say("settle_up"))
     if report.transfers:
         _table(
             pdf,
-            ("From", "To", "Amount"),
+            (say("from"), say("to"), say("amount")),
             [[row.debtor, row.creditor, row.amount] for row in report.transfers],
             (1.4, 1.4, 1.2),
+            nothing,
         )
     else:
-        _note(pdf, "Nobody owes anybody.")
+        _note(pdf, say("nobody_owes"))
 
-    _heading(pdf, "Expenses")
+    _heading(pdf, say("expenses"))
     _table(
         pdf,
-        ("Date", "Description", "Category", "Amount", "Base", "Paid by", "Receipt"),
+        (
+            say("date"),
+            say("description"),
+            say("category"),
+            say("amount"),
+            say("base"),
+            say("paid_by"),
+            say("receipt"),
+        ),
         [
             [
                 row.occurred_on,
@@ -200,20 +212,18 @@ def render(report: TripReport) -> bytes:
                 row.amount,
                 row.base_amount,
                 row.paid_by,
-                "yes" if row.receipt else "",
+                say("yes") if row.receipt else "",
             ]
             for row in report.expenses
         ],
-        (0.9, 2, 1, 1.2, 1.2, 1.4, 0.6),
+        (0.9, 1.85, 1, 1.2, 1.2, 1.4, 0.75),
+        nothing,
         size=8,
     )
     if report.more_expenses:
-        _note(
-            pdf,
-            f"And {report.more_expenses} more expenses: the accounting export lists them all.",
-        )
+        _note(pdf, say("more_expenses", count=report.more_expenses))
     pdf.ln(4)
-    _note(pdf, f"Made with Beluno on {report.generated_on.isoformat()}.")
+    _note(pdf, say("made_on", day=report.generated_on))
     return bytes(pdf.output())
 
 
@@ -235,10 +245,11 @@ def _table(
     headings: tuple[str, ...],
     rows: list[list[str]],
     widths: tuple[float, ...],
+    empty: str,
     size: int = 9,
 ) -> None:
     if not rows:
-        _note(pdf, "Nothing yet.")
+        _note(pdf, empty)
         return
     pdf.set_font(FAMILY, "", size)
     pdf.set_draw_color(*RULE)

@@ -12,7 +12,7 @@ the only credential they have, and they cannot sign in again):
    were active (or waiting for approval) become ``left``. Guests merged into the
    account, and their merged rows, lose the guest-era name too.
 3. Their crews are deleted, and they are removed from other people's crews. Their
-   private packing lists, problem reports, and trip memories are deleted (receipts
+   private packing lists, problem reports, and memories are deleted (receipts
    stay with the money they prove).
 4. Identities and email challenges go, the profile is scrubbed (no email,
    locale, zone, or currency; status ``deleted``), and every session is revoked.

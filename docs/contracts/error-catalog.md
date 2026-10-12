@@ -6,7 +6,7 @@ submitted values.
 
 | Code | HTTP | Meaning |
 |---|---:|---|
-| `AUTHENTICATION_REQUIRED` | 401 | Credential missing, invalid, expired, revoked, or an email code that does not verify |
+| `AUTHENTICATION_REQUIRED` | 401 | Credential missing, invalid, expired, revoked, or an email code or magic link that does not verify (a link is checked against the `challenge_id` of the device that requested it) |
 | `AUTHENTICATION_UNAVAILABLE` | 503 | Token signing/verification or a sign-in provider is not configured or unreachable |
 | `FORBIDDEN` | 403 | Current relationship does not permit the action |
 | `STEP_UP_REQUIRED` | 403 | Sensitive action needs a sign-in within the step-up window |
@@ -34,7 +34,7 @@ submitted values.
 | `WAIVER_EXCEEDS_DEBT` | 409 | A waiver would forgive more than the debtor owes and the creditor is owed in that currency |
 | `REFUND_EXCEEDS_AMOUNT` | 409 | Refunds would exceed the expense's current amount (also when a revision goes below them) |
 | `FUND_INSUFFICIENT` | 409 | A fund-paid expense, withdrawal, or adjustment would overdraw the plan fund in that currency |
-| `NOT_AVAILABLE_FOR_HANGOUT` | 409 | Budgets, cost commitments, the kitty (settings, contributions, withdrawals, counts, fund-paid expenses, refunds to the fund), and the trip plan (places, itinerary, polls) are for trips only |
+| `NOT_AVAILABLE_FOR_HANGOUT` | 409 | Budgets, cost commitments, the kitty (settings, contributions, withdrawals, counts, fund-paid expenses, refunds to the fund), the trip plan (places, itinerary, polls), covers, the album link, recap highlights, the trip report export, and the Trip Pass (hangouts are always free) are for trips only |
 | `POLL_CLOSED` | 409 | The poll is closed (or past its deadline): no more votes, and a closed poll is not deleted |
 | `VOTE_LOCKED` | 409 | The poll does not allow changing a vote once cast |
 | `POLL_NOT_DECIDED` | 409 | Only a closed single-choice poll with a winner (or a tie, with `option_id`) can be acted on |

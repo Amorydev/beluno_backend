@@ -151,6 +151,9 @@ Release 3: everything that needs external providers or storage. The previous pla
   - `POST/GET /v1/plans/{id}/receipt-archives`; worker job `media.build_receipt_archive` writes the zip on disk one receipt at a time, uploads it, and queues its deletion a day later; `receipts.csv` lists each file's expense.
   - Review (`reports/code-reviewer-261008-0040-receipt-archive-review-report.md`): fixed the security sweeps missing the table and route (C1); builds a crash cut short failed by the hourly sweep (H1); zips built on a disk volume, one build at a time (H2); voided expenses left out, a default taken without an answer (H3); ready archives reused until new receipts arrive, sizes checked before reading, 5 requests an hour (H4); one archive in the making per person (M1); a purged plan's zips deleted at once (M2); tests for each. Left: a receipt deleted after a zip was built stays in that zip for its day.
 
+- The PDF report in Vietnamese and English is on `feat/pdf-languages`: `lang=vi|en` on `GET .../export?format=pdf`, else the reader's profile locale; words, categories, money (`1.234,56 USD`), and days (`12/03/2027`) per language in `beluno.api.report_text`; people's own text is never translated.
+  - Review (`reports/code-reviewer-261008-1345-pdf-languages-review-report.md`): fixed deleted accounts printing in English in the Vietnamese report (M1); English month names no longer depend on the server's locale; wording settled (Tỷ lệ, Phần chia, Cần thanh toán, Hóa đơn, Thành viên cũ, tiền tệ chính); a test that every word exists in both languages with the same blanks. The Vietnamese words here are the app's first glossary.
+
 ## Success Criteria
 
 - [ ] No notification, export, share card, or log carries a secret field.

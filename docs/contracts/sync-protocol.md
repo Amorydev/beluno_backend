@@ -91,6 +91,13 @@ revoked session fails the whole request with `401`; a batch-level limit fails
 it with `429` and `Retry-After` (keep the queue). Retry with exponential backoff
 and jitter, keeping `operation_id` and payload unchanged.
 
+Offline creation: most create commands accept a client-chosen `id`, so later
+operations in the same outbox can name what they create. `plan.create` also takes
+`owner_participant_id`, the id of the creator's own participant, so an expense or
+any other command written offline for a new plan can name its creator as payer or
+member before the plan reaches the server. A taken id fails with `409 ALREADY_EXISTS`
+and creates nothing.
+
 REST mutations accept the same semantics through the optional
 `Idempotency-Key` header (same key and body → stored response plus
 `Idempotency-Replayed: true`; same key and different body → `409

@@ -169,6 +169,37 @@ async def test_everyone_shares_memories_and_organisers_pick_highlights(
     ]
 
 
+async def test_a_hangouts_memories_follow_the_same_people_rules(
+    api: httpx.AsyncClient,
+    identity_provider: IdentityProviderStub,
+    worker: Runtime,
+    admin: AdminDatabase,
+) -> None:
+    night = await finance_plan(
+        api, identity_provider, admin, members=("Bea", "Dan"), plan_type="hangout"
+    )
+    owner, bea, dan = night.owner, night.members["Bea"], night.members["Dan"]
+    await ok(
+        await api.patch(
+            night.path(f"/participants/{night.people['Dan']}"),
+            json={"role": "viewer"},
+            headers=if_match(1, owner),
+        )
+    )
+    # A viewer shares a photo of the night; only they and organisers change or delete it.
+    shot = await memory(api, dan, night, day="2027-03-20", taken_time="23:40:00")
+    listed = await ok(await api.get(night.path("/media"), headers=bea.headers))
+    version = next(row["version"] for row in listed if row["id"] == shot["id"])
+    path = night.path(f"/media/{shot['id']}/memory")
+    edit = {"caption": "Encore", "day": "2027-03-20", "taken_time": "23:40:00"}
+    assert (await api.put(path, json=edit, headers=if_match(version, bea))).status_code == 403
+    edited = await ok(await api.put(path, json=edit, headers=if_match(version, dan)))
+    assert edited["caption"] == "Encore"
+    gone = night.path(f"/media/{shot['id']}")
+    assert (await api.delete(gone, headers=bea.headers)).status_code == 403
+    assert (await api.delete(gone, headers=owner.headers)).status_code == 204
+
+
 async def test_memory_and_receipt_rules(
     api: httpx.AsyncClient,
     identity_provider: IdentityProviderStub,
@@ -210,13 +241,22 @@ async def test_memory_and_receipt_rules(
         ),
         201,
     )
-    assert (
+    # Hangouts keep memories too, but have no recap to pick highlights for.
+    night = await ok(
         await api.post(
             f"/v1/plans/{hangout['id']}/media",
             json={"kind": "memory", "content_type": "image/jpeg", "size_bytes": 10},
             headers=owner.headers,
-        )
-    ).status_code == 409
+        ),
+        201,
+    )
+    no_highlight = await api.put(
+        f"/v1/plans/{hangout['id']}/media/{night['id']}/highlight",
+        json={"in_recap": True},
+        headers=owner.headers,
+    )
+    assert no_highlight.status_code == 409, no_highlight.text
+    assert no_highlight.json()["code"] == "NOT_AVAILABLE_FOR_HANGOUT"
 
     # Receipts: never on a voided expense; deleted also by the expense's creator and by
     # whoever manages expenses.

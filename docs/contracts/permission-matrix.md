@@ -100,13 +100,13 @@ State narrowing (applies on top of the table):
   everyone else, organisers included.
 - Media: anyone with `plan.expenses.create` adds a receipt to an expense of the plan
   that is not voided; organisers (`plan.update`) add trip covers and set the cover and
-  album link; anyone on a trip (`plan.memories.share`, viewers too) adds memories, also once the
-  trip is completed (not archived).
+  album link; anyone on a trip or hangout (`plan.memories.share`, viewers too) adds memories,
+  also once the plan is completed (not archived).
   Only the uploader gets the upload URL and reports the upload; everyone in the plan
   downloads ready files. The uploader or an organiser edits a memory and deletes a
   file; a receipt is also deleted by its expense's creator or a holder of
   `expenses.manage`. Organisers pick up to 20 recap highlights (`plan.memories.highlight`, also on
-  completed trips). A guest account merged into the actor counts as the actor. Only the worker
+  completed trips; trips only, as only trips have a recap: `409 NOT_AVAILABLE_FOR_HANGOUT`). A guest account merged into the actor counts as the actor. Only the worker
   marks a file ready or rejected (a guard enforces it).
 - Exports: every active participant (viewers and guests included) exports the
   plan as CSV or JSON, receiving exactly the entity types and rows their sync

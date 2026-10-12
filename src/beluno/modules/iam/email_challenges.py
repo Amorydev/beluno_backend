@@ -113,16 +113,24 @@ async def verify_code(
     return _consume(ctx, challenge)
 
 
-async def verify_link(ctx: CommandContext, link_token: str) -> VerifiedIdentity | None:
+async def verify_link(
+    ctx: CommandContext,
+    challenge_id: UUID,
+    link_token: str,
+) -> VerifiedIdentity | None:
+    """Return the proven email, or ``None``. The token must belong to ``challenge_id``, which only
+    the device that started the challenge knows; a mismatch counts as a failed attempt."""
+
     hasher = ctx.runtime.require_hasher()
     challenge = (
         await ctx.session.execute(
-            select(EmailChallenge)
-            .where(EmailChallenge.link_token_hash == hasher.digest(LINK_PURPOSE, link_token))
-            .with_for_update()
+            select(EmailChallenge).where(EmailChallenge.id == challenge_id).with_for_update()
         )
     ).scalar_one_or_none()
-    if challenge is None or not _is_redeemable(ctx, challenge):
+    if challenge is None or not _is_redeemable(ctx, challenge) or challenge.link_token_hash is None:
+        return None
+    if not hasher.matches(LINK_PURPOSE, link_token, challenge.link_token_hash):
+        challenge.failed_attempts += 1
         return None
     return _consume(ctx, challenge)
 
