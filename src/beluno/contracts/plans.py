@@ -138,6 +138,11 @@ class PlanCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID | None = None
+    owner_participant_id: UUID | None = Field(
+        default=None,
+        description="Client id for the creator's participant, so an offline client can refer to "
+        "it (payer, split) before the plan reaches the server",
+    )
     type: PlanType
     title: Title
     activity: HangoutActivity | None = Field(default=None, description="Hangouts only")

@@ -119,6 +119,35 @@ async def test_new_plans_seed_people_from_shared_plans_and_placeholders(
     assert unknown.status_code == 404
 
 
+async def test_the_creator_can_choose_their_participant_id(
+    api: httpx.AsyncClient, identity_provider: IdentityProviderStub
+) -> None:
+    owner = await sign_in(api, identity_provider, name="Owner")
+    plan_id, owner_id = str(uuid4()), str(uuid4())
+
+    plan = await make_plan(api, owner, id=plan_id, owner_participant_id=owner_id)
+
+    assert plan["id"] == plan_id
+    assert plan["my_participant"]["id"] == owner_id
+    assert [p["id"] for p in await participants(api, owner, plan_id)] == [owner_id]
+    # A taken id is a conflict like any other client-chosen id, and nothing is created.
+    taken = await api.post(
+        "/v1/plans",
+        json={
+            "type": "hangout",
+            "title": "Lunch",
+            "activity": "dinner",
+            "base_currency": "VND",
+            "owner_participant_id": owner_id,
+        },
+        headers=owner.headers,
+    )
+    assert taken.status_code == 409
+    assert taken.json()["code"] == "ALREADY_EXISTS"
+    listed = await api.get("/v1/plans", headers=owner.headers)
+    assert [item["id"] for item in listed.json()["items"]] == [plan_id]
+
+
 async def test_participant_ids_are_scoped_to_their_plan(
     api: httpx.AsyncClient, identity_provider: IdentityProviderStub
 ) -> None:
