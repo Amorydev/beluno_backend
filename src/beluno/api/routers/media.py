@@ -52,7 +52,7 @@ async def create_media(
     idempotency_key: IdempotencyKey = None,
 ) -> MediaResponse:
     """Record a receipt (anyone who adds expenses, on an expense that is not voided), a
-    trip cover (organisers), or a memory (anyone on the trip)."""
+    trip cover (organisers), or a memory (anyone on the trip or hangout)."""
 
     call = command_call(idempotency_key, plan_id=plan_id)
     return finish(response, await runner.run(actor, commands.MEDIA_CREATE, call, body))

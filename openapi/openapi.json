@@ -23466,7 +23466,7 @@
         ]
       },
       "post": {
-        "description": "Record a receipt (anyone who adds expenses, on an expense that is not voided), a\ntrip cover (organisers), or a memory (anyone on the trip).",
+        "description": "Record a receipt (anyone who adds expenses, on an expense that is not voided), a\ntrip cover (organisers), or a memory (anyone on the trip or hangout).",
         "operationId": "create_media_v1_plans__plan_id__media_post",
         "parameters": [
           {
