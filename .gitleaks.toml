@@ -21,3 +21,11 @@ condition = "AND"
 paths = ['''^plans/261005-2356-beluno-backend-plan/phase-03-identity-groups-plans\.md$''']
 regexTarget = "secret"
 regexes = ['''^join/leave/responded$''']
+
+[[allowlists]]
+description = "Android signing-certificate hashes for passkey origins in the staging env script (public, also served in assetlinks.json)"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^deploy/vps/make-env\.sh$''']
+regexTarget = "secret"
+regexes = ['''^(NTorDXUTiolCyfYtHioFQliPT6feqJmFnyNcmoDXNDA|RoBJFNUalOx54jAaFgO6Jt-bgAHnQLr3iiwiTWcoVdY)$''']
