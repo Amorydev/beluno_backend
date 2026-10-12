@@ -1,0 +1,8 @@
+$ORIGIN beluno.site.
+$TTL 3600
+; Resend (sending from beluno.site, region Tokyo): DKIM and the sending domain.
+; Import after the base zone (beluno-site-dns-zone.txt). Fix _dmarc by hand: v=DMARC1; p=none;
+
+resend._domainkey  IN  TXT    "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC6KiKOgap1DGaSM5RzQnbfz4sdKRRHTri9xFzPHzK+Pe3vlVESUpZSHR/VAusKoZ3Yl/aIYQN+PSvlFsKIi3+SfQKt+MQ0JYOztxxOBURJDQFmr4TwW+uGcBaU4BSK7iMomJYQ7pV3V646pR6ThomwTiOTBZ2EiTTeYfee94D9dwIDAQAB"
+rsend              IN  CNAME  rsend-apne1.forge.rmta.net.
+send               IN  CNAME  send.forge.rmta.net.

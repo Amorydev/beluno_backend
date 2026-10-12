@@ -208,3 +208,23 @@ Abuse limits for unauthenticated endpoints key on the client address. Behind a
 load balancer run uvicorn with `--proxy-headers --forwarded-allow-ips=<LB CIDRs>`
 (the image reads `FORWARDED_ALLOW_IPS`; never `*` on a publicly reachable port).
 Otherwise every caller shares the proxy's address and one rate-limit bucket.
+
+## beluno.site staging host
+
+`deploy/vps/` runs the staging stack on a shared VPS whose ports 80/443 belong to another
+project's Caddy (container `aloudo-caddy-1`, network `aloudo_default`, gateway `172.22.0.1`).
+
+- Beluno never joins that network: its service names (`api`, `postgres`) would clash with the
+  other apps there. The API and RustFS publish on the gateway address only
+  (`BELUNO_PUBLISH_ADDRESS`/`BELUNO_STORAGE_PUBLISH_ADDRESS=172.22.0.1`, ports 8100 and 9100), and
+  ufw allows `172.22.0.0/16` to reach those two ports. `FORWARDED_ALLOW_IPS=172.16.0.0/12`.
+- `Caddyfile.beluno` holds the three site blocks (beluno.site static from `/var/www/beluno`,
+  api, files). Append them to the shared Caddyfile after a backup, `caddy validate` a copy,
+  write the file in place (it is a single-file bind mount: keep the inode), then `caddy reload`.
+- `make-env.sh` writes `deploy/staging/.env` with fresh secrets on the host; the identity keys are
+  piped from a development checkout (the runtime image lacks the dev tools that generate them).
+  `set-smtp-password.sh` asks for the Resend key and switches email to SMTP.
+- `beluno-site-dns-zone.txt` is the zone to import at the registrar (re-type the DMARC value by
+  hand if the importer cuts it at the first `;`).
+- Start or update: `cd deploy/staging && docker compose -p beluno up -d api worker otel-collector`
+  (Prometheus, Alertmanager and Grafana are not run on this 2-CPU host).

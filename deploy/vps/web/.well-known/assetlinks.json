@@ -1,0 +1,16 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "amoryzenith.beluno.app",
+      "sha256_cert_fingerprints": [
+        "35:3A:2B:0D:75:13:8A:89:42:C9:F6:2D:1E:2A:05:42:58:8F:4F:A7:DE:A8:99:85:9F:23:5C:9A:80:D7:34:30",
+        "46:80:49:14:D5:1A:94:EC:79:E2:30:1A:16:03:BA:26:DF:9B:80:01:E7:40:BA:F7:8A:2C:22:4D:67:28:55:D6"
+      ]
+    }
+  }
+]

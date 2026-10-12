@@ -1,0 +1,36 @@
+
+# Beluno web tĩnh (/var/www/beluno): App Links, trang mời /j, /auth/email, privacy, help. Thêm 2026-10-12.
+www.beluno.site {
+	redir https://beluno.site{uri} permanent
+}
+
+beluno.site {
+	encode zstd gzip
+	root * /srv/www/beluno
+	header /.well-known/assetlinks.json Content-Type application/json
+	header /assets/* Cache-Control "public, max-age=3600"
+	try_files {path} {path}.html
+	file_server
+}
+
+# Beluno API: compose beluno mở cổng 8100 chỉ trên 172.22.0.1 (cổng vào của aloudo_default), không join network
+# chung để tên api/postgres không trùng với app khác. Thêm 2026-10-12.
+api.beluno.site {
+	encode zstd gzip
+	reverse_proxy 172.22.0.1:8100 {
+		health_uri /health/live
+		health_interval 15s
+		health_timeout 3s
+	}
+	request_body {
+		max_size 2MB
+	}
+}
+
+# Beluno media: RustFS (cổng 9100 trên 172.22.0.1) cho link tải lên/tải xuống có chữ ký; giữ nguyên Host để chữ ký khớp. Thêm 2026-10-12.
+files.beluno.site {
+	request_body {
+		max_size 25MB
+	}
+	reverse_proxy 172.22.0.1:9100
+}
